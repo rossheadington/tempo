@@ -64,6 +64,32 @@ class Settings(BaseSettings):
         default=None, description="Garmin Connect account password."
     )
 
+    # ---- Load / analysis settings (Phase 4) ----
+    threshold_pace_s_per_km: float | None = Field(
+        default=None,
+        description=(
+            "Functional threshold pace in seconds per km (the pace you could hold "
+            "for ~1 hour all-out). Required for pace-based rTSS load. e.g. 240 = "
+            "4:00/km. If unset, load falls back to hrTSS when HR data exists."
+        ),
+    )
+    max_hr: int | None = Field(
+        default=None,
+        description="Maximum heart rate (bpm). Used by the hrTSS load fallback.",
+    )
+    resting_hr: int | None = Field(
+        default=None,
+        description="Resting heart rate (bpm). Used by the hrTSS (HRR) load fallback.",
+    )
+    threshold_hr: int | None = Field(
+        default=None,
+        description=(
+            "Lactate-threshold heart rate (bpm) -- the HR you could hold for ~1 hour. "
+            "Anchors hrTSS so 1 hour at threshold HR scores ~100, matching rTSS. If "
+            "unset, it is estimated as ~0.92 * max_hr."
+        ),
+    )
+
     @field_validator("data_dir", mode="after")
     @classmethod
     def _expand_data_dir(cls, value: Path) -> Path:
@@ -85,6 +111,16 @@ class Settings(BaseSettings):
     def reports_dir(self) -> Path:
         """Directory for generated markdown analysis reports (gitignored, local)."""
         return self.data_dir / "reports"
+
+    @property
+    def races_path(self) -> Path:
+        """Path to the user-maintained races markdown (read for analysis context)."""
+        return self.data_dir / "races.md"
+
+    @property
+    def plan_path(self) -> Path:
+        """Path to the user-maintained training-plan markdown (read for context)."""
+        return self.data_dir / "plan.md"
 
     def ensure_dirs(self) -> None:
         """Create the data, tokens, and reports directories with safe perms.
