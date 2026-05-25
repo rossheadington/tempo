@@ -49,8 +49,10 @@ def test_version_command() -> None:
     assert __version__ in result.output
 
 
-@pytest.mark.parametrize("cmd", ["sync", "transform", "rederive", "analyze"])
+@pytest.mark.parametrize("cmd", ["transform", "rederive", "analyze"])
 def test_stub_subcommands_run(cmd: str, tempo_data_dir: Path) -> None:
+    # `sync` is wired to real Strava ingestion in Phase 2 (see test_strava_cli);
+    # the remaining data-producing commands are still stubs until later phases.
     result = runner.invoke(app, [cmd])
     assert result.exit_code == 0, result.output
     assert "not yet implemented" in result.output
