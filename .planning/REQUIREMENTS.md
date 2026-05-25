@@ -28,11 +28,11 @@ the Strava end-to-end milestone and the Garmin/analysis milestone.
 
 ### Storage & Modelling
 
-- [ ] **STORE-01**: Pure transforms derive structured `activity` and `activity_stream` rows from raw responses
-- [ ] **STORE-02**: `tempo rederive` rebuilds all structured tables from stored raw data with no network calls
-- [ ] **STORE-03**: A zero-filled `date_spine` gives every calendar day a row (rest days included)
-- [ ] **STORE-04**: A `daily_summary` view left-joins activities, wellness, and journal onto the date spine (one row per day)
-- [ ] **STORE-05**: Local-date bucketing is correct and tested for edge cases (late-night activity, timezone travel, DST, Garmin overnight sleep)
+- [x] **STORE-01**: Pure transforms derive structured `activity` and `activity_stream` rows from raw responses
+- [x] **STORE-02**: `tempo rederive` rebuilds all structured tables from stored raw data with no network calls
+- [x] **STORE-03**: A zero-filled `date_spine` gives every calendar day a row (rest days included)
+- [x] **STORE-04**: A `daily_summary` view left-joins activities, wellness, and journal onto the date spine (one row per day)
+- [x] **STORE-05**: Local-date bucketing is correct and tested for edge cases (late-night activity, timezone travel, DST, Garmin overnight sleep)
 
 ### Load Metrics & Analysis
 
@@ -121,11 +121,11 @@ Explicitly excluded. Documented to prevent scope creep.
 | STRV-04 | Phase 2 | Complete |
 | STRV-05 | Phase 2 | Complete |
 | STRV-06 | Phase 2 | Complete |
-| STORE-01 | Phase 3 | Pending |
-| STORE-02 | Phase 3 | Pending |
-| STORE-03 | Phase 3 | Pending |
-| STORE-04 | Phase 3 | Pending |
-| STORE-05 | Phase 3 | Pending |
+| STORE-01 | Phase 3 | Complete |
+| STORE-02 | Phase 3 | Complete |
+| STORE-03 | Phase 3 | Complete |
+| STORE-04 | Phase 3 | Complete |
+| STORE-05 | Phase 3 | Complete |
 | LOAD-01 | Phase 4 | Pending |
 | LOAD-02 | Phase 4 | Pending |
 | LOAD-03 | Phase 4 | Pending |
@@ -156,4 +156,5 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-26*
-*Last updated: 2026-05-26 after Phase 2 (Strava Ingestion) completed — STRV-01..STRV-06 Complete*
+*Last updated: 2026-05-26 after Phase 3 (Strava Transforms + Date Spine) completed — STORE-01..STORE-05 Complete.*
+*Note on STORE-04/05 scope: the `daily_summary` view LEFT-JOINs from `date_spine` and is shaped so the wellness (Phase 6) and journal (Phase 5) sources can be LEFT-JOINed in when they exist; the bucketing rule and tests already cover Garmin's `calendarDate` (overnight) attribution so those sources will bucket correctly on arrival. Phase 3 delivers the Strava activity join, the spine, and the proven bucketing rule end-to-end.*

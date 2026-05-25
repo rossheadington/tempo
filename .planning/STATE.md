@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** Phase 3 — Strava Transforms + Date Spine (next)
+**Current focus:** Phase 4 — Load Metrics + First Analysis (next)
 
 ## Current Position
 
-Phase: 2 of 7 (Strava Ingestion) — COMPLETE
-Plan: 1 of 1 in Phase 2 complete
-Status: Phase 2 done; ready to plan Phase 3 (Strava Transforms + Date Spine)
-Last activity: 2026-05-26 — Phase 2 (Strava Ingestion) implemented, tested, committed, and pushed
+Phase: 3 of 7 (Strava Transforms + Date Spine) — COMPLETE
+Plan: 1 of 1 in Phase 3 complete
+Status: Phase 3 done; ready to plan Phase 4 (Load Metrics + First Analysis — Strava end-to-end milestone)
+Last activity: 2026-05-26 — Phase 3 (Strava Transforms + Date Spine) implemented, tested, committed, and pushed
 
-Progress: [███░░░░░░░] ~29% (2 of 7 phases)
+Progress: [████░░░░░░] ~43% (3 of 7 phases)
 
 ## What's Done (Phase 1: Foundation)
 
@@ -78,6 +78,48 @@ Criteria 1–4 proven via mocks; **live execution pending the user's real Strava
 client ID/secret** (create app + `tempo strava auth`). Strava API Agreement conflict
 recorded as accepted (README + REQUIREMENTS Known Accepted Conflicts).
 
+## What's Done (Phase 3: Strava Transforms + Date Spine)
+
+- `tempo/transforms/bucketing.py` — the one local-date attribution rule, in one place
+  (DATE_BUCKETING invariant). `local_day_from_strava_local` takes `start_date_local[:10]`
+  (wall-clock; the trailing `Z` is FAKE, NOT UTC) and never re-projects to UTC, so
+  late-night / DST / timezone-travel runs all land on the correct local day.
+  `local_day_from_calendar_date` (Garmin parity, Phase 6) takes a `calendarDate` verbatim.
+  Defensive: rejects empty / malformed / impossible dates with `BucketingError`. (STORE-05)
+- `tempo/transforms/strava.py` — pure raw→structured projection. `transform_activity`
+  (payload → typed `ActivityRow`, deriving `avg_pace_s_km` from `average_speed`) and
+  `transform_streams` (key_by_type payload → one `StreamRow` per type). `rebuild_activities`
+  ensures each activity's spine day exists before insert (FK-safe), preferring the richer
+  `activity` detail over `activity_summary`; `rebuild_streams` skips orphans. (STORE-01)
+- `tempo/transforms/spine.py` — zero-fills `date_spine`: a CONTINUOUS run of days across
+  `[min data day, max data day]` (rest days + gap days included), optionally extended
+  forward to `fill_to` (today). Missing spine days would silently corrupt Phase-4 EWMA /
+  ACWR windows, so continuity is enforced. Spine metadata (dow/ISO-week/month/year)
+  recomputed deterministically. (STORE-03)
+- `tempo/transforms/coerce.py` — defensive optional-value coercion (absent/empty → None).
+- `tempo/transforms/runner.py` — orchestrates `run_transform` (incremental upsert) and
+  `run_rederive` (clear + full rebuild) as ONE atomic, ZERO-NETWORK transaction; ordering
+  respects the spine→activity→stream foreign keys. Both produce identical state for a
+  given raw layer. (STORE-02)
+- `tempo/migrations/0002_structured.sql` — `activity`, `activity_stream` tables (FK to
+  `date_spine`/`activity`) + `daily_summary` VIEW: a LEFT JOIN from `date_spine` rolling up
+  activities per day (n_activities, totals, max HR, sports), one row per calendar day, rest
+  days first-class — shaped for Phase-6 wellness and Phase-5 journal to LEFT JOIN in later.
+  (STORE-04). `db.SCHEMA_VERSION` bumped to 2; `STRUCTURED_TABLES` added.
+- `tempo/cli.py` — `tempo transform` and `tempo rederive` wired to the runner (spine filled
+  forward to today); report activity/stream/spine-day counts.
+- `tests/` — 113 pytest tests (was 73, +40), all green; ruff check + format clean. New:
+  `test_bucketing.py` (all four edge cases — 11pm, tz-travel, DST spring/fall, fake-Z — plus
+  Garmin calendarDate parity and defensive parsing), `test_transforms.py` (pure transform,
+  zero-filled spine incl. rest days, daily_summary one-row-per-day LEFT JOIN + rollup, edge
+  cases applied through the FULL transform), `test_rederive.py` (idempotency, purity =
+  function-of-raw, rebuild-after-drop, and a hard NO-NETWORK guard that blocks `socket`),
+  `test_transform_cli.py` (end-to-end CLI). `strava_fakes.make_activity_tz` added.
+
+All four Phase-3 success criteria verified, including a live CLI run on a seeded DB proving
+late-night→local-day, DST-night, and tz-travel bucketing and `daily_summary` rows == spine
+days. Re-derivation confirmed no-network (socket-blocked test + CLI rerun reproducing counts).
+
 ### Conventions established this phase
 - Flat `tempo/` package layout (not `src/`).
 - No ORM / no Alembic: raw sqlite3 + hand-written SQL + integer `user_version`
@@ -85,6 +127,10 @@ recorded as accepted (README + REQUIREMENTS Known Accepted Conflicts).
 - All runtime data (DB, tokens, reports) lives under `~/.tempo/` by default,
   configurable via `TEMPO_DATA_DIR`; never inside the repo tree.
 - Settings env prefix is `TEMPO_`.
+- (Phase 3) Transforms live in `tempo/transforms/`, are PURE functions of the raw layer
+  (no network), and bucket via the single rule in `tempo/transforms/bucketing.py`. The
+  `daily_summary` gold layer is a VIEW (always fresh) LEFT-JOINed from `date_spine`; future
+  sources join through `day`. `rederive` = clear + rebuild in one txn; `transform` = upsert.
 
 ## Performance Metrics
 
@@ -140,7 +186,9 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-05-26
-Stopped at: Phase 1 (Foundation) complete — project skeleton, secure DB schema (WAL),
-secrets outside the tree, gitleaks hook, typer CLI shell, and date-bucketing rule all
-shipped, tested, and pushed. Next: plan Phase 2 (Strava Ingestion).
+Stopped at: Phase 3 (Strava Transforms + Date Spine) complete — pure rederivable raw→structured
+transforms, zero-filled continuous `date_spine`, `daily_summary` LEFT-JOIN gold view, and
+local-date bucketing proven for all four edge cases (11pm, tz-travel, DST, fake-Z). 113 tests
+green, ruff clean, shipped and pushed. Next: plan Phase 4 (Load Metrics + First Analysis —
+the Strava end-to-end milestone).
 Resume file: None
