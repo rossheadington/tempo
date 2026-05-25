@@ -107,17 +107,53 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Populated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (to be filled by roadmapper) | — | Pending |
+| FND-01 | Phase 1 | Pending |
+| FND-02 | Phase 1 | Pending |
+| FND-03 | Phase 1 | Pending |
+| FND-04 | Phase 1 | Pending |
+| FND-05 | Phase 1 | Pending |
+| FND-06 | Phase 1 | Pending |
+| STRV-01 | Phase 2 | Pending |
+| STRV-02 | Phase 2 | Pending |
+| STRV-03 | Phase 2 | Pending |
+| STRV-04 | Phase 2 | Pending |
+| STRV-05 | Phase 2 | Pending |
+| STRV-06 | Phase 2 | Pending |
+| STORE-01 | Phase 3 | Pending |
+| STORE-02 | Phase 3 | Pending |
+| STORE-03 | Phase 3 | Pending |
+| STORE-04 | Phase 3 | Pending |
+| STORE-05 | Phase 3 | Pending |
+| LOAD-01 | Phase 4 | Pending |
+| LOAD-02 | Phase 4 | Pending |
+| LOAD-03 | Phase 4 | Pending |
+| ANL-01 | Phase 4 | Pending |
+| ANL-02 | Phase 4 | Pending |
+| ANL-05 | Phase 4 | Pending |
+| PLAN-01 | Phase 4 | Pending |
+| PLAN-02 | Phase 4 | Pending |
+| DELIV-01 | Phase 4 | Pending |
+| JRNL-01 | Phase 5 | Pending |
+| JRNL-02 | Phase 5 | Pending |
+| JRNL-03 | Phase 5 | Pending |
+| GRMN-01 | Phase 6 | Pending |
+| GRMN-02 | Phase 6 | Pending |
+| GRMN-03 | Phase 6 | Pending |
+| GRMN-04 | Phase 6 | Pending |
+| GRMN-05 | Phase 6 | Pending |
+| ANL-03 | Phase 7 | Pending |
+| ANL-04 | Phase 7 | Pending |
+| SCHED-01 | Phase 7 | Pending |
+| SCHED-02 | Phase 7 | Pending |
+| SCHED-03 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 36 total
-- Mapped to phases: TBD (roadmapper)
-- Unmapped: TBD
+- v1 requirements: 39 total
+- Mapped to phases: 39 (100%)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-26*
-*Last updated: 2026-05-26 after initial definition*
+*Last updated: 2026-05-26 after roadmap creation (traceability populated)*
