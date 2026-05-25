@@ -18,6 +18,12 @@ store/
 data/
 raw/
 reports/
+# User-maintained context files live in the data dir (outside the tree); ignore
+# any local copy in the repo root too, but keep the committed .example templates.
+races.md
+plan.md
+!races.md.example
+!plan.md.example
 *.db
 *.db-journal
 *.db-wal

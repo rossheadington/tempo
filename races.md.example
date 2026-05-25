@@ -1,0 +1,26 @@
+# Races — EXAMPLE / TEMPLATE
+
+Copy this file to your Tempo data dir as `races.md` (default
+`~/.tempo/races.md`) and edit it. Tempo reads it for race-readiness context
+(PLAN-01); it is never committed (the data dir lives outside the repo tree).
+
+## Format
+
+One race per markdown list item. After the race name put `key: value` pairs
+separated by `|` (or commas), in any order. Parsing is lenient: unknown keys are
+ignored and a malformed line is skipped, so you can't break analysis by editing
+this file.
+
+Recognised keys:
+
+- `date` — ISO date `YYYY-MM-DD` (the race day)
+- `distance` — `marathon`, `half`, `10k`, `5k`, `50k`, or a number with a unit
+  like `42.195km`, `21100m`, `13.1mi`
+- `goal` — a target finish time `H:MM:SS` (or `MM:SS`), or free text
+- `priority` — `A` (key race), `B`, or `C`
+
+## Races
+
+- Spring Half - date: 2026-03-15 | distance: half | goal: 1:32:00 | priority: B
+- Berlin Marathon - date: 2026-09-27 | distance: marathon | goal: 3:15:00 | priority: A
+- Club 10k - date: 2026-06-07 | distance: 10k | goal: 39:30 | priority: C

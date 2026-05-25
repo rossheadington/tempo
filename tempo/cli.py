@@ -288,10 +288,101 @@ def rederive() -> None:
     )
 
 
-@app.command()
-def analyze() -> None:
-    """Run analyses and write dated markdown reports. [stub]"""
-    typer.echo(f"tempo analyze: {_NOT_IMPLEMENTED}")
+analyze_app = typer.Typer(
+    help="Run analyses and write dated markdown reports (load-trend, race-readiness).",
+    no_args_is_help=False,
+)
+app.add_typer(analyze_app, name="analyze")
+
+
+def _analyze_setup():
+    """Open the DB and build the load config from settings for an analysis run."""
+    from tempo.analysis import load as load_mod
+    from tempo.analysis.runner import _load_config_from_settings
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    conn = db.init_db(settings.db_path)
+    cfg: load_mod.LoadConfig = _load_config_from_settings(settings)
+    return settings, conn, cfg
+
+
+@analyze_app.callback(invoke_without_command=True)
+def analyze_main(ctx: typer.Context) -> None:
+    """Run BOTH analyses (load-trend + race-readiness) when no subcommand is given.
+
+    Reads already-stored, already-transformed data (no network) and writes dated
+    markdown reports into the gitignored reports dir, each with a per-source
+    data-freshness header (ANL-01/02/05; DELIV-01).
+    """
+    if ctx.invoked_subcommand is not None:
+        return
+
+    from datetime import UTC, datetime
+
+    from tempo.analysis import runner
+
+    settings, conn, cfg = _analyze_setup()
+    today = datetime.now(UTC).date()
+    try:
+        load_path = runner.generate_load_trend(
+            conn, cfg=cfg, reports_dir=settings.reports_dir, generated_on=today
+        )
+        race_path = runner.generate_race_readiness(
+            conn,
+            cfg=cfg,
+            races_path=settings.races_path,
+            plan_path=settings.plan_path,
+            reports_dir=settings.reports_dir,
+            generated_on=today,
+        )
+    finally:
+        conn.close()
+    typer.secho("Analyses complete. Reports written:", fg="green")
+    typer.echo(f"  {load_path}")
+    typer.echo(f"  {race_path}")
+
+
+@analyze_app.command("load-trend")
+def analyze_load_trend() -> None:
+    """Write the training-load & trend report (CTL/ATL/TSB, ACWR, ramp) (ANL-01)."""
+    from datetime import UTC, datetime
+
+    from tempo.analysis import runner
+
+    settings, conn, cfg = _analyze_setup()
+    try:
+        path = runner.generate_load_trend(
+            conn,
+            cfg=cfg,
+            reports_dir=settings.reports_dir,
+            generated_on=datetime.now(UTC).date(),
+        )
+    finally:
+        conn.close()
+    typer.secho(f"Load-trend report written: {path}", fg="green")
+
+
+@analyze_app.command("race-readiness")
+def analyze_race_readiness() -> None:
+    """Write the race-readiness report (Riegel/VDOT + CTL/TSB form check) (ANL-02)."""
+    from datetime import UTC, datetime
+
+    from tempo.analysis import runner
+
+    settings, conn, cfg = _analyze_setup()
+    try:
+        path = runner.generate_race_readiness(
+            conn,
+            cfg=cfg,
+            races_path=settings.races_path,
+            plan_path=settings.plan_path,
+            reports_dir=settings.reports_dir,
+            generated_on=datetime.now(UTC).date(),
+        )
+    finally:
+        conn.close()
+    typer.secho(f"Race-readiness report written: {path}", fg="green")
 
 
 journal_app = typer.Typer(help="Capture and manage post-workout journal entries.")
