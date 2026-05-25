@@ -1,9 +1,15 @@
 """The ``tempo`` command-line interface.
 
-Phase 1 wires the command surface and the DB-initialisation entrypoint. The
-data-producing subcommands (``sync``, ``transform``/``rederive``, ``analyze``,
-``journal``) are deliberate stubs that print "not yet implemented" -- later
-phases fill them in behind these stable command names.
+Phase 1 wired the command surface and DB initialisation. Phase 2 fills in the
+Strava ingestion path:
+
+* ``tempo strava auth``     -- the one-time OAuth handshake (STRV-01/02).
+* ``tempo strava backfill`` -- resumable all-time history pull (STRV-03).
+* ``tempo strava streams``  -- lazy fetch of activity streams (STRV-04).
+* ``tempo strava sync`` / ``tempo sync`` -- daily incremental sync (STRV-05).
+
+Connectors write only to the raw store (STRV-06). ``transform``/``analyze``/
+``journal`` remain stubs for later phases.
 
 Running bare ``tempo`` (the ``init`` command, also the default) creates the
 runtime data dir, opens/creates the SQLite DB in WAL mode, and applies
@@ -16,6 +22,9 @@ import typer
 
 from tempo import __version__, db
 from tempo.config import get_settings
+from tempo.connectors.base import RawWriter
+from tempo.connectors.factory import build_strava_connector, strava_token_store
+from tempo.connectors.strava import SOURCE as STRAVA_SOURCE
 
 app = typer.Typer(
     name="tempo",
@@ -66,10 +75,164 @@ def version() -> None:
     typer.echo(__version__)
 
 
+# ---------------------------------------------------------------------------
+# Strava ingestion commands
+# ---------------------------------------------------------------------------
+
+strava_app = typer.Typer(help="Strava ingestion: auth, backfill, streams, sync.")
+app.add_typer(strava_app, name="strava")
+
+
+def _connected_db():
+    """Open the DB (initialising the schema if needed) for a connector run."""
+    settings = get_settings()
+    settings.ensure_dirs()
+    conn = db.init_db(settings.db_path)
+    return settings, conn
+
+
+@strava_app.command("auth")
+def strava_auth(
+    code: str | None = typer.Option(
+        None,
+        "--code",
+        help="The OAuth 'code' from the redirect URL (completes the handshake).",
+    ),
+) -> None:
+    """One-time Strava OAuth handshake (STRV-01).
+
+    Run with no arguments to print the authorization URL: open it, approve, then
+    copy the ``code`` query parameter from the (localhost) redirect URL and run
+    again with ``--code <CODE>``. Tokens are then stored locally and atomically;
+    the rotating refresh token means you never have to do this again.
+    """
+    settings = get_settings()
+    settings.ensure_dirs()
+    try:
+        connector = build_strava_connector(settings)
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    if code is None:
+        url = connector.authorization_url(settings.strava_redirect_uri)
+        typer.echo("Open this URL in your browser, approve access, then copy the")
+        typer.echo("'code' parameter from the redirected URL:\n")
+        typer.echo(url)
+        typer.echo("\nThen run:  tempo strava auth --code <CODE>")
+        return
+
+    tokens = connector.exchange_code(code)
+    store = strava_token_store(settings)
+    typer.secho("Strava authorised. Tokens stored at:", fg=typer.colors.GREEN)
+    typer.echo(f"  {store.path}")
+    typer.echo(f"Access token expires at (epoch): {tokens.expires_at}")
+
+
+@strava_app.command("backfill")
+def strava_backfill(
+    page_budget: int | None = typer.Option(
+        None,
+        "--page-budget",
+        help="Max activity-list pages to fetch this run (spread a big history across days).",
+    ),
+) -> None:
+    """Resumable all-time backfill of Strava activity summaries (STRV-03).
+
+    Safe to interrupt: a rate-limit or crash mid-run leaves a ``backfill_cursor``
+    and re-running resumes without re-fetching. Streams are NOT pulled here -- use
+    ``tempo strava streams`` to fetch those lazily.
+    """
+    settings, conn = _connected_db()
+    try:
+        connector = build_strava_connector(settings, backfill_page_budget=page_budget)
+        raw = RawWriter(conn, STRAVA_SOURCE)
+        connector.backfill(raw)
+        count = conn.execute(
+            "SELECT COUNT(*) FROM raw_response WHERE source=? AND endpoint='activity_summary'",
+            (STRAVA_SOURCE,),
+        ).fetchone()[0]
+        typer.secho(f"Backfill run complete. {count} activity summaries stored.", fg="green")
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        conn.close()
+
+
+@strava_app.command("streams")
+def strava_streams(
+    activity_id: int | None = typer.Option(
+        None, "--activity-id", help="Fetch streams for a single activity id."
+    ),
+    limit: int | None = typer.Option(
+        None, "--limit", help="When fetching for all stored activities, cap how many this run."
+    ),
+    force: bool = typer.Option(False, "--force", help="Re-fetch even if already stored."),
+) -> None:
+    """Lazily fetch activity streams (HR, pace, GPS, power, cadence, elevation) (STRV-04).
+
+    With ``--activity-id`` fetches one activity. Otherwise walks stored activity
+    summaries that don't yet have streams, fetching up to ``--limit`` of them so
+    the rate limit is respected. Already-stored streams are skipped.
+    """
+    settings, conn = _connected_db()
+    try:
+        connector = build_strava_connector(settings)
+        raw = RawWriter(conn, STRAVA_SOURCE)
+        if activity_id is not None:
+            fetched = connector.fetch_streams(raw, activity_id, force=force)
+            msg = "fetched" if fetched else "already present (skipped)"
+            typer.echo(f"Streams for activity {activity_id}: {msg}.")
+            return
+        ids = connector.stored_activity_ids(conn)
+        done = 0
+        for aid in ids:
+            if limit is not None and done >= limit:
+                break
+            if connector.fetch_streams(raw, aid, force=force):
+                done += 1
+        typer.secho(f"Fetched streams for {done} activities.", fg="green")
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        conn.close()
+
+
+@strava_app.command("sync")
+def strava_sync() -> None:
+    """Incremental Strava sync: only activities newer than the watermark (STRV-05)."""
+    _run_strava_sync()
+
+
+def _run_strava_sync() -> None:
+    settings, conn = _connected_db()
+    try:
+        connector = build_strava_connector(settings)
+        raw = RawWriter(conn, STRAVA_SOURCE)
+        connector.sync(raw, since=None)
+        count = conn.execute(
+            "SELECT COUNT(*) FROM raw_response WHERE source=? AND endpoint='activity_summary'",
+            (STRAVA_SOURCE,),
+        ).fetchone()[0]
+        typer.secho(f"Strava sync complete. {count} activity summaries in raw store.", fg="green")
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        conn.close()
+
+
 @app.command()
 def sync() -> None:
-    """Pull new data from connected sources into the raw store. [stub]"""
-    typer.echo(f"tempo sync: {_NOT_IMPLEMENTED}")
+    """Pull new data from connected sources into the raw store.
+
+    Phase 2: runs the Strava incremental sync. Garmin is added in Phase 6 behind
+    the same connector interface; its failures will be isolated so they cannot
+    block Strava.
+    """
+    _run_strava_sync()
 
 
 @app.command()

@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     strava_client_secret: str | None = Field(
         default=None, description="Strava API application client secret."
     )
+    strava_redirect_uri: str = Field(
+        default="http://localhost",
+        description=(
+            "OAuth redirect URI registered on the Strava API app. For the manual "
+            "copy-the-code handshake, Strava only requires the host to match the "
+            "app's 'Authorization Callback Domain' (localhost works)."
+        ),
+    )
 
     # ---- Garmin credentials (Phase 6) ----
     garmin_email: str | None = Field(default=None, description="Garmin Connect account email.")
