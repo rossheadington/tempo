@@ -7,6 +7,8 @@ requires-python = ">=3.14"
 dependencies = [
     "typer>=0.25.1",
     "pydantic-settings>=2.14.1",
+    "stravalib>=2.4",
+    "tenacity>=9.1.4",
 ]
 
 [project.scripts]
@@ -22,6 +24,7 @@ packages = ["tempo"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
+    "responses>=0.26.1",
     "ruff>=0.14.0",
 ]
 
