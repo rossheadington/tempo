@@ -1,0 +1,52 @@
+# ---- Secrets & credentials (NEVER commit) ----
+.env
+.env.*
+!.env.example
+*.token
+*.tokens
+secrets/
+credentials/
+garmin_session/
+.garminconnect/
+
+# ---- Personal health data (NEVER commit) ----
+store/
+data/
+raw/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.csv
+*.fit
+*.gpx
+*.tcx
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---- uv ----
+# (uv.lock IS committed; nothing to ignore by default)
+
+# ---- OS / editor ----
+.DS_Store
+.idea/
+.vscode/
+*.swp
