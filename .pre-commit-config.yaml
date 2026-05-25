@@ -1,0 +1,11 @@
+# Optional: for users of the `pre-commit` framework (https://pre-commit.com).
+# The repo's primary, zero-dependency safety net is the native hook in
+# `.githooks/pre-commit` (enabled via `git config core.hooksPath .githooks`).
+# This config provides the same gitleaks scan for anyone who prefers `pre-commit`.
+#
+# Install:  pipx install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

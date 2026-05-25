@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+#
+# Tempo pre-commit hook: block secrets from ever reaching this PUBLIC repo.
+#
+# Runs gitleaks against the STAGED changes. If gitleaks is not installed, the
+# hook does NOT silently pass — it fails loudly with install instructions so the
+# safety net is never quietly absent. Set TEMPO_ALLOW_NO_GITLEAKS=1 to bypass
+# (strongly discouraged; only for environments where gitleaks truly can't run).
+#
+# Enable once per clone with:
+#     git config core.hooksPath .githooks
+#
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+    if [ "${TEMPO_ALLOW_NO_GITLEAKS:-0}" = "1" ]; then
+        echo "tempo pre-commit: WARNING gitleaks not installed; skipping scan (TEMPO_ALLOW_NO_GITLEAKS=1)." >&2
+        exit 0
+    fi
+    cat >&2 <<'EOF'
+tempo pre-commit: gitleaks is NOT installed — refusing to commit without a secret scan.
+
+This is a PUBLIC repo; the gitleaks scan is the real safety net against leaking
+tokens, the .env file, or health data.
+
+Install it:
+    macOS:  brew install gitleaks
+    other:  https://github.com/gitleaks/gitleaks#installing
+
+Then retry the commit. To bypass for one environment only (discouraged):
+    TEMPO_ALLOW_NO_GITLEAKS=1 git commit ...
+EOF
+    exit 1
+fi
+
+# Scan only what is staged. `git --staged` is the gitleaks 8.x pre-commit mode.
+# --redact keeps any found secret out of the log.
+if ! gitleaks git --staged --redact --no-banner; then
+    echo "" >&2
+    echo "tempo pre-commit: gitleaks found a potential secret in your staged changes." >&2
+    echo "Commit blocked. Remove the secret (and rotate it if it was real) before retrying." >&2
+    exit 1
+fi
+
+exit 0

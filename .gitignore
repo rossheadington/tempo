@@ -9,6 +9,10 @@ credentials/
 garmin_session/
 .garminconnect/
 
+# ---- Runtime data dir (DB, tokens, reports live here, outside the repo) ----
+# Default location is ~/.tempo/ (outside the tree), but ignore any local copy too.
+.tempo/
+
 # ---- Personal health data (NEVER commit) ----
 store/
 data/
