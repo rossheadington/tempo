@@ -69,11 +69,40 @@ The backfill is checkpointed: if it hits Strava's rate limit (200 req/15 min,
 > self-data that is never shared; this is an accepted, documented stance (see
 > `.planning/REQUIREMENTS.md` → Known Accepted Conflicts), not an oversight.
 
+## Analysis & reports
+
+Once activities are synced and transformed, Tempo turns them into per-activity
+**load** (rTSS pace-based, with an hrTSS fallback), fitness/fatigue/form
+(**CTL/ATL/TSB**), an **ACWR / ramp-rate** guardrail, and **race predictions**
+(Riegel/VDOT), written as dated markdown reports.
+
+```
+tempo analyze                 # both reports (load-trend + race-readiness)
+tempo analyze load-trend      # CTL/ATL/TSB, ACWR/ramp, weekly volume
+tempo analyze race-readiness  # Riegel/VDOT vs goal + CTL/TSB form check
+```
+
+Reports land in the gitignored reports dir (`~/.tempo/reports/` by default) as
+`YYYY-MM-DD-load-trend.md` / `YYYY-MM-DD-race-readiness.md`. Every report opens
+with a **per-source data-freshness header** (last successful sync + staleness
+flag) so a stale dataset is never trusted silently; thin data degrades to an
+explicit "insufficient data" note rather than an invented number.
+
+**Load config** (`.env`): set `TEMPO_THRESHOLD_PACE_S_PER_KM` (required for
+rTSS) and optionally `TEMPO_MAX_HR` / `TEMPO_RESTING_HR` / `TEMPO_THRESHOLD_HR`
+(the hrTSS fallback). See `.env.example`.
+
+**Plan & race context**: copy `races.md.example` / `plan.md.example` into your
+data dir as `races.md` / `plan.md` (default `~/.tempo/`) and edit them. Tempo
+reads them for race-readiness context; they are never committed.
+
 ## Status
 
-Phase 1 (Foundation) and Phase 2 (Strava ingestion) complete. See `.planning/`
-for the roadmap and requirement traceability.
+Phases 1–4 complete. **Phase 4 is the Strava end-to-end milestone** — the full
+pull → store → transform → analyze → report loop now works on real Strava data
+(only the one-time `tempo strava auth` + a backfill needs your own API app).
+See `.planning/` for the roadmap and requirement traceability.
 
 ## Stack
 
-Python 3.14 · SQLite · uv · stravalib · tenacity
+Python 3.14 · SQLite · uv · stravalib · tenacity · pydantic-settings

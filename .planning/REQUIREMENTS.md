@@ -36,19 +36,19 @@ the Strava end-to-end milestone and the Garmin/analysis milestone.
 
 ### Load Metrics & Analysis
 
-- [ ] **LOAD-01**: Per-activity training load is computed as rTSS (pace-based, configurable threshold) with an hrTSS fallback, flagging which method was used
-- [ ] **LOAD-02**: CTL / ATL / TSB (fitness / fatigue / form) daily series are computed from the daily load series
-- [ ] **LOAD-03**: An ACWR / ramp-rate guardrail flags load spikes outside the safe range
-- [ ] **ANL-01**: A training-load & trend report (weekly volume, intensity mix, CTL/ramp) is generated as dated markdown
-- [ ] **ANL-02**: A race-readiness analysis estimates progress toward goal races (Riegel/VDOT + CTL/TSB form check)
+- [x] **LOAD-01**: Per-activity training load is computed as rTSS (pace-based, configurable threshold) with an hrTSS fallback, flagging which method was used
+- [x] **LOAD-02**: CTL / ATL / TSB (fitness / fatigue / form) daily series are computed from the daily load series
+- [x] **LOAD-03**: An ACWR / ramp-rate guardrail flags load spikes outside the safe range
+- [x] **ANL-01**: A training-load & trend report (weekly volume, intensity mix, CTL/ramp) is generated as dated markdown
+- [x] **ANL-02**: A race-readiness analysis estimates progress toward goal races (Riegel/VDOT + CTL/TSB form check)
 - [ ] **ANL-03**: A recovery / overtraining analysis combines rising load with HRV / sleep / resting-HR vs personal baselines
 - [ ] **ANL-04**: A correlation insight analysis links sleep / HRV / subjective feel to performance, reporting "insufficient data" honestly until history accumulates
-- [ ] **ANL-05**: Every report states per-source last-successful-sync / data-freshness so stale data is never trusted silently
+- [x] **ANL-05**: Every report states per-source last-successful-sync / data-freshness so stale data is never trusted silently
 
 ### Plan & Reflect
 
-- [ ] **PLAN-01**: User maintains upcoming races (date, distance, goal) in a simple markdown file Tempo reads for analysis context
-- [ ] **PLAN-02**: User maintains a training plan in a simple markdown file Tempo reads for analysis context
+- [x] **PLAN-01**: User maintains upcoming races (date, distance, goal) in a simple markdown file Tempo reads for analysis context
+- [x] **PLAN-02**: User maintains a training plan in a simple markdown file Tempo reads for analysis context
 - [ ] **JRNL-01**: A validated `tempo journal add` entrypoint records structured post-workout entries (RPE 1–10, how it felt, notes), resolving the activity by date+sport
 - [ ] **JRNL-02**: Claude can capture journal entries by calling the validated entrypoint (never writing SQL directly)
 - [ ] **JRNL-03**: Journal entries contribute an sRPE load track (RPE × duration) usable when pace/HR load is unavailable
@@ -66,7 +66,7 @@ the Strava end-to-end milestone and the Garmin/analysis milestone.
 - [ ] **SCHED-01**: A daily scheduled job (launchd, not cron) runs sync → transform → analyze and writes reports
 - [ ] **SCHED-02**: The scheduler runs a missed job on wake (catch-up via watermark) rather than silently skipping
 - [ ] **SCHED-03**: The daily analysis surfaces output only when noteworthy (threshold check), not noise every day
-- [ ] **DELIV-01**: Analyses are written as dated markdown reports into a local (gitignored) `reports/` folder
+- [x] **DELIV-01**: Analyses are written as dated markdown reports into a local (gitignored) `reports/` folder
 
 ## v2 Requirements
 
@@ -126,15 +126,15 @@ Explicitly excluded. Documented to prevent scope creep.
 | STORE-03 | Phase 3 | Complete |
 | STORE-04 | Phase 3 | Complete |
 | STORE-05 | Phase 3 | Complete |
-| LOAD-01 | Phase 4 | Pending |
-| LOAD-02 | Phase 4 | Pending |
-| LOAD-03 | Phase 4 | Pending |
-| ANL-01 | Phase 4 | Pending |
-| ANL-02 | Phase 4 | Pending |
-| ANL-05 | Phase 4 | Pending |
-| PLAN-01 | Phase 4 | Pending |
-| PLAN-02 | Phase 4 | Pending |
-| DELIV-01 | Phase 4 | Pending |
+| LOAD-01 | Phase 4 | Complete |
+| LOAD-02 | Phase 4 | Complete |
+| LOAD-03 | Phase 4 | Complete |
+| ANL-01 | Phase 4 | Complete |
+| ANL-02 | Phase 4 | Complete |
+| ANL-05 | Phase 4 | Complete |
+| PLAN-01 | Phase 4 | Complete |
+| PLAN-02 | Phase 4 | Complete |
+| DELIV-01 | Phase 4 | Complete |
 | JRNL-01 | Phase 5 | Pending |
 | JRNL-02 | Phase 5 | Pending |
 | JRNL-03 | Phase 5 | Pending |
@@ -156,5 +156,6 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-26*
-*Last updated: 2026-05-26 after Phase 3 (Strava Transforms + Date Spine) completed — STORE-01..STORE-05 Complete.*
+*Last updated: 2026-05-26 after Phase 4 (Load Metrics + First Analysis) completed — LOAD-01..03, ANL-01, ANL-02, ANL-05, PLAN-01, PLAN-02, DELIV-01 Complete. This is the Strava end-to-end milestone: pull → store → transform → analyze → report works end-to-end on stored data.*
+*Previously updated: 2026-05-26 after Phase 3 (Strava Transforms + Date Spine) completed — STORE-01..STORE-05 Complete.*
 *Note on STORE-04/05 scope: the `daily_summary` view LEFT-JOINs from `date_spine` and is shaped so the wellness (Phase 6) and journal (Phase 5) sources can be LEFT-JOINed in when they exist; the bucketing rule and tests already cover Garmin's `calendarDate` (overnight) attribution so those sources will bucket correctly on arrival. Phase 3 delivers the Strava activity join, the spine, and the proven bucketing rule end-to-end.*

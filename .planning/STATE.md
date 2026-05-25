@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** Phase 4 — Load Metrics + First Analysis (next)
+**Current focus:** Phase 5 — Journaling via Claude (next)
 
 ## Current Position
 
-Phase: 3 of 7 (Strava Transforms + Date Spine) — COMPLETE
-Plan: 1 of 1 in Phase 3 complete
-Status: Phase 3 done; ready to plan Phase 4 (Load Metrics + First Analysis — Strava end-to-end milestone)
-Last activity: 2026-05-26 — Phase 3 (Strava Transforms + Date Spine) implemented, tested, committed, and pushed
+Phase: 4 of 7 (Load Metrics + First Analysis) — COMPLETE
+Plan: 1 of 1 in Phase 4 complete
+Status: Phase 4 done — **the Strava end-to-end milestone is shippable**: pull → store → transform → analyze → report works end-to-end on stored Strava data. Ready to plan Phase 5 (Journaling via Claude).
+Last activity: 2026-05-26 — Phase 4 (Load Metrics + First Analysis) implemented, tested, committed, and pushed
 
-Progress: [████░░░░░░] ~43% (3 of 7 phases)
+Progress: [██████░░░░] ~57% (4 of 7 phases)
 
 ## What's Done (Phase 1: Foundation)
 
@@ -120,7 +120,60 @@ All four Phase-3 success criteria verified, including a live CLI run on a seeded
 late-night→local-day, DST-night, and tz-travel bucketing and `daily_summary` rows == spine
 days. Re-derivation confirmed no-network (socket-blocked test + CLI rerun reproducing counts).
 
+## What's Done (Phase 4: Load Metrics + First Analysis — Strava end-to-end milestone)
+
+- `tempo/analysis/load.py` — per-activity load: **rTSS** (pace-based, primary) with an
+  **hrTSS** fallback (HR-reserve / Karvonen, anchored on threshold HR), and a per-day
+  **method flag** (`rTSS` / `hrTSS` / `insufficient` / `rest`). When neither pace nor HR
+  inputs exist, the activity is `insufficient` — load is never invented (LOAD-01; PITFALLS).
+  Numerically verified: 1 h at threshold pace/HR ⇒ 100. (LOAD-01)
+- `tempo/analysis/fitness.py` — **CTL/ATL/TSB** EWMA series (42 / 7 day, PMC `1/N`
+  recurrence; TSB uses yesterday's CTL−ATL), **ACWR** (coupled rolling avg; sweet spot
+  0.8–1.3, danger >1.5), **ramp rate** (CTL change/week; aggressive >8), and a
+  `evaluate_guardrail` verdict. All built on the zero-filled spine (rest days = 0).
+  Degrades to `insufficient` rather than fabricating. (LOAD-02/03)
+- `tempo/analysis/race.py` — **Riegel** (`T2=T1·(D2/D1)^1.06`) + **VDOT** (Daniels'
+  published vo2/pct formulas, inverted by fixed-point iteration) race prediction, with a
+  reliability flag when the distance ratio exceeds 4:1. Verified: VDOT(5k 19:57)=50.0.
+- `tempo/analysis/context.py` — lenient **races.md / plan.md** parsers; missing file →
+  empty result (analyses degrade). Race lines need a recognised field so prose/doc bullets
+  aren't mistaken for races. (PLAN-01/02)
+- `tempo/analysis/data.py` — read-only DB access: activities, the zero-filled spine days,
+  and **per-source `sync_state` freshness** (days-stale vs as-of) for the report header.
+- `tempo/analysis/report.py` — markdown renderers; every report opens with a **per-source
+  last-successful-sync + staleness freshness header** and the data date range (ANL-05).
+- `tempo/analysis/runner.py` — orchestrates raw inputs → load series (on the spine) →
+  PMC + guardrail + weekly rollups + race readiness → writes
+  `reports/YYYY-MM-DD-load-trend.md` and `…-race-readiness.md`. Zero network. (ANL-01/02; DELIV-01)
+- `tempo/config.py` / `.env.example` — `TEMPO_THRESHOLD_PACE_S_PER_KM`, `TEMPO_MAX_HR`,
+  `TEMPO_RESTING_HR`, `TEMPO_THRESHOLD_HR` settings; `races_path` / `plan_path` derived paths.
+- `tempo/cli.py` — `tempo analyze` (both reports) + `tempo analyze load-trend` /
+  `tempo analyze race-readiness`.
+- `races.md.example` / `plan.md.example` — committed templates documenting the format;
+  real files live in the gitignored data dir (also gitignored in repo root defensively).
+- `tests/` — 183 pytest tests (was 113, +70), all green; ruff check + format clean. New:
+  `test_load.py` (rTSS/hrTSS/method/insufficient, numeric), `test_fitness.py` (CTL/ATL/TSB
+  EWMA numeric, ACWR/ramp/guardrail thresholds), `test_race.py` (Riegel/VDOT numeric +
+  reliability), `test_context.py` (races/plan parsing incl. missing-file + prose-not-a-race),
+  `test_analysis_reports.py` + `test_analyze_cli.py` (end-to-end: seed temp DB → run analyses
+  → assert dated reports with freshness headers + insufficient-data degradation).
+  `strava_fakes.make_run` added.
+
+All five Phase-4 success criteria verified, including a live `tempo analyze` run against a
+seeded throwaway DB producing real markdown reports with freshness headers (and the STALE
+flag) — confirmed in a temp data dir so nothing real was touched. **This completes the Strava
+end-to-end milestone: pull → store → transform → analyze → report works end-to-end. The only
+remaining user step for live data is the one-time `tempo strava auth` + a backfill with the
+user's own Strava API app.**
+
 ### Conventions established this phase
+- Analysis layer (`tempo/analysis/`) is **read-only over the structured/gold layer + the
+  user's races.md/plan.md context**, pure-Python metric math (stdlib only — no pandas/polars),
+  and **never touches the network**. Reports are dated markdown into the gitignored reports
+  dir; every report states per-source data freshness; thin data degrades to "insufficient".
+- Threshold pace / HR are configurable pydantic settings (`TEMPO_*`), documented in `.env.example`.
+
+### Conventions established earlier
 - Flat `tempo/` package layout (not `src/`).
 - No ORM / no Alembic: raw sqlite3 + hand-written SQL + integer `user_version`
   migrations applied from `tempo/migrations/NNNN_*.sql`.
@@ -170,8 +223,8 @@ None yet.
 ### Blockers/Concerns
 
 - [Phase 2 — RESOLVED] Strava API Agreement conflict documented as accepted (README + REQUIREMENTS Known Accepted Conflicts); private self-data, never shared.
-- [Phase 2 — pending user] Live Strava pull needs the user's own API app: create at https://www.strava.com/settings/api, set TEMPO_STRAVA_CLIENT_ID/SECRET in .env, run `tempo strava auth`. All machinery proven against mocks.
-- [Phase 4] rTSS/NGP implementation details (grade-adjusted pace, GPS dropout, threshold-pace estimation) need a brief planning-time research pass; hrTSS-only is a valid v1 fallback
+- [Phase 2 — pending user] Live Strava pull needs the user's own API app: create at https://www.strava.com/settings/api, set TEMPO_STRAVA_CLIENT_ID/SECRET in .env, run `tempo strava auth`, then `tempo strava backfill`. All machinery (incl. Phase-4 analysis) proven against mocks/seeded data; this is the only remaining step before live reports.
+- [Phase 4 — RESOLVED] rTSS uses `avg_pace_s_km` directly (no grade-adjusted/normalised pace in v1; NGP/GAP is a documented future refinement). hrTSS fallback uses HR-reserve anchored on threshold HR. Threshold pace is a configurable pydantic setting. Insufficient days are flagged, not invented.
 - [Phase 6] `garminconnect` is the single fragile dependency (garth deprecated 2026-03-27); pin version, monitor upstream, budget for a version bump
 - [Phase 7] HRV baseline cold-start and multi-signal recovery weighting may need a brief planning-time research pass; first weeks of Garmin data will be low-quality and must be flagged honestly
 
@@ -186,9 +239,11 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-05-26
-Stopped at: Phase 3 (Strava Transforms + Date Spine) complete — pure rederivable raw→structured
-transforms, zero-filled continuous `date_spine`, `daily_summary` LEFT-JOIN gold view, and
-local-date bucketing proven for all four edge cases (11pm, tz-travel, DST, fake-Z). 113 tests
-green, ruff clean, shipped and pushed. Next: plan Phase 4 (Load Metrics + First Analysis —
-the Strava end-to-end milestone).
+Stopped at: Phase 4 (Load Metrics + First Analysis) complete — the **Strava end-to-end
+milestone is shippable**. Per-activity load (rTSS + hrTSS fallback + method flag),
+CTL/ATL/TSB EWMA series, ACWR/ramp guardrail, Riegel/VDOT race prediction, races.md/plan.md
+context parsing, and dated load-trend + race-readiness markdown reports with per-source
+freshness headers — all pure-Python, no-network, reading the structured/gold layer. 183 tests
+green, ruff clean, shipped and pushed. `tempo analyze [load-trend|race-readiness]` wired and
+verified live against a seeded DB. Next: plan Phase 5 (Journaling via Claude).
 Resume file: None
