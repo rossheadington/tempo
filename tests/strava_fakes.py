@@ -63,6 +63,41 @@ def make_activity_tz(
     return activity
 
 
+def make_run(
+    activity_id: int,
+    *,
+    day: str,
+    average_speed: float | None = 3.0,
+    moving_time: int = 3600,
+    average_heartrate: float | None = 150.0,
+    sport_type: str = "Run",
+) -> dict[str, Any]:
+    """A Strava-shaped run on a given local ``day``, with tunable load inputs.
+
+    Used by Phase-4 analysis tests to seed a date range of synthetic activities
+    with known pace/HR so computed load can be asserted against hand calculations.
+    The local day comes from ``start_date_local`` (wall-clock, fake ``Z``).
+    """
+    distance = (average_speed or 0.0) * moving_time
+    return {
+        "id": activity_id,
+        "name": f"Run {activity_id}",
+        "sport_type": sport_type,
+        "type": sport_type,
+        "distance": distance,
+        "moving_time": moving_time,
+        "elapsed_time": moving_time + 60,
+        "total_elevation_gain": 50.0,
+        "start_date": f"{day}T06:00:00Z",
+        "start_date_local": f"{day}T07:00:00Z",
+        "timezone": "(GMT+00:00) Europe/London",
+        "utc_offset": 0.0,
+        "average_heartrate": average_heartrate,
+        "max_heartrate": 180.0,
+        "average_speed": average_speed,
+    }
+
+
 def make_streams() -> dict[str, Any]:
     """Return a Strava-shaped key_by_type streams payload (all metric types)."""
     return {
