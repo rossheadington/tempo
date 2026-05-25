@@ -19,12 +19,12 @@ the Strava end-to-end milestone and the Garmin/analysis milestone.
 
 ### Strava Ingestion
 
-- [ ] **STRV-01**: User completes a one-time Strava OAuth handshake and the tokens are stored locally
-- [ ] **STRV-02**: Rotating refresh tokens are persisted atomically on every refresh so re-auth is never silently required
-- [ ] **STRV-03**: User can run a resumable, checkpointed all-time backfill of Strava activities that survives rate limits and restarts
-- [ ] **STRV-04**: Activity streams (HR, pace, GPS, power, cadence, elevation) are fetchable without blowing the rate limit (lazy / paged)
-- [ ] **STRV-05**: A daily incremental sync pulls only new activities since the last watermark
-- [ ] **STRV-06**: All Strava API responses are stored verbatim in `raw_response` (connectors write only to raw)
+- [x] **STRV-01**: User completes a one-time Strava OAuth handshake and the tokens are stored locally
+- [x] **STRV-02**: Rotating refresh tokens are persisted atomically on every refresh so re-auth is never silently required
+- [x] **STRV-03**: User can run a resumable, checkpointed all-time backfill of Strava activities that survives rate limits and restarts
+- [x] **STRV-04**: Activity streams (HR, pace, GPS, power, cadence, elevation) are fetchable without blowing the rate limit (lazy / paged)
+- [x] **STRV-05**: A daily incremental sync pulls only new activities since the last watermark
+- [x] **STRV-06**: All Strava API responses are stored verbatim in `raw_response` (connectors write only to raw)
 
 ### Storage & Modelling
 
@@ -115,12 +115,12 @@ Explicitly excluded. Documented to prevent scope creep.
 | FND-04 | Phase 1 | Complete |
 | FND-05 | Phase 1 | Complete |
 | FND-06 | Phase 1 | Complete |
-| STRV-01 | Phase 2 | Pending |
-| STRV-02 | Phase 2 | Pending |
-| STRV-03 | Phase 2 | Pending |
-| STRV-04 | Phase 2 | Pending |
-| STRV-05 | Phase 2 | Pending |
-| STRV-06 | Phase 2 | Pending |
+| STRV-01 | Phase 2 | Complete |
+| STRV-02 | Phase 2 | Complete |
+| STRV-03 | Phase 2 | Complete |
+| STRV-04 | Phase 2 | Complete |
+| STRV-05 | Phase 2 | Complete |
+| STRV-06 | Phase 2 | Complete |
 | STORE-01 | Phase 3 | Pending |
 | STORE-02 | Phase 3 | Pending |
 | STORE-03 | Phase 3 | Pending |
@@ -156,4 +156,4 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-26*
-*Last updated: 2026-05-26 after Phase 1 (Foundation) completed — FND-01..FND-06 Complete*
+*Last updated: 2026-05-26 after Phase 2 (Strava Ingestion) completed — STRV-01..STRV-06 Complete*

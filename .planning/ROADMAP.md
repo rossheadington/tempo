@@ -13,7 +13,7 @@ Tempo is built bottom-up along a strict data dependency chain: a secure, gitigno
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Secure DB schema, secrets outside the tree, gitleaks hook, typer CLI shell, date-bucketing rule
-- [ ] **Phase 2: Strava Ingestion** - OAuth, atomic rotating-token persistence, resumable rate-limited backfill + incremental sync, raw-only writes
+- [x] **Phase 2: Strava Ingestion** - OAuth, atomic rotating-token persistence, resumable rate-limited backfill + incremental sync, raw-only writes
 - [ ] **Phase 3: Strava Transforms + Date Spine** - Pure rederivable transforms, zero-filled date spine, daily_summary view, tested timezone bucketing
 - [ ] **Phase 4: Load Metrics + First Analysis (Strava end-to-end milestone)** - rTSS/hrTSS, CTL/ATL/TSB, ACWR, load+trend and race-readiness reports with freshness headers
 - [ ] **Phase 5: Journaling via Claude** - Validated `tempo journal add` entrypoint, activity resolution, sRPE load track
@@ -117,7 +117,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 1/1 | Complete | 2026-05-26 |
-| 2. Strava Ingestion | 0/TBD | Not started | - |
+| 2. Strava Ingestion | 1/1 | Complete | 2026-05-26 |
 | 3. Strava Transforms + Date Spine | 0/TBD | Not started | - |
 | 4. Load Metrics + First Analysis | 0/TBD | Not started | - |
 | 5. Journaling via Claude | 0/TBD | Not started | - |
