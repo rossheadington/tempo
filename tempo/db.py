@@ -14,11 +14,15 @@ from pathlib import Path
 
 # The expected schema version after all bundled migrations have been applied.
 # Bump this (and add a migration file) whenever the schema changes.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Tables the foundation schema guarantees exist. Used by tests and `tempo` for
 # a quick post-init sanity check.
 FOUNDATION_TABLES = ("raw_response", "date_spine", "sync_state")
+
+# Structured (silver) tables added in migration 0002 (Phase 3). Re-derivation
+# rebuilds these purely from the raw layer.
+STRUCTURED_TABLES = ("activity", "activity_stream")
 
 
 def connect(db_path: Path) -> sqlite3.Connection:

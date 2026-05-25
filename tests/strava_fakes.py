@@ -44,6 +44,25 @@ def make_activity(activity_id: int, *, start_utc: str, start_local: str) -> dict
     }
 
 
+def make_activity_tz(
+    activity_id: int,
+    *,
+    start_utc: str,
+    start_local: str,
+    timezone: str,
+    utc_offset: float,
+) -> dict[str, Any]:
+    """Like :func:`make_activity` but with explicit timezone / utc_offset.
+
+    Used by Phase-3 date-bucketing edge cases (timezone travel, DST) where the
+    local wall-clock date and the true-UTC date deliberately disagree.
+    """
+    activity = make_activity(activity_id, start_utc=start_utc, start_local=start_local)
+    activity["timezone"] = timezone
+    activity["utc_offset"] = utc_offset
+    return activity
+
+
 def make_streams() -> dict[str, Any]:
     """Return a Strava-shaped key_by_type streams payload (all metric types)."""
     return {

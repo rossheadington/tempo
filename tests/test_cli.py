@@ -49,13 +49,22 @@ def test_version_command() -> None:
     assert __version__ in result.output
 
 
-@pytest.mark.parametrize("cmd", ["transform", "rederive", "analyze"])
+@pytest.mark.parametrize("cmd", ["analyze"])
 def test_stub_subcommands_run(cmd: str, tempo_data_dir: Path) -> None:
     # `sync` is wired to real Strava ingestion in Phase 2 (see test_strava_cli);
-    # the remaining data-producing commands are still stubs until later phases.
+    # `transform`/`rederive` are wired in Phase 3 (see test_transform_cli);
+    # `analyze` remains a stub until Phase 4.
     result = runner.invoke(app, [cmd])
     assert result.exit_code == 0, result.output
     assert "not yet implemented" in result.output
+
+
+@pytest.mark.parametrize("cmd", ["transform", "rederive"])
+def test_transform_commands_run_on_empty_db(cmd: str, tempo_data_dir: Path) -> None:
+    # With no raw data they run cleanly (no network) and report zero counts.
+    result = runner.invoke(app, [cmd])
+    assert result.exit_code == 0, result.output
+    assert "0 activities" in result.output
 
 
 def test_journal_group_runs(tempo_data_dir: Path) -> None:

@@ -237,14 +237,55 @@ def sync() -> None:
 
 @app.command()
 def transform() -> None:
-    """Derive structured tables from stored raw responses. [stub]"""
-    typer.echo(f"tempo transform: {_NOT_IMPLEMENTED}")
+    """Derive structured tables from stored raw responses (no network).
+
+    Reads raw Strava payloads from ``raw_response`` and upserts structured
+    ``activity`` / ``activity_stream`` rows, zero-filling the ``date_spine`` so
+    every calendar day (rest days included) has a row (STORE-01/03). Incremental
+    and idempotent; the spine is extended forward to today.
+    """
+    from datetime import UTC, datetime
+
+    from tempo.transforms.runner import run_transform
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    conn = db.init_db(settings.db_path)
+    try:
+        result = run_transform(conn, fill_to=datetime.now(UTC).date())
+    finally:
+        conn.close()
+    typer.secho(
+        f"Transform complete: {result.activities} activities, "
+        f"{result.streams} streams, {result.spine_days} spine days.",
+        fg="green",
+    )
 
 
 @app.command()
 def rederive() -> None:
-    """Rebuild all structured tables from raw data with no network calls. [stub]"""
-    typer.echo(f"tempo rederive: {_NOT_IMPLEMENTED}")
+    """Rebuild ALL structured tables from raw data with no network calls (STORE-02).
+
+    Clears and fully rebuilds the structured layer from ``raw_response`` so the
+    result depends only on stored raw data -- safe after a schema or transform
+    change, and used to re-apply a fixed date-bucketing rule without re-fetching.
+    """
+    from datetime import UTC, datetime
+
+    from tempo.transforms.runner import run_rederive
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    conn = db.init_db(settings.db_path)
+    try:
+        result = run_rederive(conn, fill_to=datetime.now(UTC).date())
+    finally:
+        conn.close()
+    typer.secho(
+        f"Rederive complete (no network): {result.activities} activities, "
+        f"{result.streams} streams, {result.spine_days} spine days.",
+        fg="green",
+    )
 
 
 @app.command()
