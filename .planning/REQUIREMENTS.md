@@ -10,12 +10,12 @@ the Strava end-to-end milestone and the Garmin/analysis milestone.
 
 ### Foundation
 
-- [ ] **FND-01**: SQLite database initialises with `raw_response`, `date_spine`, and `sync_state` tables (WAL mode on)
-- [ ] **FND-02**: Database, tokens, `.env`, and `reports/` live outside the committed tree / are gitignored so no secret or health data can reach the public repo
-- [ ] **FND-03**: A pre-commit secret scan (e.g. gitleaks) blocks accidental credential commits
-- [ ] **FND-04**: Typed config and secrets load from a gitignored `.env` (with a committed `.env.example`)
-- [ ] **FND-05**: A `tempo` CLI entrypoint exists with subcommands wired (sync, transform/rederive, analyze, journal)
-- [ ] **FND-06**: A documented date-bucketing rule (local-date attribution) is defined before any data is ingested
+- [x] **FND-01**: SQLite database initialises with `raw_response`, `date_spine`, and `sync_state` tables (WAL mode on)
+- [x] **FND-02**: Database, tokens, `.env`, and `reports/` live outside the committed tree / are gitignored so no secret or health data can reach the public repo
+- [x] **FND-03**: A pre-commit secret scan (e.g. gitleaks) blocks accidental credential commits
+- [x] **FND-04**: Typed config and secrets load from a gitignored `.env` (with a committed `.env.example`)
+- [x] **FND-05**: A `tempo` CLI entrypoint exists with subcommands wired (sync, transform/rederive, analyze, journal)
+- [x] **FND-06**: A documented date-bucketing rule (local-date attribution) is defined before any data is ingested
 
 ### Strava Ingestion
 
@@ -109,12 +109,12 @@ Explicitly excluded. Documented to prevent scope creep.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 1 | Pending |
-| FND-02 | Phase 1 | Pending |
-| FND-03 | Phase 1 | Pending |
-| FND-04 | Phase 1 | Pending |
-| FND-05 | Phase 1 | Pending |
-| FND-06 | Phase 1 | Pending |
+| FND-01 | Phase 1 | Complete |
+| FND-02 | Phase 1 | Complete |
+| FND-03 | Phase 1 | Complete |
+| FND-04 | Phase 1 | Complete |
+| FND-05 | Phase 1 | Complete |
+| FND-06 | Phase 1 | Complete |
 | STRV-01 | Phase 2 | Pending |
 | STRV-02 | Phase 2 | Pending |
 | STRV-03 | Phase 2 | Pending |
@@ -156,4 +156,4 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-26*
-*Last updated: 2026-05-26 after roadmap creation (traceability populated)*
+*Last updated: 2026-05-26 after Phase 1 (Foundation) completed — FND-01..FND-06 Complete*
