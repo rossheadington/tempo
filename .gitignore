@@ -13,6 +13,11 @@ garmin_session/
 # Default location is ~/.tempo/ (outside the tree), but ignore any local copy too.
 .tempo/
 
+# ---- In-project content dir (plan, races, reports) — personal data, NEVER commit ----
+# TEMPO_CONTENT_DIR points here so the markdown is handy alongside the code, but
+# it holds health/training data and must stay out of this public repo.
+training/
+
 # ---- Personal health data (NEVER commit) ----
 store/
 data/

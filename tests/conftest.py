@@ -23,6 +23,7 @@ def tempo_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[
     monkeypatch.setenv("TEMPO_DATA_DIR", str(data_dir))
     # Ensure no stray real config leaks in from the environment.
     for key in (
+        "TEMPO_CONTENT_DIR",
         "TEMPO_STRAVA_CLIENT_ID",
         "TEMPO_STRAVA_CLIENT_SECRET",
         "TEMPO_STRAVA_REDIRECT_URI",

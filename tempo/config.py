@@ -39,7 +39,18 @@ class Settings(BaseSettings):
     # ---- Runtime data location (outside the repo tree) ----
     data_dir: Path = Field(
         default_factory=_default_data_dir,
-        description="Root directory for all local runtime data (DB, tokens, reports).",
+        description="Root directory for secrets/state: the SQLite DB and tokens.",
+    )
+
+    # ---- Human-readable content location (plan, races, reports) ----
+    content_dir: Path | None = Field(
+        default=None,
+        description=(
+            "Directory for the files you read/edit -- the training plan, races, "
+            "and generated reports. Defaults to data_dir. Point it at a gitignored "
+            "folder in the project (TEMPO_CONTENT_DIR) to keep those files handy "
+            "while the DB and tokens stay outside the repo in data_dir."
+        ),
     )
 
     # ---- Strava OAuth (Phase 2 wires these in; documented here from day one) ----
@@ -96,7 +107,22 @@ class Settings(BaseSettings):
         """Expand ``~`` and resolve the data dir to an absolute path."""
         return value.expanduser()
 
+    @field_validator("content_dir", mode="after")
+    @classmethod
+    def _expand_content_dir(cls, value: Path | None) -> Path | None:
+        """Expand ``~`` for the content dir when set."""
+        return value.expanduser() if value is not None else None
+
     # ---- Derived paths ----
+    @property
+    def content_root(self) -> Path:
+        """Where human-readable content (plan, races, reports) lives.
+
+        Defaults to ``data_dir`` but can be redirected via ``content_dir`` /
+        ``TEMPO_CONTENT_DIR`` (e.g. a gitignored folder in the project).
+        """
+        return self.content_dir if self.content_dir is not None else self.data_dir
+
     @property
     def db_path(self) -> Path:
         """Path to the SQLite database file."""
@@ -110,27 +136,28 @@ class Settings(BaseSettings):
     @property
     def reports_dir(self) -> Path:
         """Directory for generated markdown analysis reports (gitignored, local)."""
-        return self.data_dir / "reports"
+        return self.content_root / "reports"
 
     @property
     def races_path(self) -> Path:
         """Path to the user-maintained races markdown (read for analysis context)."""
-        return self.data_dir / "races.md"
+        return self.content_root / "races.md"
 
     @property
     def plan_path(self) -> Path:
         """Path to the user-maintained training-plan markdown (read for context)."""
-        return self.data_dir / "plan.md"
+        return self.content_root / "plan.md"
 
     def ensure_dirs(self) -> None:
         """Create the data, tokens, and reports directories with safe perms.
 
         The data dir and tokens dir are created with 0700 so other local users
-        cannot read tokens. Idempotent.
+        cannot read tokens. The content/reports dir may live elsewhere (e.g. a
+        gitignored project folder) and is created if missing. Idempotent.
         """
         self.data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.tokens_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self.reports_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.reports_dir.mkdir(parents=True, exist_ok=True)
 
 
 def get_settings() -> Settings:
