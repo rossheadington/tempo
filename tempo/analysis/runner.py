@@ -46,6 +46,7 @@ def build_load_series(conn: sqlite3.Connection, cfg: load.LoadConfig) -> LoadSer
     """
     spine_days = dataread.read_spine_days(conn)
     by_day = dataread.activities_by_day(conn)
+    srpe_by_day = dataread.srpe_by_day(conn)
 
     day_loads: list[load.DayLoad] = []
     for day in spine_days:
@@ -59,7 +60,11 @@ def build_load_series(conn: sqlite3.Connection, cfg: load.LoadConfig) -> LoadSer
             )
             for rec in records
         ]
-        day_loads.append(load.aggregate_day_load(day, activity_loads))
+        day_load = load.aggregate_day_load(day, activity_loads)
+        # sRPE fallback: when pace/HR load is insufficient (or a journaled rest-day
+        # cross-training session exists), use the day's sRPE as the load (JRNL-03).
+        day_load = load.apply_srpe_fallback(day_load, srpe_by_day.get(day))
+        day_loads.append(day_load)
 
     loads = [dl.load for dl in day_loads]
     points = fitness.fitness_series(spine_days, loads)

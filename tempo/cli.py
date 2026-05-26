@@ -33,8 +33,6 @@ app = typer.Typer(
     add_completion=False,
 )
 
-_NOT_IMPLEMENTED = "not yet implemented"
-
 
 def _init() -> None:
     """Create data dirs and bring the SQLite DB up to the latest schema."""
@@ -385,21 +383,113 @@ def analyze_race_readiness() -> None:
     typer.secho(f"Race-readiness report written: {path}", fg="green")
 
 
-journal_app = typer.Typer(help="Capture and manage post-workout journal entries.")
+journal_app = typer.Typer(
+    help="Capture and manage subjective journal entries (RPE, feel, notes).",
+    no_args_is_help=False,
+)
 app.add_typer(journal_app, name="journal")
 
 
 @journal_app.callback(invoke_without_command=True)
 def journal_main(ctx: typer.Context) -> None:
-    """Journal command group; defaults to a usage stub."""
+    """Journal command group; defaults to a short usage hint."""
     if ctx.invoked_subcommand is None:
-        typer.echo(f"tempo journal: {_NOT_IMPLEMENTED}")
+        typer.echo("tempo journal: capture subjective entries.")
+        typer.echo(
+            "  tempo journal add  --rpe 7 --feel strong --notes '...' "
+            "[--day --sport --activity-id --duration-min]"
+        )
+        typer.echo("  tempo journal list [--limit N]")
 
 
 @journal_app.command("add")
-def journal_add() -> None:
-    """Record a structured post-workout journal entry. [stub]"""
-    typer.echo(f"tempo journal add: {_NOT_IMPLEMENTED}")
+def journal_add(
+    rpe: int = typer.Option(..., "--rpe", help="Session RPE, an integer 1-10."),
+    feel: str | None = typer.Option(
+        None, "--feel", help="How it felt (e.g. 'strong', 'flat', 'sore')."
+    ),
+    notes: str | None = typer.Option(None, "--notes", help="Free-text reflection."),
+    day: str | None = typer.Option(
+        None, "--day", help="Local date YYYY-MM-DD the entry is for (default: today)."
+    ),
+    sport: str | None = typer.Option(
+        None, "--sport", help="Sport to resolve the activity by (e.g. 'Run', 'TrailRun')."
+    ),
+    activity_id: int | None = typer.Option(
+        None, "--activity-id", help="Explicitly link to this activity id (disambiguates)."
+    ),
+    duration_min: float | None = typer.Option(
+        None,
+        "--duration-min",
+        help="Minutes for sRPE when no activity is linked (or to override its duration).",
+    ),
+) -> None:
+    """Record a validated post-workout / rest-day journal entry (JRNL-01/02/03).
+
+    Validates RPE (1-10), resolves the activity by date + sport (or an explicit
+    ``--activity-id``), and computes an sRPE (RPE x duration) load track. This is
+    the boundary Claude uses to capture entries -- structured rows are written
+    only here, never via free-form SQL.
+    """
+    from datetime import UTC, datetime
+
+    from tempo.journal import JournalError, add_entry
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    resolved_day = day or datetime.now(UTC).date().isoformat()
+    conn = db.init_db(settings.db_path)
+    try:
+        entry = add_entry(
+            conn,
+            day=resolved_day,
+            rpe=rpe,
+            feel=feel,
+            notes=notes,
+            sport=sport,
+            activity_id=activity_id,
+            duration_min=duration_min,
+        )
+    except JournalError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        conn.close()
+
+    link = f"linked to activity {entry.activity_id}" if entry.activity_id else "no activity linked"
+    typer.secho(f"Journal entry #{entry.id} recorded for {entry.day}.", fg="green")
+    typer.echo(f"  RPE {entry.rpe}, feel={entry.feel or '-'}, {link}.")
+    if entry.srpe is not None:
+        typer.echo(f"  sRPE {entry.srpe:.0f} (RPE {entry.rpe} x {entry.duration_min:.0f} min).")
+    else:
+        typer.echo("  sRPE not computed (no duration available).")
+
+
+@journal_app.command("list")
+def journal_list(
+    limit: int | None = typer.Option(None, "--limit", help="Max entries to show."),
+) -> None:
+    """List recorded journal entries, most recent first."""
+    from tempo.journal import list_entries
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    conn = db.init_db(settings.db_path)
+    try:
+        entries = list_entries(conn, limit=limit)
+    finally:
+        conn.close()
+
+    if not entries:
+        typer.echo("No journal entries yet.")
+        return
+    for e in entries:
+        link = f"act {e.activity_id}" if e.activity_id else "no-act"
+        srpe = f"sRPE {e.srpe:.0f}" if e.srpe is not None else "sRPE -"
+        typer.echo(
+            f"#{e.id} {e.day} RPE {e.rpe} feel={e.feel or '-'} "
+            f"{link} {srpe} {('notes: ' + e.notes) if e.notes else ''}".rstrip()
+        )
 
 
 if __name__ == "__main__":

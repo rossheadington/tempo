@@ -122,3 +122,22 @@ def data_date_range(conn: sqlite3.Connection) -> tuple[str, str] | None:
     if row is None or row["lo"] is None:
         return None
     return (str(row["lo"]), str(row["hi"]))
+
+
+def srpe_by_day(conn: sqlite3.Connection) -> dict[str, float]:
+    """Return ``{day: total_srpe}`` summed across journal entries (JRNL-03).
+
+    Days with no journal sRPE are simply absent from the map. Used as a *fallback*
+    load track when pace/HR-based load is insufficient for that day. Safe to call
+    even before the journal table exists (returns empty), so analysis on a pre-
+    Phase-5 DB still works.
+    """
+    has_journal = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='journal'"
+    ).fetchone()
+    if has_journal is None:
+        return {}
+    rows = conn.execute(
+        "SELECT day, SUM(srpe) AS total FROM journal WHERE srpe IS NOT NULL GROUP BY day"
+    ).fetchall()
+    return {str(r["day"]): float(r["total"]) for r in rows if r["total"] is not None}

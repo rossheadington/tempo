@@ -46,6 +46,7 @@ class LoadMethod(StrEnum):
 
     RTSS = "rTSS"
     HRTSS = "hrTSS"
+    SRPE = "sRPE"
     INSUFFICIENT = "insufficient"
 
 
@@ -218,4 +219,40 @@ def aggregate_day_load(day: str, activity_loads: list[ActivityLoad]) -> DayLoad:
         method=method,
         n_activities=len(activity_loads),
         n_insufficient=n_insufficient,
+    )
+
+
+def apply_srpe_fallback(day_load: DayLoad, srpe: float | None) -> DayLoad:
+    """Fill in an sRPE-based load when objective (pace/HR) load is unavailable.
+
+    sRPE (session RPE x duration) from journaling is a *parallel/fallback* load
+    track (JRNL-03; FEATURES sRPE). It is used as the day's load ONLY when the
+    objective methods produced nothing usable for that day, i.e. when the day is:
+
+    * ``insufficient`` -- activities existed but none could be scored (no pace/HR
+      config or data), or
+    * ``rest`` -- no activities at all, but a journal entry recorded subjective
+      load (e.g. cross-training: strength/bike) the runner still wants counted.
+
+    When a usable rTSS/hrTSS load already exists for the day, sRPE does NOT
+    override it (objective load wins; sRPE stays a sanity track). A non-positive
+    or missing ``srpe`` leaves the day unchanged.
+
+    The returned :class:`DayLoad` is flagged ``method='sRPE'`` so reports can show
+    that day's load came from subjective input -- never silently mixed with rTSS.
+    """
+    if srpe is None or srpe <= 0:
+        return day_load
+    if day_load.method in (LoadMethod.RTSS.value, LoadMethod.HRTSS.value):
+        return day_load
+    # Only fill when objective load is absent: rest day (cross-training) or a day
+    # whose activities were all insufficient.
+    if day_load.method not in (REST, LoadMethod.INSUFFICIENT.value):
+        return day_load
+    return DayLoad(
+        day=day_load.day,
+        load=float(srpe),
+        method=LoadMethod.SRPE.value,
+        n_activities=day_load.n_activities,
+        n_insufficient=day_load.n_insufficient,
     )
