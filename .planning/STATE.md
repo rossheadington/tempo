@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** Phase 7 — Recovery + Correlation + Scheduler (next)
+**Current focus:** v1 COMPLETE — all 7 phases done. No active phase.
 
 ## Current Position
 
-Phase: 6 of 7 (Garmin Ingestion) — COMPLETE
-Plan: 1 of 1 in Phase 6 complete
-Status: Phase 6 done — a `garminconnect`-backed connector implements the same `Connector` protocol as Strava and is an ISOLATED failure domain (a 429/auth/library failure is caught, logged, and skipped with NO retry; Strava sync + transforms + analysis still complete on existing data). Auth is login-once via interactive `tempo garmin login` (MFA prompt); tokens are persisted and reused — the scheduled sync never triggers a fresh login. Wellness (HRV, sleep, resting HR, body battery, stress, steps) is stored raw then transformed (no network) into a `wellness_day` table keyed by Garmin's `calendarDate`; `daily_summary` LEFT-JOINs wellness preserving one-row-per-spine-day. Personal rolling baselines (mean+SD z-score + EWMA) for HRV/resting HR/sleep are computed for Phase 7. Ready to plan Phase 7 (Recovery + Correlation + Scheduler).
-Last activity: 2026-05-26 — Phase 6 (Garmin Ingestion) implemented, tested, committed, and pushed
+Phase: 7 of 7 (Recovery + Correlation + Scheduler) — COMPLETE. **v1 feature-complete.**
+Plan: 1 of 1 in Phase 7 complete
+Status: Phase 7 done — the analysis suite is closed and the daily scheduler ships. (1) Multi-signal recovery/overtraining (`tempo analyze recovery`, `tempo/analysis/recovery.py`): combines rising load (CTL ramp / ACWR from `fitness.py`) with HRV/resting-HR/sleep z-scored against personal rolling baselines (`baselines.py`); encodes the "HRV abnormal in EITHER direction" subtlety (low = suppressed recovery, high = possible parasympathetic saturation in deep OTS — flags |z| magnitude, not just direction); degrades to "insufficient data" without baseline history. (2) Honest correlation (`tempo analyze correlations`, `tempo/analysis/correlation.py`, stdlib Pearson): prior-night sleep/HRV + RPE vs load (performance proxy) / RPE, reported only at >= 20 paired days, else explicit "insufficient data — N paired days, need 20". (3) launchd daily job (NOT cron): `tempo install-scheduler` generates a `StartCalendarInterval` plist (absolute paths + explicit PATH/TEMPO_DATA_DIR + log capture; secret-free committed template `launchd/com.tempo.daily.plist`; never runs launchctl itself). `tempo run-daily` (`tempo/sync/daily.py`) = sync → transform → analyze, idempotent + catch-up-aware (a missed day recovered next run via the watermark-driven sync; Garmin still isolated). (4) Noteworthy-only surfacing (`tempo/analysis/noteworthy.py`, configurable thresholds) — reports always written, NOTEWORTHY log block + `reports/NOTEWORTHY.md` marker only on a threshold crossing (SCHED-03). 358 tests (70 new) all green, ruff clean, plist plutil-validated, end-to-end verified on seeded synthetic data.
+Last activity: 2026-05-26 — Phase 7 (Recovery + Correlation + Scheduler) implemented, tested, committed, and pushed. ALL 7 PHASES / v1 COMPLETE.
 
-Progress: [█████████░] ~86% (6 of 7 phases)
+Progress: [██████████] 100% (7 of 7 phases) — v1 feature-complete
 
 ## What's Done (Phase 1: Foundation)
 

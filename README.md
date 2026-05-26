@@ -151,16 +151,86 @@ Once activities are synced and transformed, Tempo turns them into per-activity
 (Riegel/VDOT), written as dated markdown reports.
 
 ```
-tempo analyze                 # both reports (load-trend + race-readiness)
+tempo analyze                 # the FULL suite (all four reports below)
 tempo analyze load-trend      # CTL/ATL/TSB, ACWR/ramp, weekly volume
 tempo analyze race-readiness  # Riegel/VDOT vs goal + CTL/TSB form check
+tempo analyze recovery        # multi-signal recovery / overtraining vs baselines
+tempo analyze correlations    # sleep / HRV / RPE vs performance (honest n-gating)
 ```
 
 Reports land in the gitignored reports dir (`~/.tempo/reports/` by default) as
-`YYYY-MM-DD-load-trend.md` / `YYYY-MM-DD-race-readiness.md`. Every report opens
-with a **per-source data-freshness header** (last successful sync + staleness
-flag) so a stale dataset is never trusted silently; thin data degrades to an
-explicit "insufficient data" note rather than an invented number.
+`YYYY-MM-DD-load-trend.md`, `-race-readiness.md`, `-recovery.md`,
+`-correlations.md`. Every report opens with a **per-source data-freshness header**
+(last successful sync + staleness flag) so a stale dataset is never trusted
+silently; thin data degrades to an explicit "insufficient data" note rather than
+an invented number.
+
+### Recovery / overtraining (multi-signal)
+
+`tempo analyze recovery` combines the **rising-load** half (CTL ramp rate / ACWR)
+with **baseline-relative recovery markers** (HRV, resting HR, sleep vs your own
+personal rolling baselines). The high-confidence overtraining pattern is rising
+load *and* recovery markers diverging from baseline. A key subtlety it encodes:
+**HRV is judged in BOTH directions** — a drop below baseline is the classic
+suppressed-recovery signal, but in deep overtraining HRV can paradoxically *rise*
+(parasympathetic saturation), so it flags the *magnitude* of the deviation, not
+just "low". When baselines lack history it reports **insufficient data** rather
+than guessing.
+
+### Correlation insight (honest about small n)
+
+`tempo analyze correlations` links candidate predictors (prior-night sleep / HRV,
+subjective RPE) to outcomes (training load as a performance proxy, RPE). Because
+correlation is data-hungry, a relationship is reported **only with at least 20
+paired days**; below that floor each pair shows an explicit *"insufficient data —
+N paired days, need 20"* note instead of asserting a weak signal from too little
+history. Correlation is not causation — relationships are a prompt to investigate.
+
+## Scheduling (the daily run via launchd)
+
+The daily loop — `tempo run-daily` — runs **sync → transform → analyze** and
+writes the report suite. It is **idempotent and catch-up-aware**: sync is
+watermark-driven and raw writes are idempotent, so running it twice is harmless
+and a **missed day is recovered on the next run** (everything since the last
+successful watermark is pulled, never just "today"). Garmin stays isolated (a 429
+or breakage is skipped; Strava + analysis still complete).
+
+It surfaces output **only when noteworthy** (SCHED-03): all four reports are always
+written, but the run only prints a `NOTEWORTHY` block (and writes a
+`reports/NOTEWORTHY.md` marker) when a threshold is crossed — ACWR out of the safe
+range, an aggressive ramp, a `monitor`/`elevated` recovery verdict, a strong
+baseline z-score, a target race within ~14 days, or a stale source. The thresholds
+live (configurable + documented) in `tempo/analysis/noteworthy.py`.
+
+```
+tempo run-daily          # sync -> transform -> analyze (the launchd job runs this)
+tempo run-daily --no-sync   # transform + analyze existing data only (no network)
+```
+
+### Enable the launchd LaunchAgent (macOS)
+
+Tempo uses **launchd, not cron**. On macOS, cron **silently skips** jobs while the
+Mac is asleep (your daily sync would just never run) and runs in a stripped
+environment that often can't find `uv`/Python. launchd's `StartCalendarInterval`
+runs a **missed job on wake**, and Tempo's generated plist uses absolute paths +
+an explicit `PATH`/`TEMPO_DATA_DIR` so the scheduled run behaves exactly like your
+terminal. stdout/stderr are captured to a log file under the data dir.
+
+Generate the plist, then load it (Tempo **never** runs `launchctl` for you — that
+explicit, informed step is yours):
+
+```
+tempo install-scheduler --hour 5 --minute 30     # writes a template under ~/.tempo/launchd/
+# inspect it, then:
+cp ~/.tempo/launchd/com.tempo.daily.plist ~/Library/LaunchAgents/
+launchctl load -w ~/Library/LaunchAgents/com.tempo.daily.plist     # enable
+# to disable later:
+launchctl unload -w ~/Library/LaunchAgents/com.tempo.daily.plist
+```
+
+`tempo install-scheduler --to-launch-agents` writes the plist straight into
+`~/Library/LaunchAgents/` (still without loading it). A committed, secret-free
+template lives at [`launchd/com.tempo.daily.plist`](launchd/com.tempo.daily.plist).
 
 **Load config** (`.env`): set `TEMPO_THRESHOLD_PACE_S_PER_KM` (required for
 rTSS) and optionally `TEMPO_MAX_HR` / `TEMPO_RESTING_HR` / `TEMPO_THRESHOLD_HR`
@@ -172,12 +242,22 @@ reads them for race-readiness context; they are never committed.
 
 ## Status
 
-Phases 1–6 complete. **Phase 4 was the Strava end-to-end milestone** (pull →
-store → transform → analyze → report on real Strava data). **Phase 6** adds Garmin
-wellness as an isolated source: login-once token reuse, no-retry-on-429
-fail-log-skip, a `calendarDate`-keyed `wellness_day` table joined into
-`daily_summary`, and personal rolling baselines. See `.planning/` for the roadmap
-and requirement traceability.
+**All 7 phases complete — Tempo is feature-complete for v1.** The full pipeline
+runs end to end: pull → store → transform → analyze → report, on a daily schedule.
+
+- **Phase 4** was the Strava end-to-end milestone (load → CTL/ATL/TSB → ACWR/ramp →
+  load-trend + race-readiness reports on real Strava data).
+- **Phase 6** added Garmin wellness as an isolated source (login-once token reuse,
+  no-retry-on-429 fail-log-skip, a `calendarDate`-keyed `wellness_day` joined into
+  `daily_summary`, personal rolling baselines).
+- **Phase 7** closed the analysis suite — multi-signal recovery/overtraining and
+  honest n-gated correlation insight — plus the launchd daily scheduler with
+  watermark catch-up and noteworthy-only surfacing.
+
+The four target analyses (recovery, load & trends, race readiness, correlations)
+are all delivered as dated markdown reports with freshness headers and honest
+"insufficient data" degradation. See `.planning/` for the roadmap and requirement
+traceability.
 
 ## Stack
 

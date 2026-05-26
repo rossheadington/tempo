@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Load Metrics + First Analysis (Strava end-to-end milestone)** - rTSS/hrTSS, CTL/ATL/TSB, ACWR, load+trend and race-readiness reports with freshness headers
 - [x] **Phase 5: Journaling via Claude** - Validated `tempo journal add` entrypoint, activity resolution, sRPE load track
 - [x] **Phase 6: Garmin Ingestion** - Isolated fragile connector, login-once token persistence, no-retry-on-429, calendarDate wellness, baselines
-- [ ] **Phase 7: Recovery + Correlation + Scheduler** - Multi-signal recovery, honest correlation, launchd daily loop with catch-up and noteworthy-only surfacing
+- [x] **Phase 7: Recovery + Correlation + Scheduler** - Multi-signal recovery, honest correlation, launchd daily loop with catch-up and noteworthy-only surfacing
 
 ## Phase Details
 
@@ -122,4 +122,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Load Metrics + First Analysis | 1/1 | Complete | 2026-05-26 |
 | 5. Journaling via Claude | 1/1 | Complete | 2026-05-26 |
 | 6. Garmin Ingestion | 1/1 | Complete | 2026-05-26 |
-| 7. Recovery + Correlation + Scheduler | 0/TBD | Not started | - |
+| 7. Recovery + Correlation + Scheduler | 1/1 | Complete | 2026-05-26 |
+
+**All 7 phases complete — Tempo v1 is feature-complete.**
