@@ -49,9 +49,9 @@ the Strava end-to-end milestone and the Garmin/analysis milestone.
 
 - [x] **PLAN-01**: User maintains upcoming races (date, distance, goal) in a simple markdown file Tempo reads for analysis context
 - [x] **PLAN-02**: User maintains a training plan in a simple markdown file Tempo reads for analysis context
-- [ ] **JRNL-01**: A validated `tempo journal add` entrypoint records structured post-workout entries (RPE 1–10, how it felt, notes), resolving the activity by date+sport
-- [ ] **JRNL-02**: Claude can capture journal entries by calling the validated entrypoint (never writing SQL directly)
-- [ ] **JRNL-03**: Journal entries contribute an sRPE load track (RPE × duration) usable when pace/HR load is unavailable
+- [x] **JRNL-01**: A validated `tempo journal add` entrypoint records structured post-workout entries (RPE 1–10, how it felt, notes), resolving the activity by date+sport
+- [x] **JRNL-02**: Claude can capture journal entries by calling the validated entrypoint (never writing SQL directly)
+- [x] **JRNL-03**: Journal entries contribute an sRPE load track (RPE × duration) usable when pace/HR load is unavailable
 
 ### Garmin Ingestion
 
@@ -135,9 +135,9 @@ Explicitly excluded. Documented to prevent scope creep.
 | PLAN-01 | Phase 4 | Complete |
 | PLAN-02 | Phase 4 | Complete |
 | DELIV-01 | Phase 4 | Complete |
-| JRNL-01 | Phase 5 | Pending |
-| JRNL-02 | Phase 5 | Pending |
-| JRNL-03 | Phase 5 | Pending |
+| JRNL-01 | Phase 5 | Complete |
+| JRNL-02 | Phase 5 | Complete |
+| JRNL-03 | Phase 5 | Complete |
 | GRMN-01 | Phase 6 | Pending |
 | GRMN-02 | Phase 6 | Pending |
 | GRMN-03 | Phase 6 | Pending |
@@ -156,6 +156,7 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-26*
-*Last updated: 2026-05-26 after Phase 4 (Load Metrics + First Analysis) completed — LOAD-01..03, ANL-01, ANL-02, ANL-05, PLAN-01, PLAN-02, DELIV-01 Complete. This is the Strava end-to-end milestone: pull → store → transform → analyze → report works end-to-end on stored data.*
+*Last updated: 2026-05-26 after Phase 5 (Journaling via Claude) completed — JRNL-01..03 Complete. A validated `tempo journal add` entrypoint records structured subjective entries (RPE 1–10, feel, notes), resolves the activity by date+sport, computes an sRPE (RPE × duration) load track, and surfaces journal fields in `daily_summary` (one row per spine day preserved); sRPE fills the daily load on otherwise-insufficient days, flagged `sRPE`. Claude captures entries only through this boundary — never raw SQL (docs/JOURNALING.md).*
+*Previously updated: 2026-05-26 after Phase 4 (Load Metrics + First Analysis) completed — LOAD-01..03, ANL-01, ANL-02, ANL-05, PLAN-01, PLAN-02, DELIV-01 Complete. This is the Strava end-to-end milestone: pull → store → transform → analyze → report works end-to-end on stored data.*
 *Previously updated: 2026-05-26 after Phase 3 (Strava Transforms + Date Spine) completed — STORE-01..STORE-05 Complete.*
 *Note on STORE-04/05 scope: the `daily_summary` view LEFT-JOINs from `date_spine` and is shaped so the wellness (Phase 6) and journal (Phase 5) sources can be LEFT-JOINed in when they exist; the bucketing rule and tests already cover Garmin's `calendarDate` (overnight) attribution so those sources will bucket correctly on arrival. Phase 3 delivers the Strava activity join, the spine, and the proven bucketing rule end-to-end.*

@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** Phase 5 — Journaling via Claude (next)
+**Current focus:** Phase 6 — Garmin Ingestion (next)
 
 ## Current Position
 
-Phase: 4 of 7 (Load Metrics + First Analysis) — COMPLETE
-Plan: 1 of 1 in Phase 4 complete
-Status: Phase 4 done — **the Strava end-to-end milestone is shippable**: pull → store → transform → analyze → report works end-to-end on stored Strava data. Ready to plan Phase 5 (Journaling via Claude).
-Last activity: 2026-05-26 — Phase 4 (Load Metrics + First Analysis) implemented, tested, committed, and pushed
+Phase: 5 of 7 (Journaling via Claude) — COMPLETE
+Plan: 1 of 1 in Phase 5 complete
+Status: Phase 5 done — a validated `tempo journal add` entrypoint records structured subjective entries (RPE 1–10, feel, notes), resolves the activity by date+sport, computes an sRPE load track, and surfaces journal fields in `daily_summary`; sRPE fills in as the daily load on otherwise-insufficient days. Ready to plan Phase 6 (Garmin Ingestion).
+Last activity: 2026-05-26 — Phase 5 (Journaling via Claude) implemented, tested, committed, and pushed
 
-Progress: [██████░░░░] ~57% (4 of 7 phases)
+Progress: [███████░░░] ~71% (5 of 7 phases)
 
 ## What's Done (Phase 1: Foundation)
 
@@ -166,7 +166,58 @@ end-to-end milestone: pull → store → transform → analyze → report works 
 remaining user step for live data is the one-time `tempo strava auth` + a backfill with the
 user's own Strava API app.**
 
+## What's Done (Phase 5: Journaling via Claude)
+
+- `tempo/migrations/0003_journal.sql` (SCHEMA_VERSION → 3) — `journal` table:
+  `id, day (FK date_spine), activity_id (FK activity, nullable), rpe (CHECK 1–10),
+  feel, notes, sport, duration_min, srpe, created_at` + indexes on day/activity. The
+  `daily_summary` VIEW is dropped+recreated to LEFT-JOIN a per-day journal rollup
+  (latest-entry rpe/feel, SUM(srpe), has_journal, has_notes) while preserving the
+  one-row-per-spine-day invariant (no day dropped). (JRNL-01/03; STORE-04)
+- `tempo/journal/service.py` — the **validated boundary** (`add_entry`): validates
+  RPE to an integer 1–10 (rejects 0/11/fractional/non-numeric/bool), validates an
+  optional positive `duration_min`, resolves the activity by **local date + sport**
+  (0 → unlinked rest-day reflection; 1 → auto-link; many → `MultipleActivitiesError`
+  unless an explicit `--activity-id` disambiguates; explicit id always wins), computes
+  **sRPE = RPE × duration_min** (explicit duration wins, else linked activity's
+  moving/elapsed time), and inserts via parameterised SQL in a transaction. Also
+  `resolve_activity`, `compute_srpe`, `list_entries`, and `ensure_days` of the spine
+  for rest-day entries. NO free-form-SQL path. (JRNL-01/02)
+- `tempo/analysis/load.py` — new `LoadMethod.SRPE` + `apply_srpe_fallback(day_load, srpe)`:
+  uses the day's sRPE as the load **only** when objective load is `insufficient` or it's a
+  `rest` day with a journaled (e.g. cross-training) session; rTSS/hrTSS always win when
+  present; flagged `method='sRPE'`. (JRNL-03)
+- `tempo/analysis/data.py` — `srpe_by_day()` (SUM of journal sRPE per day; empty/safe when
+  the journal table is absent), wired into `runner.build_load_series` so the daily load
+  series fills insufficient days from sRPE.
+- `tempo/cli.py` — `tempo journal add` (thin wrapper over `add_entry`; `--rpe` required,
+  `--feel/--notes/--day/--sport/--activity-id/--duration-min`; day defaults to today) and
+  `tempo journal list`. Validation failures exit 1 with the error.
+- `docs/JOURNALING.md` — the "Claude in the loop" contract: Claude captures entries ONLY by
+  calling `tempo journal add`, never SQL; documents the date+sport resolution rule, sRPE, and
+  that journal content stays in the gitignored `~/.tempo/` DB.
+- `tests/` — 235 pytest tests (was 183), all green; ruff check + format clean. New:
+  `test_journal_service.py` (RPE validation incl. 0/11/non-int/bool; resolution none/one/many
+  + disambiguation + case-insensitive sport; sRPE linked-vs-explicit; persistence; failed
+  validation writes nothing; rest-day spine creation), `test_journal_summary.py` (journal in
+  daily_summary, one-row-per-spine-day invariant, null journal cols, multi-entry rollup; sRPE
+  fallback unit + integration through `build_load_series`), `test_journal_cli.py` (end-to-end
+  CLI: link+sRPE, reject bad RPE, ambiguous-needs-id, cross-training, list).
+
+All three Phase-5 success criteria verified live against a seeded throwaway DB (temp data
+dir): `tempo journal add --rpe 7 --feel strong --day … --sport Run` created entry #1, linked
+to the day's activity, computed sRPE 420, and appeared in `daily_summary`; an out-of-range RPE
+was rejected (exit 1); and on an activity-with-no-pace/HR day the analysis load series flagged
+the day `method='sRPE'` with the sRPE value as the load.
+
 ### Conventions established this phase
+- Subjective rows are written ONLY through the validated `tempo.journal.service.add_entry`
+  boundary (CLI is a thin wrapper); Claude never writes SQL (ARCHITECTURE Pattern 5 / Anti-
+  Pattern 4). Activity resolution by date+sport refuses to guess on ambiguity.
+- sRPE is a **fallback** load track flagged `sRPE`; objective rTSS/hrTSS always wins when
+  available. Journal content is personal data — lives only in the gitignored `~/.tempo/` DB.
+
+### Conventions established earlier (Phase 4)
 - Analysis layer (`tempo/analysis/`) is **read-only over the structured/gold layer + the
   user's races.md/plan.md context**, pure-Python metric math (stdlib only — no pandas/polars),
   and **never touches the network**. Reports are dated markdown into the gitignored reports
@@ -239,11 +290,13 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-05-26
-Stopped at: Phase 4 (Load Metrics + First Analysis) complete — the **Strava end-to-end
-milestone is shippable**. Per-activity load (rTSS + hrTSS fallback + method flag),
-CTL/ATL/TSB EWMA series, ACWR/ramp guardrail, Riegel/VDOT race prediction, races.md/plan.md
-context parsing, and dated load-trend + race-readiness markdown reports with per-source
-freshness headers — all pure-Python, no-network, reading the structured/gold layer. 183 tests
-green, ruff clean, shipped and pushed. `tempo analyze [load-trend|race-readiness]` wired and
-verified live against a seeded DB. Next: plan Phase 5 (Journaling via Claude).
+Stopped at: Phase 5 (Journaling via Claude) complete. Validated `tempo journal add` entrypoint
+(`tempo/journal/service.py`) records structured subjective entries (RPE 1–10, feel, notes),
+resolves the activity by date+sport (none/one/many handled), computes an sRPE (RPE × duration)
+load track, and inserts via parameterised SQL — Claude never writes SQL. Migration 0003 adds
+the `journal` table and rebuilds `daily_summary` to LEFT-JOIN journal fields per day (one row
+per spine day preserved). sRPE fills the daily load on otherwise-insufficient days, flagged
+`method='sRPE'`; objective load still wins. `docs/JOURNALING.md` documents the Claude capture
+contract. 235 tests green, ruff clean, shipped and pushed; all three success criteria verified
+live against a seeded throwaway DB. Next: plan Phase 6 (Garmin Ingestion).
 Resume file: None
