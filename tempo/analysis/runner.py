@@ -21,8 +21,10 @@ from datetime import date
 from pathlib import Path
 
 from tempo.analysis import context as ctx
+from tempo.analysis import correlation as corr_mod
 from tempo.analysis import data as dataread
 from tempo.analysis import fitness, load, race
+from tempo.analysis import recovery as recovery_mod
 from tempo.analysis import report as report_mod
 from tempo.analysis.context import Race
 
@@ -284,12 +286,104 @@ def generate_race_readiness(
     return _write_report(reports_dir, "race-readiness", generated_on, text)
 
 
+def generate_recovery(
+    conn: sqlite3.Connection,
+    *,
+    cfg: load.LoadConfig,
+    reports_dir: Path,
+    generated_on: date,
+) -> Path:
+    """Compute the multi-signal recovery findings and write the dated report (ANL-03)."""
+    series = build_load_series(conn, cfg)
+    guardrail = fitness.evaluate_guardrail(series.points)
+    assessment = recovery_mod.assess_recovery_from_db(
+        conn, points=series.points, guardrail=guardrail
+    )
+    freshness = dataread.source_freshness(conn, as_of=generated_on)
+    data_range = dataread.data_date_range(conn)
+
+    text = recovery_mod.render_recovery(
+        generated_on=generated_on,
+        freshness=freshness,
+        data_range=data_range,
+        assessment=assessment,
+    )
+    return _write_report(reports_dir, "recovery", generated_on, text)
+
+
+def generate_correlations(
+    conn: sqlite3.Connection,
+    *,
+    cfg: load.LoadConfig,
+    reports_dir: Path,
+    generated_on: date,
+) -> Path:
+    """Compute the n-gated correlation insight and write the dated report (ANL-04)."""
+    series = build_load_series(conn, cfg)
+    load_by_day = {dl.day: dl.load for dl in series.day_loads}
+    observations = corr_mod.read_observations(conn, load_by_day)
+    results = corr_mod.build_correlations(observations)
+    freshness = dataread.source_freshness(conn, as_of=generated_on)
+    data_range = dataread.data_date_range(conn)
+
+    text = corr_mod.render_correlations(
+        generated_on=generated_on,
+        freshness=freshness,
+        data_range=data_range,
+        results=results,
+    )
+    return _write_report(reports_dir, "correlations", generated_on, text)
+
+
 @dataclass(frozen=True, slots=True)
 class AnalyzeResult:
-    """Paths of the reports written by an ``analyze`` run."""
+    """Paths of the reports written by an ``analyze`` run (full suite)."""
 
     load_trend: Path | None = None
     race_readiness: Path | None = None
+    recovery: Path | None = None
+    correlations: Path | None = None
+
+    def paths(self) -> list[Path]:
+        return [
+            p for p in (self.load_trend, self.race_readiness, self.recovery, self.correlations) if p
+        ]
+
+
+def generate_all(
+    conn: sqlite3.Connection,
+    *,
+    cfg: load.LoadConfig,
+    races_path: Path,
+    plan_path: Path,
+    reports_dir: Path,
+    generated_on: date,
+) -> AnalyzeResult:
+    """Run the FULL analysis suite (load-trend, race-readiness, recovery, correlations).
+
+    This is what the bare ``tempo analyze`` and the daily scheduled run invoke. All
+    four reports are written to the gitignored reports dir, each with its own
+    per-source freshness header. No network.
+    """
+    return AnalyzeResult(
+        load_trend=generate_load_trend(
+            conn, cfg=cfg, reports_dir=reports_dir, generated_on=generated_on
+        ),
+        race_readiness=generate_race_readiness(
+            conn,
+            cfg=cfg,
+            races_path=races_path,
+            plan_path=plan_path,
+            reports_dir=reports_dir,
+            generated_on=generated_on,
+        ),
+        recovery=generate_recovery(
+            conn, cfg=cfg, reports_dir=reports_dir, generated_on=generated_on
+        ),
+        correlations=generate_correlations(
+            conn, cfg=cfg, reports_dir=reports_dir, generated_on=generated_on
+        ),
+    )
 
 
 # Re-exported so tests / callers don't need to know about Race internals.
@@ -298,6 +392,9 @@ __all__ = [
     "LoadSeries",
     "Race",
     "build_load_series",
+    "generate_all",
+    "generate_correlations",
     "generate_load_trend",
     "generate_race_readiness",
+    "generate_recovery",
 ]

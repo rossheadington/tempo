@@ -64,13 +64,13 @@ def seeded_cli(tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tempo_data_dir
 
 
-def test_analyze_runs_both_reports(seeded_cli: Path) -> None:
+def test_analyze_runs_full_suite(seeded_cli: Path) -> None:
     result = cli.invoke(app, ["analyze"])
     assert result.exit_code == 0, result.output
     reports = list((seeded_cli / "reports").glob("*.md"))
     names = {p.name.split("-", 3)[-1] for p in reports}
-    assert "load-trend.md" in names
-    assert "race-readiness.md" in names
+    # Phase 7: the bare `tempo analyze` now runs the FULL suite (4 reports).
+    assert {"load-trend.md", "race-readiness.md", "recovery.md", "correlations.md"} <= names
 
 
 def test_analyze_load_trend_subcommand(seeded_cli: Path) -> None:
@@ -95,10 +95,33 @@ def test_analyze_race_readiness_subcommand(seeded_cli: Path) -> None:
     assert "**phase**: Base" in text
 
 
+def test_analyze_recovery_subcommand(seeded_cli: Path) -> None:
+    result = cli.invoke(app, ["analyze", "recovery"])
+    assert result.exit_code == 0, result.output
+    files = list((seeded_cli / "reports").glob("*-recovery.md"))
+    assert len(files) == 1
+    text = files[0].read_text(encoding="utf-8")
+    assert "# Recovery & Overtraining" in text
+    assert "## Data freshness" in text
+    # No Garmin wellness seeded -> recovery markers report insufficient honestly.
+    assert "insufficient" in text.lower() or "no data" in text.lower()
+
+
+def test_analyze_correlations_subcommand(seeded_cli: Path) -> None:
+    result = cli.invoke(app, ["analyze", "correlations"])
+    assert result.exit_code == 0, result.output
+    files = list((seeded_cli / "reports").glob("*-correlations.md"))
+    assert len(files) == 1
+    text = files[0].read_text(encoding="utf-8")
+    assert "# Correlation Insight" in text
+    # No wellness/journal seeded -> insufficient-data messaging present.
+    assert "insufficient data" in text.lower()
+
+
 def test_analyze_on_empty_db_degrades_not_crash(tempo_data_dir: Path) -> None:
     result = cli.invoke(app, ["analyze"])
     assert result.exit_code == 0, result.output
     reports = list((tempo_data_dir / "reports").glob("*.md"))
-    assert len(reports) == 2
+    assert len(reports) == 4  # full suite, all degrading to insufficient-data notes
     for p in reports:
         assert "## Data freshness" in p.read_text(encoding="utf-8")

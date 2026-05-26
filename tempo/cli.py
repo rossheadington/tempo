@@ -426,11 +426,11 @@ def _analyze_setup():
 
 @analyze_app.callback(invoke_without_command=True)
 def analyze_main(ctx: typer.Context) -> None:
-    """Run BOTH analyses (load-trend + race-readiness) when no subcommand is given.
+    """Run the FULL analysis suite when no subcommand is given (ANL-01..05).
 
-    Reads already-stored, already-transformed data (no network) and writes dated
-    markdown reports into the gitignored reports dir, each with a per-source
-    data-freshness header (ANL-01/02/05; DELIV-01).
+    Writes load-trend, race-readiness, recovery, and correlation reports (each
+    dated, with a per-source data-freshness header) into the gitignored reports
+    dir. Reads already-stored, already-transformed data -- no network (DELIV-01).
     """
     if ctx.invoked_subcommand is not None:
         return
@@ -442,10 +442,7 @@ def analyze_main(ctx: typer.Context) -> None:
     settings, conn, cfg = _analyze_setup()
     today = datetime.now(UTC).date()
     try:
-        load_path = runner.generate_load_trend(
-            conn, cfg=cfg, reports_dir=settings.reports_dir, generated_on=today
-        )
-        race_path = runner.generate_race_readiness(
+        result = runner.generate_all(
             conn,
             cfg=cfg,
             races_path=settings.races_path,
@@ -456,8 +453,8 @@ def analyze_main(ctx: typer.Context) -> None:
     finally:
         conn.close()
     typer.secho("Analyses complete. Reports written:", fg="green")
-    typer.echo(f"  {load_path}")
-    typer.echo(f"  {race_path}")
+    for path in result.paths():
+        typer.echo(f"  {path}")
 
 
 @analyze_app.command("load-trend")
@@ -500,6 +497,56 @@ def analyze_race_readiness() -> None:
     finally:
         conn.close()
     typer.secho(f"Race-readiness report written: {path}", fg="green")
+
+
+@analyze_app.command("recovery")
+def analyze_recovery() -> None:
+    """Write the recovery / overtraining report (rising load vs baselines) (ANL-03).
+
+    Combines the CTL ramp / ACWR (rising fatigue) with HRV / resting HR / sleep
+    deviations from personal baselines. HRV is flagged for an abnormal swing in
+    EITHER direction. Degrades to "insufficient data" when baselines lack history.
+    """
+    from datetime import UTC, datetime
+
+    from tempo.analysis import runner
+
+    settings, conn, cfg = _analyze_setup()
+    try:
+        path = runner.generate_recovery(
+            conn,
+            cfg=cfg,
+            reports_dir=settings.reports_dir,
+            generated_on=datetime.now(UTC).date(),
+        )
+    finally:
+        conn.close()
+    typer.secho(f"Recovery report written: {path}", fg="green")
+
+
+@analyze_app.command("correlations")
+def analyze_correlations() -> None:
+    """Write the correlation-insight report (sleep / HRV / RPE vs performance) (ANL-04).
+
+    Reports a relationship only when there are enough paired days; below the floor
+    it states "insufficient data -- N paired days, need M" rather than asserting a
+    weak signal.
+    """
+    from datetime import UTC, datetime
+
+    from tempo.analysis import runner
+
+    settings, conn, cfg = _analyze_setup()
+    try:
+        path = runner.generate_correlations(
+            conn,
+            cfg=cfg,
+            reports_dir=settings.reports_dir,
+            generated_on=datetime.now(UTC).date(),
+        )
+    finally:
+        conn.close()
+    typer.secho(f"Correlations report written: {path}", fg="green")
 
 
 journal_app = typer.Typer(
@@ -609,6 +656,119 @@ def journal_list(
             f"#{e.id} {e.day} RPE {e.rpe} feel={e.feel or '-'} "
             f"{link} {srpe} {('notes: ' + e.notes) if e.notes else ''}".rstrip()
         )
+
+
+# ---------------------------------------------------------------------------
+# Scheduler: the daily loop + launchd LaunchAgent template (SCHED-01/02/03)
+# ---------------------------------------------------------------------------
+
+
+@app.command("run-daily")
+def run_daily_cmd(
+    no_sync: bool = typer.Option(
+        False, "--no-sync", help="Skip the network sync; only transform + analyze existing data."
+    ),
+) -> None:
+    """The daily loop: sync -> transform -> analyze, idempotent + catch-up-aware.
+
+    This is what the launchd LaunchAgent runs once a day. It is safe to run
+    repeatedly: sync is watermark-driven and raw writes are idempotent, so a MISSED
+    day is recovered on the next run (catch-up) rather than skipped (SCHED-02).
+    Garmin stays isolated (a 429 / breakage is skipped; Strava + analysis still
+    complete). All four reports are always written, but the run only SURFACES a
+    NOTEWORTHY block + marker file when a threshold is crossed (SCHED-03).
+    """
+    from datetime import UTC, datetime
+
+    from tempo.sync import daily
+
+    settings, conn = _connected_db()
+    today = datetime.now(UTC).date()
+    try:
+        try:
+            result = daily.run_daily(conn, settings, generated_on=today, do_sync=not no_sync)
+        except ValueError as exc:  # Strava credentials missing
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
+    finally:
+        conn.close()
+
+    if not no_sync:
+        typer.secho("Sync (per-source status):", fg="green")
+        for r in result.sync_results:
+            colour = "green" if r.ok else "yellow"
+            status = "ok" if r.ok else f"skipped -- {r.detail}"
+            typer.secho(f"  {r.source}: {status}", fg=colour)
+    typer.echo(f"Transform: {result.transform_summary}")
+    typer.secho("Reports written:", fg="green")
+    for path in result.reports.paths():
+        typer.echo(f"  {path}")
+    if result.stale_sources:
+        typer.secho(
+            f"  :warning: stale sources: {', '.join(result.stale_sources)}",
+            fg=typer.colors.YELLOW,
+        )
+
+    if result.noteworthy.noteworthy:
+        typer.secho("NOTEWORTHY today:", fg=typer.colors.YELLOW, bold=True)
+        for reason in result.noteworthy.reasons:
+            typer.echo(f"  - {reason}")
+        if result.marker_path:
+            typer.echo(f"  (marker: {result.marker_path})")
+    else:
+        typer.echo("Nothing noteworthy today (reports written quietly).")
+
+
+@app.command("install-scheduler")
+def install_scheduler_cmd(
+    hour: int = typer.Option(5, "--hour", help="Local hour (0-23) the daily job fires."),
+    minute: int = typer.Option(30, "--minute", help="Local minute (0-59) the daily job fires."),
+    to_launch_agents: bool = typer.Option(
+        False,
+        "--to-launch-agents",
+        help="Write the plist into ~/Library/LaunchAgents (still does NOT launchctl load).",
+    ),
+) -> None:
+    """Generate a launchd LaunchAgent plist for the daily run (NOT cron) (SCHED-01).
+
+    Renders a plist that runs ``tempo run-daily`` via ``StartCalendarInterval`` --
+    which, unlike cron, runs a MISSED job on wake and uses absolute paths + an
+    explicit env so the stripped launchd environment works (PITFALLS 7). By default
+    it writes a TEMPLATE under the data dir for you to inspect; ``--to-launch-agents``
+    writes it into ``~/Library/LaunchAgents``. It NEVER runs ``launchctl`` for you --
+    loading is an explicit, informed step you run by hand (printed below).
+    """
+    from pathlib import Path
+
+    from tempo import scheduler
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    project_dir = Path.cwd()
+    result = scheduler.install_plist(
+        project_dir=project_dir,
+        data_dir=settings.data_dir,
+        hour=hour,
+        minute=minute,
+        to_launch_agents=to_launch_agents,
+    )
+
+    typer.secho("LaunchAgent plist written:", fg="green")
+    typer.echo(f"  {result.plist_path}")
+    if not result.installed_to_launch_agents:
+        typer.echo(
+            "\nThis is a TEMPLATE. To enable the daily job, copy it into "
+            "~/Library/LaunchAgents/ then load it:"
+        )
+    else:
+        typer.echo("\nWritten into ~/Library/LaunchAgents/. To enable the daily job, load it:")
+    typer.secho(f"  {result.load_command}", fg=typer.colors.CYAN)
+    typer.echo("To disable later:")
+    typer.secho(f"  {result.unload_command}", fg=typer.colors.CYAN)
+    typer.echo(
+        "\nlaunchd (not cron) is used so a missed run fires on wake and the stripped "
+        "scheduler env still finds uv/python. Tempo never runs launchctl for you."
+    )
 
 
 if __name__ == "__main__":
