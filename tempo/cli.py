@@ -226,11 +226,128 @@ def _run_strava_sync() -> None:
 def sync() -> None:
     """Pull new data from connected sources into the raw store.
 
-    Phase 2: runs the Strava incremental sync. Garmin is added in Phase 6 behind
-    the same connector interface; its failures will be isolated so they cannot
-    block Strava.
+    Runs the Strava incremental sync, then *attempts* Garmin behind the same
+    connector interface. Garmin is an ISOLATED failure domain: a 429 / auth break
+    / library failure is caught, logged, and skipped (no retry) so Strava sync and
+    a later ``tempo analyze`` still complete on existing data (GRMN-01/03).
     """
-    _run_strava_sync()
+    from tempo.sync import pipeline
+
+    settings, conn = _connected_db()
+    try:
+        try:
+            results = pipeline.run_full_sync(conn, settings)
+        except ValueError as exc:
+            # Strava credentials missing -- the same UX as `tempo strava sync`.
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
+    finally:
+        conn.close()
+
+    typer.secho("Sync complete (per-source status):", fg="green")
+    for r in results:
+        if r.ok:
+            typer.secho(f"  {r.source}: ok ({r.rows} raw rows)", fg="green")
+        else:
+            # A skipped Garmin run is NOT a failure of `tempo sync` -- surfaced
+            # clearly so a partial sync is never mistaken for complete.
+            typer.secho(f"  {r.source}: skipped -- {r.detail}", fg="yellow")
+
+
+# ---------------------------------------------------------------------------
+# Garmin ingestion commands (isolated failure domain)
+# ---------------------------------------------------------------------------
+
+garmin_app = typer.Typer(help="Garmin wellness ingestion: one-time login, backfill, sync.")
+app.add_typer(garmin_app, name="garmin")
+
+
+@garmin_app.command("login")
+def garmin_login_cmd() -> None:
+    """ONE-TIME interactive Garmin login; persists tokens for reuse (GRMN-02).
+
+    This is the ONLY command that submits your Garmin email/password. It logs in
+    once (prompting for an MFA code if Garmin asks) and persists Garmin's session
+    tokens under the tokens dir, so every later ``tempo sync`` reuses them and
+    NEVER logs in again -- which is what keeps you clear of Garmin's per-account
+    429 lockout. Set TEMPO_GARMIN_EMAIL / TEMPO_GARMIN_PASSWORD in your .env first.
+    """
+    from tempo.connectors.factory import garmin_login
+
+    settings = get_settings()
+    settings.ensure_dirs()
+
+    def _prompt_mfa() -> str:
+        return typer.prompt("Garmin MFA code")
+
+    try:
+        token_dir = garmin_login(settings, prompt_mfa=_prompt_mfa)
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:  # noqa: BLE001 - report any login failure cleanly
+        typer.secho(f"Garmin login failed: {exc}", fg=typer.colors.RED, err=True)
+        typer.echo("If you saw repeated 429s, STOP and wait a few hours -- retrying compounds")
+        typer.echo("Garmin's per-account lockout. Do not loop logins.")
+        raise typer.Exit(code=1) from exc
+
+    typer.secho("Garmin authorised. Session tokens stored at:", fg=typer.colors.GREEN)
+    typer.echo(f"  {token_dir}")
+    typer.echo("Future syncs reuse these tokens -- you should not need to log in again.")
+
+
+@garmin_app.command("backfill")
+def garmin_backfill_cmd(
+    days: int | None = typer.Option(
+        None, "--days", help="How many trailing days of wellness history to pull."
+    ),
+) -> None:
+    """Pull a trailing window of Garmin wellness history into raw (GRMN-04).
+
+    Reuses persisted tokens (run ``tempo garmin login`` first). On a 429 it stops
+    immediately with NO retry -- resume later. Isolated: a failure here exits
+    non-zero but never corrupts the Strava data.
+    """
+    from tempo.connectors.factory import build_garmin_connector
+    from tempo.connectors.garmin import SOURCE as GARMIN_SOURCE
+    from tempo.connectors.garmin import GarminAuthError, GarminSyncError
+
+    settings, conn = _connected_db()
+    try:
+        connector = build_garmin_connector(settings, backfill_days=days)
+        raw = RawWriter(conn, GARMIN_SOURCE)
+        connector.backfill(raw)
+        count = conn.execute(
+            "SELECT COUNT(*) FROM raw_response WHERE source=?", (GARMIN_SOURCE,)
+        ).fetchone()[0]
+        typer.secho(f"Garmin backfill complete. {count} raw wellness rows stored.", fg="green")
+    except (GarminAuthError, GarminSyncError) as exc:
+        typer.secho(f"Garmin backfill skipped: {exc}", fg=typer.colors.YELLOW, err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        conn.close()
+
+
+@garmin_app.command("sync")
+def garmin_sync_cmd() -> None:
+    """Incremental Garmin wellness sync (recent days), reusing tokens (GRMN-02/04).
+
+    Never triggers a fresh login. On any failure (429/auth/library) it logs and
+    skips without retry; this command reports the skip rather than crashing.
+    """
+    from tempo.connectors.factory import build_garmin_connector
+    from tempo.sync import pipeline
+
+    settings, conn = _connected_db()
+    try:
+        connector = build_garmin_connector(settings)
+        result = pipeline.run_garmin_sync(conn, connector)
+    finally:
+        conn.close()
+    if result.ok:
+        typer.secho(f"Garmin sync complete. {result.rows} raw wellness rows.", fg="green")
+    else:
+        typer.secho(f"Garmin sync skipped -- {result.detail}", fg=typer.colors.YELLOW)
 
 
 @app.command()
@@ -255,7 +372,8 @@ def transform() -> None:
         conn.close()
     typer.secho(
         f"Transform complete: {result.activities} activities, "
-        f"{result.streams} streams, {result.spine_days} spine days.",
+        f"{result.streams} streams, {result.wellness_days} wellness days, "
+        f"{result.spine_days} spine days.",
         fg="green",
     )
 
@@ -281,7 +399,8 @@ def rederive() -> None:
         conn.close()
     typer.secho(
         f"Rederive complete (no network): {result.activities} activities, "
-        f"{result.streams} streams, {result.spine_days} spine days.",
+        f"{result.streams} streams, {result.wellness_days} wellness days, "
+        f"{result.spine_days} spine days.",
         fg="green",
     )
 
