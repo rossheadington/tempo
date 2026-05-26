@@ -28,6 +28,7 @@ from datetime import date
 
 from tempo.transforms import spine
 from tempo.transforms import strava as strava_tf
+from tempo.transforms import wellness as wellness_tf
 
 logger = logging.getLogger(__name__)
 
@@ -39,20 +40,42 @@ class TransformResult:
     activities: int
     streams: int
     spine_days: int
+    wellness_days: int = 0
 
 
 def _rebuild(conn: sqlite3.Connection, *, fill_to: date | None) -> TransformResult:
     """Project raw -> structured inside one transaction. Caller-agnostic core.
 
-    Order respects the foreign keys: ``rebuild_activities`` ensures its own spine
-    days before inserting (so ``activity.day`` resolves), ``rebuild_spine`` then
-    zero-fills the continuous range, and ``rebuild_streams`` references only
-    already-inserted activities.
+    Order respects the foreign keys: ``rebuild_activities`` and
+    ``rebuild_wellness`` each ensure their own spine days before inserting (so the
+    ``day`` foreign keys resolve), ``rebuild_spine`` then zero-fills the continuous
+    range to cover both activity-only and wellness-only days, and
+    ``rebuild_streams`` references only already-inserted activities.
     """
     activities = strava_tf.rebuild_activities(conn)
+    wellness_days = _rebuild_wellness_if_present(conn)
     spine_days = spine.rebuild_spine(conn, fill_to=fill_to)
     streams = strava_tf.rebuild_streams(conn)
-    return TransformResult(activities=activities, streams=streams, spine_days=spine_days)
+    return TransformResult(
+        activities=activities,
+        streams=streams,
+        spine_days=spine_days,
+        wellness_days=wellness_days,
+    )
+
+
+def _rebuild_wellness_if_present(conn: sqlite3.Connection) -> int:
+    """Rebuild wellness only if the table exists (Phase 6+ schema).
+
+    Keeps transform/rederive working on a pre-Phase-6 DB (e.g. mid-migration in a
+    test) by returning 0 when ``wellness_day`` is absent.
+    """
+    has_table = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='wellness_day'"
+    ).fetchone()
+    if has_table is None:
+        return 0
+    return wellness_tf.rebuild_wellness(conn)
 
 
 def run_transform(conn: sqlite3.Connection, *, fill_to: date | None = None) -> TransformResult:
@@ -65,9 +88,10 @@ def run_transform(conn: sqlite3.Connection, *, fill_to: date | None = None) -> T
     with conn:  # one atomic transaction
         result = _rebuild(conn, fill_to=fill_to)
     logger.info(
-        "transform: %d activities, %d streams, %d spine days",
+        "transform: %d activities, %d streams, %d wellness days, %d spine days",
         result.activities,
         result.streams,
+        result.wellness_days,
         result.spine_days,
     )
     return result
@@ -85,14 +109,19 @@ def run_rederive(conn: sqlite3.Connection, *, fill_to: date | None = None) -> Tr
         # Order: children before parents to satisfy foreign keys.
         conn.execute("DELETE FROM activity_stream;")
         conn.execute("DELETE FROM activity;")
+        if conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='wellness_day'"
+        ).fetchone():
+            conn.execute("DELETE FROM wellness_day;")
         # date_spine is rebuilt from data bounds; clearing it keeps rederive a pure
         # function of raw (no orphan spine days from a previous, larger dataset).
         conn.execute("DELETE FROM date_spine;")
         result = _rebuild(conn, fill_to=fill_to)
     logger.info(
-        "rederive: rebuilt %d activities, %d streams, %d spine days (no network)",
+        "rederive: rebuilt %d activities, %d streams, %d wellness days, %d spine days (no network)",
         result.activities,
         result.streams,
+        result.wellness_days,
         result.spine_days,
     )
     return result
