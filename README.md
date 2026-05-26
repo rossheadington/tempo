@@ -11,8 +11,8 @@ Claude analyses on top of it.
 
 | Source | Method | Status |
 |---|---|---|
-| **Strava** | Official REST API (OAuth2) — activities + streams (HR, pace, GPS, power, cadence) | Planned (first) |
-| **Garmin** | Unofficial `garminconnect` — sleep, HRV, body battery, resting HR, stress, steps | Planned |
+| **Strava** | Official REST API (OAuth2) — activities + streams (HR, pace, GPS, power, cadence) | Done |
+| **Garmin** | Unofficial `garminconnect` — sleep, HRV, body battery, resting HR, stress, steps | Done (isolated) |
 | **MyFitnessPal** | No official API — deferred (CSV-drop ingest later) | Deferred |
 
 ## Approach
@@ -69,6 +69,80 @@ The backfill is checkpointed: if it hits Strava's rate limit (200 req/15 min,
 > self-data that is never shared; this is an accepted, documented stance (see
 > `.planning/REQUIREMENTS.md` → Known Accepted Conflicts), not an oversight.
 
+## Garmin setup (one-time)
+
+Tempo pulls your Garmin **wellness** data (sleep, HRV, resting HR, body battery,
+stress, steps) through the unofficial `garminconnect` library. Garmin has no
+official personal API, so this is the most fragile source — Tempo treats it as an
+**isolated failure domain**: if Garmin breaks (a site change, an account 429,
+expired session), the daily run logs it and skips, and your Strava sync + all
+analysis still complete on existing data. No Garmin data is ever lost (it is
+re-derivable from the raw store).
+
+> **Privacy & safety:** your Garmin password lives only in the gitignored `.env`.
+> Garmin session tokens are stored under `~/.tempo/tokens/garmin/` (mode 0600),
+> outside the repo tree, and are gitignored. Nothing Garmin-related is ever
+> committed.
+
+1. **Configure credentials.** In your `.env`:
+   ```
+   TEMPO_GARMIN_EMAIL=<your Garmin Connect email>
+   TEMPO_GARMIN_PASSWORD=<your Garmin Connect password>
+   ```
+2. **Log in once (interactive).** Run:
+   ```
+   tempo garmin login
+   ```
+   This is the **only** command that submits your credentials. If Garmin asks for
+   a multi-factor (MFA) code, Tempo prompts for it. On success, session tokens are
+   persisted and **reused** — every later sync loads those tokens and **never logs
+   in again**. This matters: Garmin aggressively rate-limits logins *per account*,
+   and repeated logins can lock you out (of the app too) for 48h+. The scheduled
+   sync therefore never triggers a fresh login.
+
+   > **If you ever see repeated `429 Too Many Requests`: STOP.** Do not retry —
+   > retries compound an account-level lockout. Wait a few hours. Tempo itself
+   > never retries a Garmin 429 (it fails-logs-skips immediately) for exactly this
+   > reason.
+
+### Pulling wellness data
+
+```
+tempo garmin backfill --days 60   # one-time: trailing 60 days of wellness history
+tempo garmin sync                 # incremental: recent days (reuses tokens)
+tempo sync                        # daily: runs Strava, THEN attempts Garmin (isolated)
+```
+
+`tempo sync` reports per-source status, e.g.:
+```
+Sync complete (per-source status):
+  strava: ok (1234 raw rows)
+  garmin: skipped -- not authenticated: ...   # never blocks Strava
+```
+
+Raw Garmin responses are stored verbatim, then transformed (`tempo transform` /
+`tempo rederive`, zero network) into a `wellness_day` table — **one row per local
+calendar day**, keyed by Garmin's `calendarDate` (the wake-up day it assigns to
+overnight sleep/HRV, which removes the cross-midnight ambiguity). The
+`daily_summary` view left-joins wellness so every day carries its activity,
+wellness, and journal context in one row (rest days with only sleep included).
+
+### Personal baselines
+
+Raw HRV / resting HR / sleep numbers are meaningless without a personal norm, so
+Tempo computes **rolling personal baselines** (trailing-window mean + SD with a
+z-score, plus an EWMA) per metric from `wellness_day`. A reading is compared only
+to the user's own recent history; with too little history a baseline honestly
+reports "insufficient data" rather than inventing a norm. These feed the recovery
+analysis in Phase 7.
+
+> **Library fragility.** `garminconnect` is unofficial and can break when Garmin
+> changes its auth/site (e.g. the `garth` foundation was deprecated in March
+> 2026). Tempo isolates it behind the connector seam so a breakage degrades
+> Garmin only. If it ever stops working, bump the library when upstream patches
+> it; in the meantime Strava + analysis keep running, and you can fall back to
+> Garmin's manual FIT/CSV export.
+
 ## Analysis & reports
 
 Once activities are synced and transformed, Tempo turns them into per-activity
@@ -98,11 +172,13 @@ reads them for race-readiness context; they are never committed.
 
 ## Status
 
-Phases 1–4 complete. **Phase 4 is the Strava end-to-end milestone** — the full
-pull → store → transform → analyze → report loop now works on real Strava data
-(only the one-time `tempo strava auth` + a backfill needs your own API app).
-See `.planning/` for the roadmap and requirement traceability.
+Phases 1–6 complete. **Phase 4 was the Strava end-to-end milestone** (pull →
+store → transform → analyze → report on real Strava data). **Phase 6** adds Garmin
+wellness as an isolated source: login-once token reuse, no-retry-on-429
+fail-log-skip, a `calendarDate`-keyed `wellness_day` table joined into
+`daily_summary`, and personal rolling baselines. See `.planning/` for the roadmap
+and requirement traceability.
 
 ## Stack
 
-Python 3.14 · SQLite · uv · stravalib · tenacity · pydantic-settings
+Python 3.14 · SQLite · uv · stravalib · garminconnect · tenacity · pydantic-settings

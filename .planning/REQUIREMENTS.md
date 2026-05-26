@@ -55,11 +55,11 @@ the Strava end-to-end milestone and the Garmin/analysis milestone.
 
 ### Garmin Ingestion
 
-- [ ] **GRMN-01**: A `garminconnect`-backed connector implements the same connector interface as Strava and is isolated as a failure domain
-- [ ] **GRMN-02**: Garmin auth happens once via an explicit `tempo garmin login`; tokens are persisted and reused; the scheduled job never triggers a fresh login
-- [ ] **GRMN-03**: On a Garmin 429 / auth failure the run fails-logs-skips without retry, and Strava sync + analysis still complete
-- [ ] **GRMN-04**: Garmin wellness (HRV, sleep, resting HR, body battery, stress, steps) is stored raw then transformed into a `wellness_day` table keyed by `calendarDate`
-- [ ] **GRMN-05**: Personal rolling baselines for HRV / resting HR / sleep are computed (raw values are meaningless without a baseline)
+- [x] **GRMN-01**: A `garminconnect`-backed connector implements the same connector interface as Strava and is isolated as a failure domain
+- [x] **GRMN-02**: Garmin auth happens once via an explicit `tempo garmin login`; tokens are persisted and reused; the scheduled job never triggers a fresh login
+- [x] **GRMN-03**: On a Garmin 429 / auth failure the run fails-logs-skips without retry, and Strava sync + analysis still complete
+- [x] **GRMN-04**: Garmin wellness (HRV, sleep, resting HR, body battery, stress, steps) is stored raw then transformed into a `wellness_day` table keyed by `calendarDate`
+- [x] **GRMN-05**: Personal rolling baselines for HRV / resting HR / sleep are computed (raw values are meaningless without a baseline)
 
 ### Scheduling & Delivery
 
@@ -138,11 +138,11 @@ Explicitly excluded. Documented to prevent scope creep.
 | JRNL-01 | Phase 5 | Complete |
 | JRNL-02 | Phase 5 | Complete |
 | JRNL-03 | Phase 5 | Complete |
-| GRMN-01 | Phase 6 | Pending |
-| GRMN-02 | Phase 6 | Pending |
-| GRMN-03 | Phase 6 | Pending |
-| GRMN-04 | Phase 6 | Pending |
-| GRMN-05 | Phase 6 | Pending |
+| GRMN-01 | Phase 6 | Complete |
+| GRMN-02 | Phase 6 | Complete |
+| GRMN-03 | Phase 6 | Complete |
+| GRMN-04 | Phase 6 | Complete |
+| GRMN-05 | Phase 6 | Complete |
 | ANL-03 | Phase 7 | Pending |
 | ANL-04 | Phase 7 | Pending |
 | SCHED-01 | Phase 7 | Pending |
@@ -156,7 +156,8 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-26*
-*Last updated: 2026-05-26 after Phase 5 (Journaling via Claude) completed — JRNL-01..03 Complete. A validated `tempo journal add` entrypoint records structured subjective entries (RPE 1–10, feel, notes), resolves the activity by date+sport, computes an sRPE (RPE × duration) load track, and surfaces journal fields in `daily_summary` (one row per spine day preserved); sRPE fills the daily load on otherwise-insufficient days, flagged `sRPE`. Claude captures entries only through this boundary — never raw SQL (docs/JOURNALING.md).*
+*Last updated: 2026-05-26 after Phase 6 (Garmin Ingestion) completed — GRMN-01..05 Complete. A `garminconnect`-backed connector implements the same `Connector` protocol as Strava and is isolated as a failure domain: a 429 / auth break / library exception is caught, logged, and skipped with NO retry (the connector never retries a 429; the `tempo.sync.pipeline` wraps it so Strava sync + transforms + analysis still complete on existing data — verified by an end-to-end `tempo sync` where a simulated Garmin 429 left Strava ok and transform/analyze succeeding). Garmin auth happens once via interactive `tempo garmin login` (MFA via prompt callback); session tokens are persisted under `~/.tempo/tokens/garmin` and REUSED — the scheduled `sync`/`backfill` load only from the token store and never trigger a fresh SSO login (verified: 0 credential logins on backfill). Wellness (HRV, sleep score/duration/stages, resting HR, body battery, stress, steps) is stored raw (endpoints `sleep`/`hrv`/`stats`, keyed by ISO date) then collapsed by pure no-network transforms into a `wellness_day` table keyed by Garmin's `calendarDate` (the local wake-up day); `daily_summary` LEFT-JOINs wellness preserving one-row-per-spine-day (wellness-only rest days included). Personal rolling baselines (trailing mean+SD z-score + EWMA) for HRV / resting HR / sleep are computed from `wellness_day` (`tempo/analysis/baselines.py`), reporting "insufficient data" until enough history accumulates, exposed for Phase 7's recovery analysis. All proven with a fake garminconnect client (`tests/garmin_fakes.py`) — no real credentials.*
+*Previously updated: 2026-05-26 after Phase 5 (Journaling via Claude) completed — JRNL-01..03 Complete. A validated `tempo journal add` entrypoint records structured subjective entries (RPE 1–10, feel, notes), resolves the activity by date+sport, computes an sRPE (RPE × duration) load track, and surfaces journal fields in `daily_summary` (one row per spine day preserved); sRPE fills the daily load on otherwise-insufficient days, flagged `sRPE`. Claude captures entries only through this boundary — never raw SQL (docs/JOURNALING.md).*
 *Previously updated: 2026-05-26 after Phase 4 (Load Metrics + First Analysis) completed — LOAD-01..03, ANL-01, ANL-02, ANL-05, PLAN-01, PLAN-02, DELIV-01 Complete. This is the Strava end-to-end milestone: pull → store → transform → analyze → report works end-to-end on stored data.*
 *Previously updated: 2026-05-26 after Phase 3 (Strava Transforms + Date Spine) completed — STORE-01..STORE-05 Complete.*
 *Note on STORE-04/05 scope: the `daily_summary` view LEFT-JOINs from `date_spine` and is shaped so the wellness (Phase 6) and journal (Phase 5) sources can be LEFT-JOINed in when they exist; the bucketing rule and tests already cover Garmin's `calendarDate` (overnight) attribution so those sources will bucket correctly on arrival. Phase 3 delivers the Strava activity join, the spine, and the proven bucketing rule end-to-end.*

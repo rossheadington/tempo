@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** Phase 6 — Garmin Ingestion (next)
+**Current focus:** Phase 7 — Recovery + Correlation + Scheduler (next)
 
 ## Current Position
 
-Phase: 5 of 7 (Journaling via Claude) — COMPLETE
-Plan: 1 of 1 in Phase 5 complete
-Status: Phase 5 done — a validated `tempo journal add` entrypoint records structured subjective entries (RPE 1–10, feel, notes), resolves the activity by date+sport, computes an sRPE load track, and surfaces journal fields in `daily_summary`; sRPE fills in as the daily load on otherwise-insufficient days. Ready to plan Phase 6 (Garmin Ingestion).
-Last activity: 2026-05-26 — Phase 5 (Journaling via Claude) implemented, tested, committed, and pushed
+Phase: 6 of 7 (Garmin Ingestion) — COMPLETE
+Plan: 1 of 1 in Phase 6 complete
+Status: Phase 6 done — a `garminconnect`-backed connector implements the same `Connector` protocol as Strava and is an ISOLATED failure domain (a 429/auth/library failure is caught, logged, and skipped with NO retry; Strava sync + transforms + analysis still complete on existing data). Auth is login-once via interactive `tempo garmin login` (MFA prompt); tokens are persisted and reused — the scheduled sync never triggers a fresh login. Wellness (HRV, sleep, resting HR, body battery, stress, steps) is stored raw then transformed (no network) into a `wellness_day` table keyed by Garmin's `calendarDate`; `daily_summary` LEFT-JOINs wellness preserving one-row-per-spine-day. Personal rolling baselines (mean+SD z-score + EWMA) for HRV/resting HR/sleep are computed for Phase 7. Ready to plan Phase 7 (Recovery + Correlation + Scheduler).
+Last activity: 2026-05-26 — Phase 6 (Garmin Ingestion) implemented, tested, committed, and pushed
 
-Progress: [███████░░░] ~71% (5 of 7 phases)
+Progress: [█████████░] ~86% (6 of 7 phases)
 
 ## What's Done (Phase 1: Foundation)
 
@@ -235,6 +235,85 @@ the day `method='sRPE'` with the sRPE value as the load.
   (no network), and bucket via the single rule in `tempo/transforms/bucketing.py`. The
   `daily_summary` gold layer is a VIEW (always fresh) LEFT-JOINed from `date_spine`; future
   sources join through `day`. `rederive` = clear + rebuild in one txn; `transform` = upsert.
+
+## What's Done (Phase 6: Garmin Ingestion)
+
+- `tempo/migrations/0004_wellness.sql` (SCHEMA_VERSION → 4) — `wellness_day` table:
+  `day (PK, FK date_spine), resting_hr, hrv_last_night, hrv_status, sleep_score,
+  sleep_seconds, deep_s/rem_s/light_s/awake_s, body_battery_high/low, stress_avg,
+  steps, updated_at`. `daily_summary` VIEW dropped+recreated to LEFT-JOIN wellness
+  (one row per spine day preserved; `has_wellness` flag; wellness-only rest days kept).
+  (GRMN-04; STORE-04)
+- `tempo/connectors/garmin.py` — `GarminConnector` implements the SAME `Connector`
+  protocol as Strava (`backfill`/`sync`). Behind a narrow `GarminClient` Protocol seam
+  (so the fragile library is decoupled + fakeable). Token-reuse only: `_authenticated_client`
+  builds a credential-less client and logs in via the token store — it CANNOT fall through
+  to an SSO credential login (GRMN-02). **No-retry-on-429**: a 429 (typed-name OR string
+  match) on login or any data call raises `GarminSyncError` immediately — never a backoff
+  loop (PITFALLS 2). Per-day verbatim fetch of `sleep`/`hrv`/`stats`, stored under
+  `(garmin, <endpoint>, <ISO date>)`; the whole pull + watermark advance is ONE transaction
+  so a 429 mid-pull rolls back cleanly and never advances the watermark (Anti-Pattern 3).
+  `GarminAuthError` (no tokens → run `tempo garmin login`) vs `GarminSyncError` (runtime).
+  (GRMN-01/02/03/04)
+- `tempo/sync/pipeline.py` — the ISOLATION seam. `run_garmin_sync` wraps the connector in
+  try/except catching `GarminSyncError`/`GarminAuthError`/`Exception` → returns a
+  `SourceResult(ok=False)`, NEVER raising. `run_full_sync` runs Strava (authoritative,
+  not isolated) THEN attempts Garmin isolated, so a Garmin failure can't block Strava or
+  analysis (GRMN-01/03; Anti-Pattern 5). Per-source status reported honestly (no silent
+  partial-success).
+- `tempo/connectors/factory.py` — `build_garmin_connector` (token-only client, NEVER
+  credentials), `garmin_login` (the ONLY credential path: submits email/password + MFA
+  via `prompt_mfa`, library dumps DI tokens to `~/.tempo/tokens/garmin`), `garmin_token_dir`.
+- `tempo/transforms/wellness.py` — pure no-network `rebuild_wellness`: groups raw
+  sleep/hrv/stats by ISO key and collapses each day into ONE `wellness_day` row keyed by
+  Garmin's `calendarDate` (via shared `local_day_from_calendar_date`); tolerates missing
+  endpoints / corrupt payloads; idempotent upsert. Wired into `transform`/`rederive` runner
+  (rebuilds wellness, clears it on rederive). Spine `data_day_bounds` now unions wellness +
+  journal days so wellness-only days extend the spine. (GRMN-04; STORE-02)
+- `tempo/analysis/baselines.py` — personal rolling baselines (GRMN-05): trailing-window
+  mean + sample-SD z-score (exclusive of today) + EWMA per metric (HRV/resting HR/sleep)
+  over `wellness_day`; `<MIN_POINTS` priors or zero variance → `None` ("insufficient data",
+  honest). Read helpers skip NULL days. Exposed (`compute_baselines`/`latest_baselines`) for
+  Phase 7's recovery analysis.
+- `tempo/cli.py` — `tempo garmin login` (interactive, one-time, MFA prompt; warns NOT to
+  retry on 429), `tempo garmin backfill --days N`, `tempo garmin sync` (token reuse, reports
+  skip not crash), and `tempo sync` now runs Strava then isolated Garmin with per-source
+  status. transform/rederive echo wellness counts.
+- `tests/garmin_fakes.py` — fake garminconnect client (no network/credentials): realistic
+  sleep/hrv/stats payloads, a 429 exception named `GarminConnectTooManyRequestsError`,
+  token-reuse vs credential-login distinction (counts credential logins), and per-call
+  429/error/missing-token scripting.
+- `tests/` — 288 pytest tests (was 235), all green; ruff check + format clean. New:
+  `test_garmin_connector.py` (interface conformance, verbatim raw keyed by date, watermark,
+  token-reuse no-credential-login, 429 no-retry + rollback, idempotency, backfill),
+  `test_wellness_transforms.py` (parse fns, collapse-to-one-day, calendarDate-not-key,
+  missing endpoints, rederive zero-network, corrupt-payload skip), `test_wellness_summary.py`
+  (daily_summary wellness columns + one-row-per-spine-day invariant + wellness-only/activity-
+  only days + spine extension), `test_baselines.py` (hand-checked mean/SD/z/EWMA, insufficient-
+  data None, window bounding, DB integration), `test_garmin_isolation.py` (429/auth/unexpected
+  all caught; full pipeline Strava survives Garmin 429; analysis runs after), `test_garmin_cli.py`
+  (login persists via credential client, sync reuses tokens 0-credential-logins, 429 reports
+  skip, `tempo sync` both-sources isolated), plus wellness schema tests in `test_db.py`.
+
+All five Phase-6 success criteria verified live against a throwaway temp data dir with the
+fake client: (1) `GarminConnector` is a `Connector` and a 429 was isolated; (2) a 40-day
+backfill made **0 credential logins** (token reuse); (3) an end-to-end `tempo sync` with a
+simulated Garmin 429 exited 0 with `strava: ok` and Garmin skipped, then `tempo transform`
+and `tempo analyze` both succeeded; (4) 120 raw rows → 40 `wellness_day` rows keyed by
+calendarDate, surfaced in `daily_summary`; (5) baselines produced real z-scores (HRV z≈-1.46
+vs a 39-day mean) and `None` where variance/history was insufficient.
+
+### Conventions established this phase
+- Garmin is an **isolated failure domain**: the connector raises, the `tempo.sync.pipeline`
+  catches — a Garmin failure NEVER blocks Strava or analysis (Anti-Pattern 5). Contrast
+  Strava, where tenacity backoff on a 429 is fine; a Garmin 429 gets NO retry (account-lockout
+  risk, PITFALLS 2).
+- Garmin auth is login-once: only `tempo garmin login` touches credentials; sync/backfill
+  reuse persisted tokens and never log in. The fragile library sits behind a `GarminClient`
+  Protocol seam so it's swappable + fakeable.
+- Wellness buckets on Garmin's `calendarDate` (local wake-up day) via the shared bucketing
+  rule; multiple raw endpoints collapse into one `wellness_day` row; rebuilt purely from raw
+  (zero network).
 
 ## Performance Metrics
 
