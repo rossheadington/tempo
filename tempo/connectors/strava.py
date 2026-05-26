@@ -39,7 +39,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from stravalib import Client
-from stravalib.exc import RateLimitExceeded
+from stravalib.exc import ObjectNotFound, RateLimitExceeded
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -365,11 +365,21 @@ class StravaConnector:
             return False
 
         self.ensure_authenticated()
-        payload = self._get(
-            f"/activities/{activity_id}/streams",
-            keys=",".join(STREAM_TYPES),
-            key_by_type=True,
-        )
+        try:
+            payload = self._get(
+                f"/activities/{activity_id}/streams",
+                keys=",".join(STREAM_TYPES),
+                key_by_type=True,
+            )
+        except ObjectNotFound:
+            # Some activities (manual entries, indoor sessions, very old uploads)
+            # have no stream data and 404 on this endpoint. Store an empty marker
+            # so we don't re-spend rate-limit budget retrying them on every run;
+            # transform_streams iterates the payload and yields nothing for {}.
+            with raw.conn:
+                raw.put(EP_STREAMS, key, {})
+            logger.info("strava: no streams for activity %s (404); marked done", activity_id)
+            return True
         with raw.conn:
             raw.put(EP_STREAMS, key, payload)
         logger.info("strava: stored streams for activity %s", activity_id)

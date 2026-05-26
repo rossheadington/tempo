@@ -299,6 +299,36 @@ def test_fetch_streams_force_refetches(tmp_path: Path, conn: sqlite3.Connection)
     assert _raw_count(conn, "streams") == 1  # still one row (upsert)
 
 
+def test_fetch_streams_404_marks_done_and_does_not_abort(
+    tmp_path: Path, conn: sqlite3.Connection
+) -> None:
+    # Activity 102's streams 404 (manual/streamless); 101 is fine. A 404 must not
+    # raise -- it stores an empty marker so a batch keeps going and never re-fetches.
+    client = FakeStravaClient(streams={101: make_streams()}, streams_not_found={102})
+    connector, store = _connector(tmp_path, client)
+    _seed_valid_tokens(store)
+    raw = RawWriter(conn, "strava")
+
+    # 404 is swallowed: returns True (work done), stores an empty {} marker.
+    assert connector.fetch_streams(raw, 102) is True
+    import json
+
+    payload = json.loads(
+        conn.execute(
+            "SELECT payload FROM raw_response WHERE endpoint='streams' AND entity_key='102'"
+        ).fetchone()[0]
+    )
+    assert payload == {}
+
+    # Re-run is lazy: marked done, no extra network call.
+    calls_before = len(client.get_calls)
+    assert connector.fetch_streams(raw, 102) is False
+    assert len(client.get_calls) == calls_before
+
+    # A good activity in the same batch still fetches normally.
+    assert connector.fetch_streams(raw, 101) is True
+
+
 def test_stored_activity_ids_lists_backfilled_ids(tmp_path: Path, conn: sqlite3.Connection) -> None:
     client = FakeStravaClient(pages=_three_pages())
     connector, store = _connector(tmp_path, client)

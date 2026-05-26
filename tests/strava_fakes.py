@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from stravalib.exc import RateLimitExceeded
+from stravalib.exc import ObjectNotFound, RateLimitExceeded
 
 
 # A realistic-but-fake activity summary (subset of Strava's SummaryActivity).
@@ -171,9 +171,12 @@ class FakeStravaClient:
         exchange_result: dict[str, Any] | None = None,
         fail_get_on_call: int | None = None,
         rate_limit_from_page: int | None = None,
+        streams_not_found: set[int] | None = None,
     ) -> None:
         self._pages = pages or {}
         self._streams = streams or {}
+        # Activity ids whose /streams endpoint should 404 (manual/streamless acts).
+        self._streams_not_found = streams_not_found or set()
         self._details = details or {}
         self._refresh_sequence = list(refresh_sequence or [])
         self._exchange_result = exchange_result
@@ -239,6 +242,8 @@ class FakeStravaClient:
             return acts
         if url.endswith("/streams"):
             aid = int(url.split("/")[2])
+            if aid in self._streams_not_found:
+                raise ObjectNotFound("simulated 404: streams not found")
             return self._streams.get(aid, {})
         if url.startswith("/activities/"):
             aid = int(url.split("/")[2])
