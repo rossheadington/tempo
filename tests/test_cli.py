@@ -68,10 +68,19 @@ def test_transform_commands_run_on_empty_db(cmd: str, tempo_data_dir: Path) -> N
 def test_journal_group_runs(tempo_data_dir: Path) -> None:
     result = runner.invoke(app, ["journal"])
     assert result.exit_code == 0, result.output
-    assert "not yet implemented" in result.output
+    assert "tempo journal" in result.output
 
 
-def test_journal_add_runs(tempo_data_dir: Path) -> None:
+def test_journal_add_requires_rpe(tempo_data_dir: Path) -> None:
+    # --rpe is required; invoking without it is a usage error (exit code 2).
     result = runner.invoke(app, ["journal", "add"])
+    assert result.exit_code != 0
+
+
+def test_journal_add_records_entry(tempo_data_dir: Path) -> None:
+    result = runner.invoke(
+        app, ["journal", "add", "--rpe", "7", "--feel", "strong", "--duration-min", "60"]
+    )
     assert result.exit_code == 0, result.output
-    assert "not yet implemented" in result.output
+    assert "recorded" in result.output
+    assert "sRPE 420" in result.output  # 7 * 60
