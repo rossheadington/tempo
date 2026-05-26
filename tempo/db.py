@@ -14,7 +14,7 @@ from pathlib import Path
 
 # The expected schema version after all bundled migrations have been applied.
 # Bump this (and add a migration file) whenever the schema changes.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Tables the foundation schema guarantees exist. Used by tests and `tempo` for
 # a quick post-init sanity check.
@@ -27,6 +27,10 @@ STRUCTURED_TABLES = ("activity", "activity_stream")
 # Journal (subjective) table added in migration 0003 (Phase 5). Written only via
 # the validated journal service, never by free-form SQL.
 JOURNAL_TABLES = ("journal",)
+
+# Wellness (Garmin) table added in migration 0004 (Phase 6). One row per local
+# calendar day (Garmin's calendarDate), re-derived purely from raw Garmin payloads.
+WELLNESS_TABLES = ("wellness_day",)
 
 
 def connect(db_path: Path) -> sqlite3.Connection:

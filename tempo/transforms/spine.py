@@ -45,18 +45,34 @@ def daterange(start: date, end: date) -> list[date]:
     return days
 
 
+def _existing_tables(conn: sqlite3.Connection) -> set[str]:
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    return {str(r[0]) for r in rows}
+
+
 def data_day_bounds(conn: sqlite3.Connection) -> tuple[str, str] | None:
     """Return ``(min_day, max_day)`` across all structured day-bearing tables.
 
-    Currently only ``activity`` contributes days; Phase 6 wellness and Phase 5
-    journal will be unioned in here so the spine still covers wellness-only or
-    journal-only days. Returns ``None`` if there is no dated data at all.
+    Unions every dated structured table that contributes its own days so the spine
+    still covers wellness-only days (a rest day with only Garmin sleep) and
+    journal-only days (a rest-day reflection with no activity), never dropping the
+    most interesting recovery days (ARCHITECTURE Anti-Pattern 2). Tables that do
+    not yet exist (older schema) are skipped so this stays safe on any version.
+    Returns ``None`` if there is no dated data at all.
     """
-    row = conn.execute("SELECT MIN(day) AS lo, MAX(day) AS hi FROM activity").fetchone()
-    lo, hi = (row["lo"], row["hi"]) if row is not None else (None, None)
-    if lo is None or hi is None:
+    present = _existing_tables(conn)
+    # Every structured table that carries a local-day column.
+    day_tables = [t for t in ("activity", "wellness_day", "journal") if t in present]
+    los: list[str] = []
+    his: list[str] = []
+    for table in day_tables:
+        row = conn.execute(f"SELECT MIN(day) AS lo, MAX(day) AS hi FROM {table}").fetchone()
+        if row is not None and row["lo"] is not None and row["hi"] is not None:
+            los.append(str(row["lo"]))
+            his.append(str(row["hi"]))
+    if not los or not his:
         return None
-    return (str(lo), str(hi))
+    return (min(los), max(his))
 
 
 def ensure_days(conn: sqlite3.Connection, days: list[str]) -> int:
