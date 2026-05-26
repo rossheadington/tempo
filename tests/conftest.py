@@ -30,6 +30,10 @@ def tempo_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[
         "TEMPO_GARMIN_PASSWORD",
     ):
         monkeypatch.delenv(key, raising=False)
+    # pydantic-settings also reads the `.env` FILE from the cwd, so a developer's
+    # real ~/Projects/tempo/.env would leak credentials into "no credentials"
+    # tests. Run from the temp dir (no .env there) to keep the suite hermetic.
+    monkeypatch.chdir(tmp_path)
     yield data_dir
 
 
