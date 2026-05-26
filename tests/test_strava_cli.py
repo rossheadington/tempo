@@ -97,7 +97,10 @@ def test_sync_runs_with_mocked_client(tempo_data_dir: Path, monkeypatch) -> None
 
     result = runner.invoke(app, ["sync"])
     assert result.exit_code == 0, result.output
-    assert "Strava sync complete" in result.output
+    # `tempo sync` now reports per-source status; Strava succeeds and the
+    # (unauthenticated) Garmin source is isolated -- skipped, never blocking.
+    assert "strava: ok" in result.output
+    assert "garmin: skipped" in result.output
 
     conn = db.connect(tempo_data_dir / "tempo.db")
     try:

@@ -99,3 +99,42 @@ def test_sync_state_and_date_spine_columns(tmp_path: Path) -> None:
         assert {"day", "dow", "week", "month", "year"} <= spine_cols
     finally:
         conn.close()
+
+
+def test_wellness_day_table_and_columns(tmp_path: Path) -> None:
+    """Migration 0004 creates wellness_day keyed by `day` with the Phase-6 metrics."""
+    conn = db.init_db(tmp_path / "tempo.db")
+    try:
+        assert "wellness_day" in db.table_names(conn)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(wellness_day);")}
+        assert {
+            "day",
+            "resting_hr",
+            "hrv_last_night",
+            "hrv_status",
+            "sleep_score",
+            "sleep_seconds",
+            "deep_s",
+            "rem_s",
+            "light_s",
+            "awake_s",
+            "body_battery_high",
+            "body_battery_low",
+            "stress_avg",
+            "steps",
+        } <= cols
+        # `day` is the primary key (one row per calendar day).
+        pk = [r[1] for r in conn.execute("PRAGMA table_info(wellness_day);") if r[5]]
+        assert pk == ["day"]
+    finally:
+        conn.close()
+
+
+def test_daily_summary_exposes_wellness_columns(tmp_path: Path) -> None:
+    """The gold daily_summary view now surfaces wellness fields (STORE-04; GRMN-04)."""
+    conn = db.init_db(tmp_path / "tempo.db")
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(daily_summary);")}
+        assert {"hrv_last_night", "resting_hr", "sleep_score", "steps", "has_wellness"} <= cols
+    finally:
+        conn.close()
