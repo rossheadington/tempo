@@ -93,9 +93,9 @@ Voice memos sent to a personal Telegram chat → local Whisper transcription →
 
 ### Local transcription
 
-- [ ] **VOICE-04**: Voice memos (Opus-in-OGG) are downloaded to a gitignored local voice cache and transcribed locally via `faster-whisper` — no audio bytes ever leave the laptop
-- [ ] **VOICE-05**: Default Whisper model is `small.en` int8 (CPU-only on Apple Silicon — faster-whisper has no Metal support); model is configurable via `pydantic-settings` so the user can swap to `base.en` / `medium.en` / `large-v3-turbo` if they choose to wait
-- [ ] **VOICE-06**: Model is loaded once at process start (singleton) and reused across transcriptions; first-run model download is warmed at startup, not on first request
+- [x] **VOICE-04**: Voice memos (Opus-in-OGG) are downloaded to a gitignored local voice cache and transcribed locally via `faster-whisper` — no audio bytes ever leave the laptop
+- [x] **VOICE-05**: Default Whisper model is `small.en` int8 (CPU-only on Apple Silicon — faster-whisper has no Metal support); model is configurable via `pydantic-settings` so the user can swap to `base.en` / `medium.en` / `large-v3-turbo` if they choose to wait
+- [x] **VOICE-06**: Model is loaded once at process start (singleton) and reused across transcriptions; first-run model download is warmed at startup, not on first request
 
 ### Claude Code session loop
 
@@ -204,9 +204,9 @@ Explicitly excluded. Documented to prevent scope creep.
 | VOICE-01 | Phase 9 | Pending |
 | VOICE-02 | Phase 9 | Pending |
 | VOICE-03 | Phase 10 | Pending |
-| VOICE-04 | Phase 10 | Pending |
-| VOICE-05 | Phase 10 | Pending |
-| VOICE-06 | Phase 10 | Pending |
+| VOICE-04 | Phase 10 | Complete |
+| VOICE-05 | Phase 10 | Complete |
+| VOICE-06 | Phase 10 | Complete |
 | VOICE-07 | Phase 11 | Pending |
 | VOICE-08 | Phase 11 | Pending |
 | VOICE-09 | Phase 11 | Pending |

@@ -98,6 +98,36 @@ class Settings(BaseSettings):
         ),
     )
 
+    # ---- Whisper transcription (Phase 10 / v1.1) ----
+    # NOTE: as with the Telegram fields above, these three are read from BARE
+    # env-var names (WHISPER_MODEL_NAME / WHISPER_COMPUTE_TYPE / WHISPER_DEVICE)
+    # via validation_alias, bypassing the TEMPO_ prefix. faster-whisper itself
+    # uses the WHISPER_* convention in its docs, so we preserve it.
+    whisper_model_name: str = Field(
+        default="small.en",
+        validation_alias="WHISPER_MODEL_NAME",
+        description=(
+            "faster-whisper model name. Default small.en is the sane CPU choice "
+            "on Apple Silicon; swap to base.en / medium.en / large-v3-turbo via "
+            "env var."
+        ),
+    )
+    whisper_compute_type: str = Field(
+        default="int8",
+        validation_alias="WHISPER_COMPUTE_TYPE",
+        description=(
+            "CTranslate2 compute type: int8 (default, fast on CPU) / "
+            "int8_float16 / float16 / float32."
+        ),
+    )
+    whisper_device: str = Field(
+        default="cpu",
+        validation_alias="WHISPER_DEVICE",
+        description=(
+            "cpu (default; CTranslate2 has no Metal/MPS support on Mac) or cuda on Linux+NVIDIA."
+        ),
+    )
+
     # ---- Load / analysis settings (Phase 4) ----
     threshold_pace_s_per_km: float | None = Field(
         default=None,
@@ -170,6 +200,17 @@ class Settings(BaseSettings):
     def heat_path(self) -> Path:
         """Path to the user-maintained heat-adaptation log (read for recovery context)."""
         return self.content_root / "heat.md"
+
+    @property
+    def voice_cache_dir(self) -> Path:
+        """Directory where downloaded Telegram voice memos are cached (gitignored).
+
+        Derived from ``content_root``; created lazily on first use by the voice
+        handler (Plan 10-02) with 0700 permissions -- intentionally NOT created
+        in :meth:`ensure_dirs` so ``tempo init`` does not surface a voice/ dir
+        for users who never run the bot.
+        """
+        return self.content_root / "voice"
 
     def ensure_dirs(self) -> None:
         """Create the data, tokens, and reports directories with safe perms.

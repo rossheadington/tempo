@@ -88,3 +88,75 @@ def test_env_overrides_secrets(monkeypatch) -> None:
     monkeypatch.setenv("TEMPO_STRAVA_CLIENT_ID", "12345")
     settings = Settings(_env_file=None)
     assert settings.strava_client_id == "12345"
+
+
+# ---- Whisper transcription (Phase 10 / v1.1) --------------------------------
+#
+# All four tests defensively `delenv` every WHISPER_* var first because the
+# shared ``tempo_data_dir`` fixture only scrubs TEMPO_*-prefixed vars; a
+# developer's real ``.env`` could otherwise leak whisper config into these
+# tests. We use ``Settings(_env_file=None)`` for the same reason.
+
+
+def _clear_whisper_env(monkeypatch) -> None:
+    """Drop every WHISPER_* env var so a real .env cannot leak into tests."""
+    for key in (
+        "WHISPER_MODEL_NAME",
+        "WHISPER_COMPUTE_TYPE",
+        "WHISPER_DEVICE",
+        "TEMPO_WHISPER_MODEL_NAME",
+        "TEMPO_WHISPER_COMPUTE_TYPE",
+        "TEMPO_WHISPER_DEVICE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_whisper_defaults(monkeypatch) -> None:
+    _clear_whisper_env(monkeypatch)
+    settings = Settings(_env_file=None)
+    assert settings.whisper_model_name == "small.en"
+    assert settings.whisper_compute_type == "int8"
+    assert settings.whisper_device == "cpu"
+
+
+def test_whisper_model_name_env_override(monkeypatch) -> None:
+    _clear_whisper_env(monkeypatch)
+    monkeypatch.setenv("WHISPER_MODEL_NAME", "base.en")
+    # The prefixed form must NOT take effect -- validation_alias bypasses the
+    # TEMPO_ env_prefix entirely (proves the alias overrides the prefix).
+    monkeypatch.setenv("TEMPO_WHISPER_MODEL_NAME", "large-v3-turbo")
+    settings = Settings(_env_file=None)
+    assert settings.whisper_model_name == "base.en"
+
+
+def test_whisper_compute_type_and_device_env_override(monkeypatch) -> None:
+    _clear_whisper_env(monkeypatch)
+    monkeypatch.setenv("WHISPER_COMPUTE_TYPE", "float16")
+    monkeypatch.setenv("WHISPER_DEVICE", "cuda")
+    settings = Settings(_env_file=None)
+    assert settings.whisper_compute_type == "float16"
+    assert settings.whisper_device == "cuda"
+
+
+def test_voice_cache_dir_derived_under_content_root(
+    tempo_data_dir: Path, tmp_path: Path, monkeypatch
+) -> None:
+    _clear_whisper_env(monkeypatch)
+    # 1. With TEMPO_CONTENT_DIR unset, voice_cache_dir lives under data_dir.
+    settings = Settings(_env_file=None)
+    assert settings.voice_cache_dir == tempo_data_dir / "voice"
+
+    # 2. With TEMPO_CONTENT_DIR set, voice_cache_dir follows content_root.
+    content = tmp_path / "training"
+    monkeypatch.setenv("TEMPO_CONTENT_DIR", str(content))
+    settings = Settings(_env_file=None)
+    assert settings.voice_cache_dir == content / "voice"
+
+
+def test_ensure_dirs_does_not_create_voice_cache_dir(tempo_data_dir: Path) -> None:
+    # Plan 10-01 explicitly keeps voice/ out of ensure_dirs() so `tempo init`
+    # does not surface it for users who never run the bot. The voice handler
+    # (Plan 10-02) is responsible for lazy 0700 creation on first use.
+    settings = get_settings()
+    settings.ensure_dirs()
+    assert not settings.voice_cache_dir.exists()
