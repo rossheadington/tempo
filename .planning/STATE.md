@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: telegram-voice-coach
-status: "Roadmap defined. v1.1 spans Phases 9–12 (Telegram bot foundation → voice intake + transcription → Claude Code agent loop → lifecycle/hardening/privacy). 15 VOICE-* requirements all mapped. Next: `/gsd:plan-phase 9`."
-stopped_at: Phase 5 (Journaling via Claude) complete. Validated `tempo journal add` entrypoint
-last_updated: "2026-05-27T23:35:00.000Z"
-last_activity: 2026-05-27 — Plan 11-01 complete: bot_session table at schema v5, tempo.bot.sessions store (4h resume window), docs prerequisites for Claude Code agent loop. 437 tests green.
+status: "Phase 11 (Claude Code agent loop) complete -- handler integration shipped. Next: Phase 12 (lifecycle / hardening / privacy)."
+stopped_at: Phase 11 (Claude Code agent loop) complete. Voice + text -> agent loop with per-chat 4h session memory, /new reset, typing keepalive, claude CLI startup check.
+last_updated: "2026-05-27T23:55:00.000Z"
+last_activity: 2026-05-27 — Plan 11-03 complete: voice_handler reworked to route through Claude Code agent; text_handler + new_command_handler added; typing keepalive; startup `claude` CLI check; 468 tests green (+18).
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 6
-  completed_plans: 5
-  percent: 50
+  completed_plans: 6
+  percent: 75
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-26)
 
 ## Current Position
 
-Phase: Not started (roadmap complete; ready to plan Phase 9)
-Plan: —
-Status: Roadmap defined. v1.1 spans Phases 9–12 (Telegram bot foundation → voice intake + transcription → Claude Code agent loop → lifecycle/hardening/privacy). 15 VOICE-* requirements all mapped. Next: `/gsd:plan-phase 9`.
-Last activity: 2026-05-27 — v1.1 ROADMAP.md written, REQUIREMENTS traceability extended (Phase 8 TRACK-* + Phases 9–12 VOICE-*)
+Phase: Phase 11 (Claude Code agent loop) — COMPLETE
+Plan: 11-03 — COMPLETE
+Status: Voice memos + text messages route through Claude Code via `claude-agent-sdk`. Final assistant reply (HTML, multi-chunk if >4096 chars) flows back to Telegram. Per-chat 4-hour session memory via `bot_session` table; `/new` resets. Typing indicator while `run_turn` is in flight. Startup `claude` CLI check exits cleanly if missing. 468 tests green. Next: Phase 12 (lifecycle / hardening / privacy).
+Last activity: 2026-05-27 — Plan 11-03 complete: voice_handler reworked + text_handler/new_command_handler added + typing keepalive + startup CLI check + 18 new tests.
 
 ## What's Done (Phase 1: Foundation)
 

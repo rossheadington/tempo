@@ -172,8 +172,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 Plans:
 - [x] 11-01-PLAN.md — Session-id store + migration 0005_bot_sessions (SCHEMA_VERSION → 5) + docs prereqs (VOICE-08)
-- [ ] 11-02-PLAN.md — claude-agent-sdk wrapper: AgentTurn + run_turn + format_for_telegram (VOICE-07/09/13)
-- [ ] 11-03-PLAN.md — Wire voice_handler + text_handler + /new + typing indicator + startup CLI check (VOICE-07/08/09/10/13)
+- [x] 11-02-PLAN.md — claude-agent-sdk wrapper: AgentTurn + run_turn + format_for_telegram (VOICE-07/09/13)
+- [x] 11-03-PLAN.md — Wire voice_handler + text_handler + /new + typing indicator + startup CLI check (VOICE-07/08/09/10/13)
 **UI hint**: yes
 
 ### Phase 12: Lifecycle, Hardening, Privacy (v1.1)
