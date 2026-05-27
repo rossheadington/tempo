@@ -44,9 +44,7 @@ class RaceLink:
     link_status: str  # 'linked' | 'unlinked_no_match' | 'unlinked_ambiguous' | 'unlinked_no_date'
 
 
-def link_races_to_activities(
-    races: list[Race], conn: sqlite3.Connection
-) -> list[RaceLink]:
+def link_races_to_activities(races: list[Race], conn: sqlite3.Connection) -> list[RaceLink]:
     """Classify each race against the activities on its local date.
 
     Returns a list parallel to ``races`` (same length, same order). Performs at
