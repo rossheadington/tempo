@@ -14,6 +14,7 @@ Modules:
 * :mod:`tempo.analysis.fitness` -- CTL/ATL/TSB EWMA series, ACWR, ramp rate.
 * :mod:`tempo.analysis.race`    -- Riegel / VDOT race-time prediction.
 * :mod:`tempo.analysis.context` -- parse ``races.md`` / ``plan.md``.
+* :mod:`tempo.analysis.heat`    -- parse ``heat.md`` + heat-session rollups (TRACK-04/05).
 * :mod:`tempo.analysis.data`    -- read daily inputs + per-source freshness.
 * :mod:`tempo.analysis.report`  -- render dated markdown reports.
 * :mod:`tempo.analysis.runner`  -- orchestrate the analyses and write reports.
