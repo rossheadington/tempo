@@ -205,6 +205,66 @@ See [`docs/TELEGRAM_BOT.md`](docs/TELEGRAM_BOT.md) for the @BotFather +
 `getUpdates` walkthrough, the sanity-check from a second account, and the
 troubleshooting list (409 Conflict, token rotation).
 
+### Voice intake (v1.1 / Phase 10)
+
+With the bot running (`uv run tempo bot run`), **record a voice memo in the
+owner's Telegram chat — Tempo transcribes it locally and replies with the
+text in italics.** No audio bytes ever leave the laptop: transcription runs
+through [`faster-whisper`](https://github.com/SYSTRAN/faster-whisper) (which
+bundles PyAV — no system `ffmpeg` needed) using a CPU-only model that is
+**warmed at bot startup**, so the very first voice memo does not pay the
+multi-second cold-start cost.
+
+Under the hood:
+
+- The `.ogg` is saved to `<content_dir>/voice/<message_id>-<file_unique_id>.ogg`
+  (gitignored; directory created on first use with mode 0700).
+- Transcription is dispatched off the asyncio event loop via
+  `asyncio.to_thread`, so the bot stays responsive even mid-transcription.
+- The reply is the transcript wrapped in `<i>...</i>`, with HTML-special
+  chars (`<` `>` `&`) escaped — Telegram never tries to parse user speech
+  as markup.
+
+**Model configuration.** Three bare env vars (the standard `WHISPER_*`
+convention, no `TEMPO_` prefix) override the locked defaults:
+
+```
+# Defaults shown -- all three are commented out in .env.example.
+# WHISPER_MODEL_NAME=small.en      # ~480 MB; tiny.en/base.en/medium.en/large-v3-turbo also valid
+# WHISPER_COMPUTE_TYPE=int8        # int8 / int8_float16 / float16 / float32
+# WHISPER_DEVICE=cpu               # on Mac, cpu is the only path that works
+```
+
+> **On macOS, `WHISPER_DEVICE=cpu` is the only working option.** CTranslate2
+> (faster-whisper's backend) has no Metal/MPS support — `cuda` only works on
+> Linux + NVIDIA. The default `small.en` int8 on an M-series CPU transcribes
+> a 60-second memo in ~8-12 seconds, which is the sweet spot for accuracy on
+> runner jargon without an unacceptable wait.
+
+**First-run startup cost.** On the very first `tempo bot run` after setting
+`WHISPER_MODEL_NAME=...` (or on the very first run at the default
+`small.en`), `faster-whisper` downloads the model from Hugging Face Hub
+(~480 MB for `small.en`, cached under `~/.cache/huggingface/hub/`). The
+download happens **once** in the bot's `post_init` hook BEFORE polling
+begins, so by the time the bot starts listening it is fully warm — a real
+voice memo never pays the download or load cost. Subsequent restarts only
+pay the ~1–3-second model load.
+
+**The 20 MB cap.** Telegram's bot API caps `getFile` downloads at 20 MB.
+Voice memos larger than that are rejected with a clear reply — *"Sorry —
+that voice memo is over Telegram's 20 MB bot API limit. Try a shorter
+recording or split it."* — and no doomed network call is attempted. At
+Telegram's ~16 kbps Opus encoding, 20 MB is roughly 2.5 hours of voice, so
+in normal use you will never hit this; the guard is for safety, not the
+common case.
+
+**What this phase does NOT yet do.** Phase 10 just echoes the transcript.
+The Claude Code agent loop (so a voice memo turns into an actual
+training-coach reply) is Phase 11. The always-on `launchd` lifecycle for
+the bot and the voice-file retention/deletion policy are Phase 12. Until
+then, the `voice/` cache grows unbounded — clean it manually if it bothers
+you. See [`.planning/ROADMAP.md`](.planning/ROADMAP.md) for the full plan.
+
 ## Scheduling (the daily run via launchd)
 
 The daily loop — `tempo run-daily` — runs **sync → transform → analyze** and
