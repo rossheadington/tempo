@@ -123,19 +123,20 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 5. Journaling via Claude | 1/1 | Complete | 2008-05-26 |
 | 6. Garmin Ingestion | 1/1 | Complete | 2008-05-26 |
 | 7. Recovery + Correlation + Scheduler | 1/1 | Complete | 2008-05-26 |
+| 8. Modular Trackers + Heat Adaptation | 5/5 | Complete | 2026-05-27 |
 
-**All 7 phases complete — Tempo v1 is feature-complete.**
+**All 8 phases complete — Tempo v1 is feature-complete (plan.md retired in Phase 8).**
 
 ### Phase 8: Modular Trackers + Heat Adaptation
 
 **Goal:** Replace the catch-all `plan.md` with focused, single-purpose tracker files. `races.md` keeps past + future races in one place (gains a `result:` field and auto-links by date to the matching Strava activity); a new `heat.md` captures sauna / heat-adaptation sessions as an append-only log surfaced in the recovery report. `plan.md` is retired entirely (the user does not currently want to track a forward-looking plan). Each tracker has its own lenient parser that degrades gracefully when the file is missing.
 **Requirements**: TRACK-01, TRACK-02, TRACK-03, TRACK-04, TRACK-05, TRACK-06
 **Depends on:** Phase 7
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans executed — Phase 8 COMPLETE (2026-05-27)
 
 Plans:
 - [x] 08-01-PLAN.md — races.py rename + result: field + completed(today) helper + races.md.example update (TRACK-01, TRACK-02)
 - [x] 08-02-PLAN.md — new heat.py parser + HeatRollup + heat.md.example + heat_path config (TRACK-04)
 - [x] 08-03-PLAN.md — new race_link.py with 0/1/N edge cases (TRACK-03)
 - [x] 08-04-PLAN.md — wire heat + race_link into recovery + race-readiness reports (incl. A4 lapsed nudge) (TRACK-05, TRACK-03)
-- [ ] 08-05-PLAN.md — plan.md retirement cleanup + context.py deletion (TRACK-06)
+- [x] 08-05-PLAN.md — plan.md retirement cleanup + context.py deletion (TRACK-06)
