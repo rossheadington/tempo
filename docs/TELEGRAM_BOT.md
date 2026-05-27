@@ -150,6 +150,64 @@ Session memory: the bot remembers the last 4 hours of conversation per chat
 (resumed via the session id stored in the `bot_session` table). Send `/new`
 to start a fresh session before the window expires.
 
+## Phase 11: the agent loop
+
+With Phase 11 wired (Plan 11-03), every voice memo and every non-command text
+message from the owner chat routes through Claude Code via the
+`claude-agent-sdk` Python package. For voice memos, the bot still transcribes
+locally with `faster-whisper` first (so the audio bytes never leave the
+laptop) and then hands the transcript to the agent. For text, the message
+goes straight to the agent. In both cases the final assistant reply comes
+back to Telegram as HTML; intermediate tool-call activity is hidden by
+design — the bot relays only the agent's final user-facing prose. The
+raw transcript is still logged to stdout for developer visibility, but is
+no longer echoed back to chat (this is a deliberate change from Phase 10).
+
+Session memory works per chat: each Telegram chat owns a Claude Code
+session id, persisted in the local SQLite `bot_session` table (migration
+0005), with a 4-hour resume window. When you send a new message within
+4 hours of the previous one, the
+SDK resumes the same session — the agent remembers what you said last.
+Outside that window, the next message starts fresh. Send `/new` at any
+time to clear the stored id and force a clean slate on the next turn.
+
+Observability is one INFO line per turn:
+
+    agent turn · chat=987654321 · session=abc12345 · tokens_in=42 · tokens_out=180 · cost=$0.0123 · wall=4.21s
+
+If you are signed in via `claude login` against your Claude Code
+subscription (the recommended path for v1.1), the SDK does not surface a
+per-turn cost figure — that field is logged as `cost=subscription`.
+Token counts are always present and are the primary usage signal.
+
+Auth and Node prerequisites are reiterated from above: `ANTHROPIC_API_KEY`
+is NOT used (Tempo deliberately does not pass one); the bot relies on
+`claude login` having been run once and `claude` being on the bot's PATH.
+If `claude` is missing at `tempo bot run` startup the bot exits before
+any Telegram traffic with `Set up the Claude Code CLI before starting the
+bot -- see docs/TELEGRAM_BOT.md Phase 11 prerequisites (Node 18+ +
+`claude login`).` — no silent boot followed by a Telegram-only error.
+
+Long replies are split. Telegram's hard cap on a `sendMessage` body is
+4096 characters. Agent replies that exceed that are split on paragraph
+boundaries by `format_for_telegram`, with each chunk prefixed `[k/N] ` so
+you can follow the order in chat. The prefix budget is reserved up front
+so no chunk can exceed the cap.
+
+While the agent is running, Telegram shows the typing indicator for the
+chat: the bot fires `send_action(TYPING)` immediately and refreshes it
+every 4 seconds (the server-side TYPING action lasts ~5s) until
+`run_turn` returns. Cancellation of the keepalive task is the only exit
+path; the resulting `CancelledError` is absorbed via
+`asyncio.gather(..., return_exceptions=True)` so it never surfaces as an
+uncaught task exception.
+
+What this phase does NOT yet do (Phase 12 lands these): a top-level
+"something went wrong" error boundary around the full pipeline (today
+non-`AgentInvocationError` exceptions propagate to PTB's default
+handler), a launchd `LaunchAgent` for unattended running across reboots,
+and the retention policy for the `voice/` cache + bot logs.
+
 ## Troubleshooting
 
 - **`409 Conflict: terminated by other getUpdates request`** -- either another

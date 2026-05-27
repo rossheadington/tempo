@@ -99,16 +99,16 @@ Voice memos sent to a personal Telegram chat → local Whisper transcription →
 
 ### Claude Code session loop
 
-- [ ] **VOICE-07**: The transcribed text is fed to Claude Code via the Claude Agent SDK (the `claude-agent-sdk` Python package), which spawns the `claude` CLI as a subprocess — auth comes from the user's existing Claude Code login (their Claude subscription), NOT a separate `ANTHROPIC_API_KEY`
+- [x] **VOICE-07**: The transcribed text is fed to Claude Code via the Claude Agent SDK (the `claude-agent-sdk` Python package), which spawns the `claude` CLI as a subprocess — auth comes from the user's existing Claude Code login (their Claude subscription), NOT a separate `ANTHROPIC_API_KEY`
 - [x] **VOICE-08**: Each Telegram chat has a session id that is reused via `--resume` for follow-up messages within 4 hours; after 4 hours of silence (or on the explicit `/new` command) the next message starts a fresh session
-- [ ] **VOICE-09**: Claude Code's final assistant message is captured and sent back to the chat as a single Telegram message (split across messages if it exceeds Telegram's 4096-char body cap), formatted as HTML (`& < >` escaped — NOT MarkdownV2)
-- [ ] **VOICE-10**: Tool-call activity inside the Claude Code session (Bash, Edit, etc.) is not surfaced as separate Telegram messages by default; only the final assistant reply goes back — keeps the UX clean. (A `/verbose` toggle for tool-call streaming is OUT OF SCOPE for v1.1.)
+- [x] **VOICE-09**: Claude Code's final assistant message is captured and sent back to the chat as a single Telegram message (split across messages if it exceeds Telegram's 4096-char body cap), formatted as HTML (`& < >` escaped — NOT MarkdownV2)
+- [x] **VOICE-10**: Tool-call activity inside the Claude Code session (Bash, Edit, etc.) is not surfaced as separate Telegram messages by default; only the final assistant reply goes back — keeps the UX clean. (A `/verbose` toggle for tool-call streaming is OUT OF SCOPE for v1.1.)
 
 ### Lifecycle, errors, observability
 
 - [ ] **VOICE-11**: The bot runs as a launchd LaunchAgent with `KeepAlive=true` so it survives crashes, sleep/wake, and reboots without manual restart; logs land in a gitignored `logs/` directory
 - [ ] **VOICE-12**: Any failure in the voice → transcript → Claude Code → reply pipeline is caught, logged with a structured error, and acknowledged in Telegram with a brief "something went wrong" message — the bot worker never crashes on a single bad message
-- [ ] **VOICE-13**: Per-turn token usage and cost (as reported by the Claude Code subprocess) is logged so the user can monitor Claude-subscription quota consumption over time
+- [x] **VOICE-13**: Per-turn token usage and cost (as reported by the Claude Code subprocess) is logged so the user can monitor Claude-subscription quota consumption over time
 
 ### Privacy + safety boundaries
 
@@ -207,11 +207,11 @@ Explicitly excluded. Documented to prevent scope creep.
 | VOICE-04 | Phase 10 | Complete |
 | VOICE-05 | Phase 10 | Complete |
 | VOICE-06 | Phase 10 | Complete |
-| VOICE-07 | Phase 11 | Pending |
+| VOICE-07 | Phase 11 | Complete |
 | VOICE-08 | Phase 11 | Complete |
-| VOICE-09 | Phase 11 | Pending |
-| VOICE-10 | Phase 11 | Pending |
-| VOICE-13 | Phase 11 | Pending |
+| VOICE-09 | Phase 11 | Complete |
+| VOICE-10 | Phase 11 | Complete |
+| VOICE-13 | Phase 11 | Complete |
 | VOICE-11 | Phase 12 | Pending |
 | VOICE-12 | Phase 12 | Pending |
 | VOICE-14 | Phase 12 | Pending |

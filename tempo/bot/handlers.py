@@ -1,9 +1,14 @@
 """Telegram bot handlers.
 
-Phase 9 defined :func:`start_handler` (the ``/start`` reply); Phase 10 plan
-10-02 adds :func:`voice_handler` -- the owner-only voice-memo intake that
-ties the warmed faster-whisper singleton (Plan 10-01's
-:mod:`tempo.bot.transcribe`) to the Telegram dispatcher.
+Phase 9 defined :func:`start_handler` (the ``/start`` reply); Phase 10
+plan 10-02 added :func:`voice_handler` -- the owner-only voice-memo intake
+that ties the warmed faster-whisper singleton (Plan 10-01's
+:mod:`tempo.bot.transcribe`) to the Telegram dispatcher. Phase 11 plan
+11-03 reworks :func:`voice_handler`'s post-transcription tail, adds the
+matching :func:`text_handler` (non-command messages -> agent), the
+:func:`new_command_handler` (``/new`` resets the per-chat session), and a
+private :func:`_keep_typing` helper that refreshes Telegram's typing
+indicator while ``run_turn`` is in flight.
 
 Every handler in this module is gated twice: first at registration time by
 ``filters.Chat(chat_id=owner_chat_id)`` (set up in :mod:`tempo.bot.app`), and
@@ -16,17 +21,28 @@ silently see every chat that messages the bot (VOICE-01 allowlist).
 from __future__ import annotations
 
 import asyncio
-import html
 import logging
+import sqlite3
 import time
 from pathlib import Path
 
 from telegram import Update
-from telegram.constants import ParseMode
+from telegram.constants import ChatAction, ParseMode
 from telegram.ext import ContextTypes
 
+from tempo.bot.agent import (
+    AgentInvocationError,
+    format_for_telegram,
+    run_turn,
+)
+from tempo.bot.sessions import (
+    get_or_create_session,
+    reset_session,
+    save_session,
+)
 from tempo.bot.transcribe import transcribe_file
 from tempo.config import Settings
+from tempo.db import connect
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +66,132 @@ OVERSIZED_REPLY: str = (
     "Sorry -- that voice memo is over Telegram's 20 MB bot API limit. "
     "Try a shorter recording or split it."
 )
+
+#: Fixed reply when the Claude Agent SDK cannot reach the ``claude`` CLI
+#: (VOICE-07). No backticks so HTML quoting is trivial. Tests assert
+#: against this constant directly.
+MISSING_CLI_REPLY: str = "Claude Code isn't running. Try claude login in a terminal."
+
+#: Fixed reply for ``/new``: the previous session id has been deleted from
+#: ``bot_session`` and the next message will start a fresh Claude Code session.
+NEW_SESSION_REPLY: str = "Started a fresh session. Next message gets a clean slate."
+
+#: Fixed reply when the voice transcript is empty (Whisper detected no
+#: speech). The agent is NOT called for empty transcripts -- we just tell
+#: the user the pipeline ran but found nothing.
+EMPTY_TRANSCRIPT_REPLY: str = "<i>(no speech detected)</i>"
+
+#: Typing-indicator refresh interval. Telegram's TYPING ChatAction lasts ~5s
+#: server-side; refreshing at 4s leaves headroom so there is no gap in the
+#: indicator while ``run_turn`` is in flight.
+_TYPING_REFRESH_S: float = 4.0
+
+
+async def _keep_typing(chat: object) -> None:
+    """Refresh Telegram's TYPING indicator until the task is cancelled.
+
+    Loops :meth:`chat.send_action(ChatAction.TYPING)` every
+    :data:`_TYPING_REFRESH_S` seconds. Cancellation is the only exit path:
+    callers must wrap this in :func:`asyncio.create_task` + ``task.cancel()``
+    inside a ``try/finally`` so a slow ``run_turn`` shows continuous typing.
+
+    The caller is expected to absorb the resulting :class:`asyncio.CancelledError`
+    via ``await asyncio.gather(task, return_exceptions=True)`` so the cancellation
+    does not surface as an uncaught task exception.
+    """
+    while True:
+        await chat.send_action(ChatAction.TYPING)  # type: ignore[attr-defined]
+        await asyncio.sleep(_TYPING_REFRESH_S)
+
+
+def _format_cost(cost_usd: float | None) -> str:
+    """Render the per-turn cost for the INFO log line.
+
+    Claude-subscription users see ``cost_usd is None`` on every turn because
+    the SDK does not surface a per-turn cost figure for them; we log
+    ``"subscription"`` in that case rather than ``$0.0000`` so the log line
+    is honest about the unknown.
+    """
+    if cost_usd is None:
+        return "subscription"
+    return f"${cost_usd:.4f}"
+
+
+async def _run_agent_turn(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    prompt: str,
+    chat_id: int,
+) -> None:
+    """Shared post-transcription / post-text pipeline (VOICE-07/08/09/10/13).
+
+    1. Open a short-lived sqlite connection via :func:`tempo.db.connect`.
+    2. Resolve the prior session id (within the 4h window) or ``None``.
+    3. Start the typing-indicator keepalive task.
+    4. Await :func:`run_turn` with the prompt and resolved session id.
+    5. Cancel the keepalive (absorbing CancelledError via ``gather``).
+    6. Persist the resolved session id (UPSERT semantics in Plan 11-01).
+    7. Split the reply via :func:`format_for_telegram` and send each chunk
+       with :data:`ParseMode.HTML`.
+    8. Log the per-turn token / cost / wall-clock line at INFO.
+
+    :class:`AgentInvocationError` is caught and mapped to a single reply
+    using :data:`MISSING_CLI_REPLY`; no other exception types are caught
+    here (Phase 12 owns the top-level error boundary per 11-CONTEXT.md
+    <decisions>).
+    """
+    if update.effective_chat is None or update.message is None:
+        return
+
+    db_path: Path = context.application.bot_data["db_path"]
+    conn = connect(db_path)
+    try:
+        session_id = get_or_create_session(conn, chat_id)
+
+        # First TYPING ping before the keepalive task spins up so the
+        # indicator shows immediately, not after the first 4s sleep.
+        await update.effective_chat.send_action(ChatAction.TYPING)
+        typing_task = asyncio.create_task(_keep_typing(update.effective_chat))
+
+        # 11-03 PLAN: passes Path.cwd() because the launchd plist (Phase 12)
+        # will set WorkingDirectory to the Tempo project root. Until then,
+        # `tempo bot run` is launched from the repo root by convention.
+        try:
+            turn = await run_turn(prompt, session_id, cwd=Path.cwd())
+        except AgentInvocationError:
+            logger.warning(
+                "agent invocation failed -- claude CLI missing or unauthed (chat=%d)",
+                chat_id,
+            )
+            await update.message.reply_text(
+                MISSING_CLI_REPLY,
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        finally:
+            typing_task.cancel()
+            # gather(..., return_exceptions=True) absorbs the CancelledError
+            # so it doesn't surface as an uncaught task exception.
+            await asyncio.gather(typing_task, return_exceptions=True)
+
+        save_session(conn, chat_id, turn.session_id)
+
+        chunks = format_for_telegram(turn.text)
+        for chunk in chunks:
+            await update.message.reply_text(chunk, parse_mode=ParseMode.HTML)
+
+        logger.info(
+            "agent turn · chat=%d · session=%s · tokens_in=%d · tokens_out=%d "
+            "· cost=%s · wall=%.2fs",
+            chat_id,
+            turn.session_id[:8],
+            turn.tokens_in,
+            turn.tokens_out,
+            _format_cost(turn.cost_usd),
+            turn.duration_s,
+        )
+    finally:
+        conn.close()
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -79,16 +221,24 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Owner-only voice-memo handler (VOICE-03/04/06).
+    """Owner-only voice-memo handler (VOICE-03/04/06/07/08/09/10/13).
 
     Flow: defensive chat-id re-check -> 20 MB guard -> download to
     ``<voice_cache_dir>/<msg_id>-<file_uid>.ogg`` -> transcribe via the
     warmed singleton in a worker thread (so the event loop stays responsive)
-    -> reply with the transcript in HTML-escaped italics.
+    -> hand the transcript to the Claude Agent loop via :func:`_run_agent_turn`
+    -> reply with the agent's HTML-formatted answer (possibly multi-chunk).
 
-    Per 10-CONTEXT.md, there is intentionally no top-level error handler in
-    this phase -- exceptions propagate up to PTB's default error handler.
-    Phase 12 wraps the full pipeline in a "something went wrong" boundary.
+    Phase 10 used to reply with the raw transcript in italics; Phase 11
+    plan 11-03 removes that echo. The transcript is still logged at INFO
+    for developer visibility but is no longer sent to Telegram. Empty
+    transcripts (Whisper detected no speech) short-circuit the agent call
+    and reply with :data:`EMPTY_TRANSCRIPT_REPLY`.
+
+    Per 11-CONTEXT.md ``<decisions>`` "error handling (LIGHT in Phase 11)",
+    only :class:`AgentInvocationError` is mapped to a friendly reply here;
+    every other exception propagates to PTB's default handler (Phase 12 will
+    wrap the full pipeline in a top-level "something went wrong" boundary).
     """
     # Defence-in-depth chat-id re-check (mirrors start_handler).
     expected_owner_id = context.application.bot_data.get("owner_chat_id")
@@ -139,12 +289,80 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         settings.whisper_model_name,
     )
 
-    # Empty transcript still goes back so the user sees the pipeline ran.
-    # ``html.escape`` handles untrusted transcript text -- &/</> in
-    # speech-to-text output would otherwise be parsed as HTML by Telegram
-    # and trigger a BadRequest (or, worse, render as markup).
-    reply_body = html.escape(transcript) if transcript else "(no speech detected)"
-    await update.message.reply_text(
-        f"<i>{reply_body}</i>",
-        parse_mode=ParseMode.HTML,
-    )
+    # Empty / whitespace-only transcript: skip the agent and tell the user
+    # the pipeline ran but found nothing. Don't burn an agent turn on it.
+    if not transcript or not transcript.strip():
+        await update.message.reply_text(
+            EMPTY_TRANSCRIPT_REPLY,
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    # Log the raw transcript at INFO so the developer can still see what
+    # Whisper produced -- but DO NOT send it to Telegram (Phase 11 removes
+    # the Phase 10 echo behaviour). ``html.escape`` is not needed in the log
+    # line.
+    logger.info("voice transcript (chat=%d): %s", update.effective_chat.id, transcript)
+
+    chat_id = update.effective_chat.id
+    await _run_agent_turn(update, context, transcript, chat_id)
+
+
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner-only text-message handler (VOICE-07/08/09/10/13).
+
+    Same shape as the post-transcription half of :func:`voice_handler`, but
+    the prompt is :attr:`update.message.text` directly -- no Whisper step.
+    Registered behind ``filters.TEXT & ~filters.COMMAND & filters.Chat(owner)``
+    so ``/new`` and ``/start`` route to their own CommandHandlers.
+
+    Empty / whitespace-only text is dropped silently with a DEBUG log: the
+    TEXT filter already excludes Voice/Photo/Sticker etc., so anything here
+    that fails the strip() check is almost certainly a quirk (e.g. an empty
+    edit) we don't want to waste an agent turn on.
+    """
+    expected_owner_id = context.application.bot_data.get("owner_chat_id")
+    if (
+        update.effective_chat is None
+        or expected_owner_id is None
+        or update.effective_chat.id != expected_owner_id
+    ):
+        return
+    if update.message is None or update.message.text is None:
+        return
+
+    prompt = update.message.text
+    if not prompt.strip():
+        logger.debug("text_handler: empty / whitespace-only message dropped")
+        return
+
+    chat_id = update.effective_chat.id
+    await _run_agent_turn(update, context, prompt, chat_id)
+
+
+async def new_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner-only ``/new`` command: delete the stored session id (VOICE-08).
+
+    The DELETE is idempotent (no row -> still success); the user gets the
+    same confirmation either way so a redundant ``/new`` is harmless.
+    """
+    expected_owner_id = context.application.bot_data.get("owner_chat_id")
+    if (
+        update.effective_chat is None
+        or expected_owner_id is None
+        or update.effective_chat.id != expected_owner_id
+    ):
+        return
+    if update.message is None:
+        return
+
+    chat_id = update.effective_chat.id
+    db_path: Path = context.application.bot_data["db_path"]
+    conn: sqlite3.Connection = connect(db_path)
+    try:
+        reset_session(conn, chat_id)
+    finally:
+        conn.close()
+
+    logger.info("session reset · chat=%d", chat_id)
+    await update.message.reply_text(NEW_SESSION_REPLY, parse_mode=ParseMode.HTML)

@@ -28,10 +28,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from telegram import Chat, Message, MessageEntity, Update, User
 from telegram.constants import ParseMode
-from telegram.ext import CommandHandler, filters
+from telegram.ext import CommandHandler, MessageHandler, filters
 
-from tempo.bot import GREETING, start_handler
-from tempo.bot.app import _require_telegram_config, build_application
+from tempo.bot import (
+    CLAUDE_CLI_MISSING_ERROR,
+    GREETING,
+    new_command_handler,
+    start_handler,
+    text_handler,
+)
+from tempo.bot.app import _require_telegram_config, _verify_claude_cli, build_application
 from tempo.config import Settings
 
 # ---------------------------------------------------------------------------
@@ -251,3 +257,171 @@ def test_start_handler_defensive_check_rejects_mismatched_chat(
     asyncio.run(_run())
 
     assert mock_reply.await_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 11 plan 11-03: claude CLI startup check + new handler registration
+# ---------------------------------------------------------------------------
+
+
+def test_verify_claude_cli_passes_when_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_verify_claude_cli` is a no-op when `shutil.which("claude")` returns a path."""
+    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
+    _verify_claude_cli()  # no exception
+
+
+def test_verify_claude_cli_raises_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_verify_claude_cli` raises RuntimeError(CLAUDE_CLI_MISSING_ERROR) on missing CLI."""
+    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: None)
+    with pytest.raises(RuntimeError) as excinfo:
+        _verify_claude_cli()
+    assert str(excinfo.value) == CLAUDE_CLI_MISSING_ERROR
+    # Sanity: the canonical message names Phase 11 prerequisites + the docs link.
+    assert "Claude Code CLI" in CLAUDE_CLI_MISSING_ERROR
+    assert "docs/TELEGRAM_BOT.md" in CLAUDE_CLI_MISSING_ERROR
+
+
+def test_build_application_raises_when_claude_cli_missing(
+    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`build_application` raises before any Telegram traffic when claude is missing."""
+    _clear_telegram_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-123")
+    monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "987654321")
+    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: None)
+    settings = Settings(_env_file=None)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        build_application(settings)
+    assert str(excinfo.value) == CLAUDE_CLI_MISSING_ERROR
+
+
+def test_build_application_stashes_db_path(
+    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`build_application` puts settings.db_path into bot_data for handler use."""
+    _clear_telegram_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-123")
+    monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "987654321")
+    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
+    settings = Settings(_env_file=None)
+
+    app = build_application(settings)
+    assert app.bot_data["db_path"] == settings.db_path
+
+
+def _find_text_handler(app) -> MessageHandler:
+    """Locate the registered text ``MessageHandler`` on ``app``."""
+    for group in app.handlers.values():
+        for handler in group:
+            if isinstance(handler, MessageHandler) and handler.callback is text_handler:
+                return handler
+    raise AssertionError("text_handler MessageHandler not registered")
+
+
+def _find_new_command_handler(app) -> CommandHandler:
+    """Locate the registered /new ``CommandHandler`` on ``app``."""
+    for group in app.handlers.values():
+        for handler in group:
+            if isinstance(handler, CommandHandler) and "new" in handler.commands:
+                return handler
+    raise AssertionError("/new CommandHandler not registered")
+
+
+def test_build_application_registers_text_and_new_handlers(
+    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Phase 11 wires /new + text handlers behind the owner filter.
+
+    The text handler must:
+      - accept an owner non-command text Update,
+      - reject an owner /start command Update (covered by ~filters.COMMAND),
+      - reject a non-owner text Update.
+    """
+    _clear_telegram_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-123")
+    monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "987654321")
+    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
+    settings = Settings(_env_file=None)
+
+    app = build_application(settings)
+
+    # /new CommandHandler exists, behind a filters.Chat(owner) filter.
+    new_handler = _find_new_command_handler(app)
+    assert new_handler.callback is new_command_handler
+
+    # text MessageHandler exists, with the right callback.
+    text_msg_handler = _find_text_handler(app)
+    assert text_msg_handler.callback is text_handler
+
+    # Owner text update -> passes; non-owner -> rejected.
+    owner_text_user = User(id=1234, first_name="Tester", is_bot=False)
+    owner_text_chat = Chat(id=987654321, type="private")
+    owner_text_message = Message(
+        message_id=100,
+        date=datetime.now(UTC),
+        chat=owner_text_chat,
+        from_user=owner_text_user,
+        text="how's training",
+    )
+    owner_text_message.set_bot(MagicMock(username="tempo_test_bot"))
+    owner_text_update = Update(update_id=100, message=owner_text_message)
+    owner_text_update.set_bot(owner_text_message.get_bot())
+    assert text_msg_handler.check_update(owner_text_update)
+
+    non_owner_chat = Chat(id=111, type="private")
+    non_owner_message = Message(
+        message_id=101,
+        date=datetime.now(UTC),
+        chat=non_owner_chat,
+        from_user=owner_text_user,
+        text="hi",
+    )
+    non_owner_message.set_bot(MagicMock(username="tempo_test_bot"))
+    non_owner_update = Update(update_id=101, message=non_owner_message)
+    non_owner_update.set_bot(non_owner_message.get_bot())
+    assert not text_msg_handler.check_update(non_owner_update)
+
+    # Owner /start command -> rejected by text handler (filters.COMMAND excludes).
+    command_entity = MessageEntity(type="bot_command", offset=0, length=6)
+    cmd_message = Message(
+        message_id=102,
+        date=datetime.now(UTC),
+        chat=owner_text_chat,
+        from_user=owner_text_user,
+        text="/start",
+        entities=(command_entity,),
+    )
+    cmd_message.set_bot(MagicMock(username="tempo_test_bot"))
+    cmd_update = Update(update_id=102, message=cmd_message)
+    cmd_update.set_bot(cmd_message.get_bot())
+    assert not text_msg_handler.check_update(cmd_update)
+
+    # /new from owner -> accepted by the new_command_handler.
+    new_entity = MessageEntity(type="bot_command", offset=0, length=4)
+    new_message = Message(
+        message_id=103,
+        date=datetime.now(UTC),
+        chat=owner_text_chat,
+        from_user=owner_text_user,
+        text="/new",
+        entities=(new_entity,),
+    )
+    new_message.set_bot(MagicMock(username="tempo_test_bot"))
+    new_update = Update(update_id=103, message=new_message)
+    new_update.set_bot(new_message.get_bot())
+    assert new_handler.check_update(new_update)
+
+    # /new from non-owner -> rejected.
+    non_owner_new = Message(
+        message_id=104,
+        date=datetime.now(UTC),
+        chat=non_owner_chat,
+        from_user=owner_text_user,
+        text="/new",
+        entities=(new_entity,),
+    )
+    non_owner_new.set_bot(MagicMock(username="tempo_test_bot"))
+    non_owner_new_update = Update(update_id=104, message=non_owner_new)
+    non_owner_new_update.set_bot(non_owner_new.get_bot())
+    assert not new_handler.check_update(non_owner_new_update)
