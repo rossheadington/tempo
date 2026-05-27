@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -73,6 +73,29 @@ class Settings(BaseSettings):
     garmin_email: str | None = Field(default=None, description="Garmin Connect account email.")
     garmin_password: str | None = Field(
         default=None, description="Garmin Connect account password."
+    )
+
+    # ---- Telegram bot (Phase 9 / v1.1) ----
+    # NOTE: these two fields are intentionally read from BARE env-var names
+    # (TELEGRAM_BOT_TOKEN / TELEGRAM_OWNER_CHAT_ID) rather than the global
+    # TEMPO_ prefix, so the standard Telegram convention is preserved.
+    # validation_alias bypasses env_prefix for these specific fields.
+    telegram_bot_token: SecretStr | None = Field(
+        default=None,
+        validation_alias="TELEGRAM_BOT_TOKEN",
+        description=(
+            "Telegram bot HTTP API token from @BotFather. Bare env-var name "
+            "(NOT prefixed with TEMPO_) so the standard Telegram convention is "
+            "preserved."
+        ),
+    )
+    telegram_owner_chat_id: int | None = Field(
+        default=None,
+        validation_alias="TELEGRAM_OWNER_CHAT_ID",
+        description=(
+            "Owner Telegram chat id (an integer). The bot only replies to this "
+            "chat; everything else is silently dropped at the filter level."
+        ),
     )
 
     # ---- Load / analysis settings (Phase 4) ----
