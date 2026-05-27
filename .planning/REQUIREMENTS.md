@@ -106,14 +106,14 @@ Voice memos sent to a personal Telegram chat → local Whisper transcription →
 
 ### Lifecycle, errors, observability
 
-- [ ] **VOICE-11**: The bot runs as a launchd LaunchAgent with `KeepAlive=true` so it survives crashes, sleep/wake, and reboots without manual restart; logs land in a gitignored `logs/` directory
-- [ ] **VOICE-12**: Any failure in the voice → transcript → Claude Code → reply pipeline is caught, logged with a structured error, and acknowledged in Telegram with a brief "something went wrong" message — the bot worker never crashes on a single bad message
+- [x] **VOICE-11**: The bot runs as a launchd LaunchAgent with `KeepAlive=true` so it survives crashes, sleep/wake, and reboots without manual restart; logs land in a gitignored `logs/` directory
+- [x] **VOICE-12**: Any failure in the voice → transcript → Claude Code → reply pipeline is caught, logged with a structured error, and acknowledged in Telegram with a brief "something went wrong" message — the bot worker never crashes on a single bad message
 - [x] **VOICE-13**: Per-turn token usage and cost (as reported by the Claude Code subprocess) is logged so the user can monitor Claude-subscription quota consumption over time
 
 ### Privacy + safety boundaries
 
-- [ ] **VOICE-14**: Voice files are deleted from local cache after successful transcription (configurable retention window, default = delete immediately on success); transcripts are kept so the user can re-run analysis later
-- [ ] **VOICE-15**: The agent session runs in the Tempo project directory so Claude Code has access to `tempo` CLI + GSD slash commands; no additional working-directory permissions are required and no read/write access is granted outside the project tree
+- [x] **VOICE-14**: Voice files are deleted from local cache after successful transcription (configurable retention window, default = delete immediately on success); transcripts are kept so the user can re-run analysis later
+- [x] **VOICE-15**: The agent session runs in the Tempo project directory so Claude Code has access to `tempo` CLI + GSD slash commands; no additional working-directory permissions are required and no read/write access is granted outside the project tree
 
 ## v2 Requirements
 
@@ -212,10 +212,10 @@ Explicitly excluded. Documented to prevent scope creep.
 | VOICE-09 | Phase 11 | Complete |
 | VOICE-10 | Phase 11 | Complete |
 | VOICE-13 | Phase 11 | Complete |
-| VOICE-11 | Phase 12 | Pending |
-| VOICE-12 | Phase 12 | Pending |
-| VOICE-14 | Phase 12 | Pending |
-| VOICE-15 | Phase 12 | Pending |
+| VOICE-11 | Phase 12 | Complete |
+| VOICE-12 | Phase 12 | Complete |
+| VOICE-14 | Phase 12 | Complete |
+| VOICE-15 | Phase 12 | Complete |
 
 **Coverage:**
 - v1 requirements: 39 total — Complete (100%)

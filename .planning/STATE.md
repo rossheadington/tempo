@@ -2,16 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: telegram-voice-coach
-status: "Phase 11 (Claude Code agent loop) complete -- handler integration shipped. Next: Phase 12 (lifecycle / hardening / privacy)."
-stopped_at: Phase 11 (Claude Code agent loop) complete. Voice + text -> agent loop with per-chat 4h session memory, /new reset, typing keepalive, claude CLI startup check.
-last_updated: "2026-05-27T23:55:00.000Z"
-last_activity: 2026-05-27 — Plan 11-03 complete: voice_handler reworked to route through Claude Code agent; text_handler + new_command_handler added; typing keepalive; startup `claude` CLI check; 468 tests green (+18).
+status: shipped
+stopped_at: v1.1 complete; Pi port (v1.2) deferred.
+last_updated: "2026-05-28T00:00:00.000Z"
+last_activity: 2026-05-28 — Plan 12-02 complete: top-level Telegram error handler (VOICE-12); docs/PRIVACY.md privacy contract; TELEGRAM_BOT.md + README updated with launchd lifecycle, voice retention, error-handler behaviour. v1.1 feature-complete. 498 tests green (+5).
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 75
+  completed_phases: 4
+  completed: [12]
+  total_plans: 7
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -21,14 +22,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** Milestone v1.1 — Telegram Voice Coach (Mac). Defining requirements + roadmap.
+**Current focus:** v1.1 complete; Pi port (v1.2) deferred.
 
 ## Current Position
 
-Phase: Phase 11 (Claude Code agent loop) — COMPLETE
-Plan: 11-03 — COMPLETE
-Status: Voice memos + text messages route through Claude Code via `claude-agent-sdk`. Final assistant reply (HTML, multi-chunk if >4096 chars) flows back to Telegram. Per-chat 4-hour session memory via `bot_session` table; `/new` resets. Typing indicator while `run_turn` is in flight. Startup `claude` CLI check exits cleanly if missing. 468 tests green. Next: Phase 12 (lifecycle / hardening / privacy).
-Last activity: 2026-05-27 — Plan 11-03 complete: voice_handler reworked + text_handler/new_command_handler added + typing keepalive + startup CLI check + 18 new tests.
+Phase: Phase 12 (lifecycle / hardening / privacy) — COMPLETE
+Plan: 12-02 — COMPLETE
+Status: v1.1 SHIPPED. Plan 12-01 added the launchd `KeepAlive=true` plist + `tempo bot install-scheduler` + `VOICE_RETENTION_DAYS` startup sweep + per-handler immediate-delete + `tempo bot purge-voice` hatch + agent cwd / data_dir startup log lines. Plan 12-02 added the top-level `telegram_error_handler` (logs traceback, sends fixed "something went wrong" reply, never re-raises) and the user-facing `docs/PRIVACY.md` single-source privacy contract; README + `docs/TELEGRAM_BOT.md` updated with launchd lifecycle, voice retention, and error-handler-behaviour sections. 498 tests green. v1.1 milestone closed.
+Last activity: 2026-05-28 — Plan 12-02 complete: error_handler.py + docs/PRIVACY.md + Telegram bot docs updates + VOICE-11/12/14/15 marked complete. 60/60 v1.1 requirements satisfied.
 
 ## What's Done (Phase 1: Foundation)
 
@@ -442,8 +443,16 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-27T22:00:40.947Z
-Stopped at: Phase 5 (Journaling via Claude) complete. Validated `tempo journal add` entrypoint
+Last session: 2026-05-28T00:00:00.000Z
+Stopped at: v1.1 SHIPPED. Phase 12 plan 12-02 closes the milestone: top-level
+Telegram error handler (VOICE-12) ensures a single bad message never crashes
+the worker; `docs/PRIVACY.md` is the single-source user-facing privacy
+contract; README + `docs/TELEGRAM_BOT.md` now document the launchd lifecycle,
+voice retention policy, and error-handler behaviour. All four VOICE-11/12/14/15
+requirements complete; 60/60 v1.1 requirements satisfied; 498 tests green.
+Pi port (v1.2) is the next milestone -- deferred.
+
+Previous session: 2026-05-27T22:00:40.947Z. Stopped at: Phase 5 (Journaling via Claude) complete. Validated `tempo journal add` entrypoint
 (`tempo/journal/service.py`) records structured subjective entries (RPE 1–10, feel, notes),
 resolves the activity by date+sport (none/one/many handled), computes an sRPE (RPE × duration)
 load track, and inserts via parameterised SQL — Claude never writes SQL. Migration 0003 adds

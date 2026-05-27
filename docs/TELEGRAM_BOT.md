@@ -7,7 +7,11 @@ chat id you control, and silently drops everything else at the filter level.
 This is the **v1.1 voice-coach intake**: Phase 9 wires the worker and the
 allowlist; Phase 10 adds voice-memo download + local transcription; Phase 11
 hands transcripts to a Claude Code agent loop; Phase 12 runs the whole thing
-under launchd.
+under launchd with a top-level error boundary and a configurable voice-cache
+retention policy.
+
+For the privacy contract (what data stays on the laptop, what leaves, and
+the retention rules), see [`docs/PRIVACY.md`](PRIVACY.md).
 
 ## What this is
 
@@ -113,8 +117,108 @@ the chat id of *your* account, and re-run.
 
 `Ctrl-C` in the terminal. `python-telegram-bot`'s `run_polling()` handles
 `SIGINT` / `SIGTERM` / `SIGABRT` by default: it stops the updater, drains
-in-flight handler tasks, and shuts down cleanly. Phase 12 will run the same
-process under launchd, which sends `SIGTERM` on `bootout`.
+in-flight handler tasks, and shuts down cleanly. Under launchd (Phase 12),
+the same process receives `SIGTERM` on `bootout` and shuts down on the same
+code path.
+
+## Always-on under launchd (Phase 12)
+
+For unattended operation across reboots, sleep/wake cycles, and crashes the
+bot runs as a `launchd` `LaunchAgent` with `KeepAlive=true`. Tempo writes
+the plist for you and prints the manual `launchctl` commands; it never runs
+`launchctl` itself.
+
+```bash
+uv run tempo bot install-scheduler        # writes ~/.tempo/launchd/com.tempo.telegram-bot.plist + prints next steps
+cp ~/.tempo/launchd/com.tempo.telegram-bot.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tempo.telegram-bot.plist
+launchctl kickstart -k gui/$(id -u)/com.tempo.telegram-bot
+```
+
+To stop / remove:
+
+```bash
+launchctl bootout gui/$(id -u)/com.tempo.telegram-bot
+rm ~/Library/LaunchAgents/com.tempo.telegram-bot.plist
+```
+
+The plist sets:
+
+* `KeepAlive=true` + `ThrottleInterval=10` -- the bot is restarted if it
+  exits for any reason, but the 10-second throttle stops a fast crash loop
+  from pinning CPU.
+* `RunAtLoad=true` -- starts automatically on boot / `bootstrap`.
+* `WorkingDirectory` -- the Tempo project root, so the agent's `cwd` is
+  the repo (the bot logs the resolved cwd + `data_dir` at startup so you
+  can see this in the launchd log).
+* `StandardOutPath` / `StandardErrorPath` -- `logs/tempo-bot.out.log` and
+  `logs/tempo-bot.err.log` under the project root (gitignored).
+
+The template lives at
+[`launchd/com.tempo.telegram-bot.plist`](../launchd/com.tempo.telegram-bot.plist);
+`install-scheduler` substitutes `{{PROJECT_DIR}}`, `{{UV_PATH}}`, and
+`{{PATH}}` into the user-specific copy under `~/.tempo/launchd/` and
+`plutil -lint`s the result BEFORE asking you to copy it into
+`~/Library/LaunchAgents/` -- a broken substitution can never reach
+launchd. See `docs/PRIVACY.md` "What leaves the laptop, and to whom" for
+what data the unattended worker touches.
+
+## Voice cache retention
+
+The bot transcribes voice memos locally with `faster-whisper` (audio never
+leaves the laptop). Once the transcript flows to the agent, the raw `.ogg`
+is governed by `VOICE_RETENTION_DAYS` in `.env`:
+
+* `VOICE_RETENTION_DAYS=0` (**default, privacy-safe**) -- the `.ogg` is
+  deleted in the handler's `finally` block immediately after the agent
+  turn. The audio never persists on disk past one turn.
+* `VOICE_RETENTION_DAYS=N` for N>0 -- the `.ogg` stays for N days.
+  `tempo/bot/app.py::_post_init` sweeps `<voice_cache_dir>/` on every
+  bot startup and deletes anything older than `N * 86400` seconds, so a
+  long-running bot under launchd cannot accumulate unbounded audio
+  across restarts. Use only when debugging Whisper misfires.
+
+Manual purge any time (the bot does not need to be running):
+
+```bash
+uv run tempo bot purge-voice         # asks for confirmation
+uv run tempo bot purge-voice --yes   # non-interactive (scripts / launchd)
+```
+
+`purge-voice` deletes every file under `<voice_cache_dir>/` regardless of
+the retention setting.
+
+## Error handler behaviour
+
+The bot registers a single top-level error handler
+(`tempo/bot/error_handler.py::telegram_error_handler`) on the PTB
+`Application` via `add_error_handler`. Any exception raised by a
+registered handler that the handler itself does not catch routes through
+this boundary:
+
+1. The full traceback is logged at ERROR (`Bot handler crashed: <repr>`)
+   so the launchd log file (`logs/tempo-bot.err.log`) shows what
+   actually failed.
+2. A single fixed reply is sent back to the offending chat:
+
+   > Sorry -- something went wrong on my end. Check the logs.
+
+3. The handler never re-raises. If the reply itself fails (Telegram
+   unreachable, chat blocked the bot, etc.), the failure is logged
+   (`error reply failed: chat=... original=... reply_error=...`) and
+   swallowed -- the worker stays up.
+
+The Phase 11 `_run_agent_turn` still catches `AgentInvocationError`
+specifically and replies with the more useful
+`Claude Code isn't running. Try claude login in a terminal.` before the
+top-level handler would ever see it. The top-level handler is the
+last-line-of-defence for sqlite errors, faster-whisper crashes, OSError
+on voice cache writes, and any internal PTB failure.
+
+Combined with the launchd `KeepAlive=true` plist, this means a single
+bad message can never take the worker down: at worst, the handler
+boundary handles it; in the absolute worst case (the worker process
+itself crashes hard), launchd restarts it within the 10-second throttle.
 
 ## Phase 11 prerequisites (Claude Code agent loop)
 
@@ -202,11 +306,14 @@ path; the resulting `CancelledError` is absorbed via
 `asyncio.gather(..., return_exceptions=True)` so it never surfaces as an
 uncaught task exception.
 
-What this phase does NOT yet do (Phase 12 lands these): a top-level
-"something went wrong" error boundary around the full pipeline (today
-non-`AgentInvocationError` exceptions propagate to PTB's default
-handler), a launchd `LaunchAgent` for unattended running across reboots,
-and the retention policy for the `voice/` cache + bot logs.
+Phase 12 closes the remaining lifecycle/privacy gaps on top of this
+pipeline: the launchd `LaunchAgent` with `KeepAlive=true` (see "Always-on
+under launchd" above), the `VOICE_RETENTION_DAYS` retention policy + the
+`tempo bot purge-voice` hatch (see "Voice cache retention" above), and the
+top-level `telegram_error_handler` that catches every other handler
+exception (see "Error handler behaviour" above). With those wired,
+`tempo bot run` -- whether you start it manually or via launchd -- is
+v1.1-complete.
 
 ## Troubleshooting
 
@@ -244,12 +351,15 @@ treated as a real secret throughout Tempo: `SecretStr` in `Settings`, never
 logged, `.env` is gitignored from day one, and the README enforces
 `chmod 600 .env` alongside the Strava and Garmin token guidance.
 
+The full privacy contract -- what data stays on the laptop, what leaves it,
+the voice retention policy, and the per-credential leak-response steps --
+lives in [`docs/PRIVACY.md`](PRIVACY.md). Read it once and it stays true.
+
 ## What's next
 
-- **Phase 10:** voice-memo download (`update.message.voice.get_file()` ->
-  `download_to_drive()`) + local `faster-whisper` transcription, all gated on
-  the same `filters.Chat(chat_id=owner)` filter.
-- **Phase 11:** Claude Code agent loop -- transcripts in, structured journal
-  entries / data queries / acknowledgements out, with persistent session id.
-- **Phase 12:** launchd `LaunchAgent` with `KeepAlive=true` + retention
-  policy for accumulated `.ogg` files and bot logs.
+v1.1 is **feature-complete** with Phase 12. The Telegram voice-coach
+intake now covers: owner-only allowlist, local Whisper transcription,
+Claude Code agent loop with per-chat 4h session memory and `/new` reset,
+launchd `KeepAlive` lifecycle, top-level error boundary, and
+configurable voice retention. See `.planning/ROADMAP.md` for the next
+milestone (v1.2 — Pi port).

@@ -190,9 +190,12 @@ history. Correlation is not causation — relationships are a prompt to investig
 
 A personal, owner-only Telegram bot that runs as a local long-polling worker —
 the **v1.1 voice-coach intake**. Single chat allowlisted at the filter level;
-any other chat is silently dropped before any handler runs. Phase 9 ships the
-worker + `/start` greeting; later phases add voice-memo transcription and a
-Claude Code agent loop on top of the same allowlist.
+any other chat is silently dropped before any handler runs. Voice memos are
+transcribed locally with `faster-whisper`, text and transcripts route through
+Claude Code via the `claude-agent-sdk`, the worker survives single-message
+failures via a top-level error boundary, and the whole thing runs unattended
+under a launchd `LaunchAgent` with `KeepAlive=true`. See
+[`docs/PRIVACY.md`](docs/PRIVACY.md) for the full privacy contract.
 
 ```
 # One-time setup: see docs/TELEGRAM_BOT.md (full @BotFather + getUpdates walkthrough).
@@ -258,12 +261,12 @@ Telegram's ~16 kbps Opus encoding, 20 MB is roughly 2.5 hours of voice, so
 in normal use you will never hit this; the guard is for safety, not the
 common case.
 
-**What this phase does NOT yet do.** Phase 10 just echoes the transcript.
-The Claude Code agent loop (so a voice memo turns into an actual
-training-coach reply) is Phase 11. The always-on `launchd` lifecycle for
-the bot and the voice-file retention/deletion policy are Phase 12. Until
-then, the `voice/` cache grows unbounded — clean it manually if it bothers
-you. See [`.planning/ROADMAP.md`](.planning/ROADMAP.md) for the full plan.
+**Voice retention.** `VOICE_RETENTION_DAYS=0` (the privacy-safe default)
+deletes the raw `.ogg` immediately after the transcript reaches the agent.
+Set it to N>0 in `.env` to keep recent memos for N days for debugging
+Whisper misfires; a startup sweep purges anything older. Flush the cache
+manually any time with `uv run tempo bot purge-voice [--yes]`. Full
+details in [`docs/PRIVACY.md`](docs/PRIVACY.md).
 
 ### Claude Code agent loop (v1.1 / Phase 11)
 
@@ -279,6 +282,31 @@ The bot uses your existing `claude login` — **no** `ANTHROPIC_API_KEY` is
 needed or used. If the `claude` CLI is missing from PATH the bot exits at
 startup with a clear error before any Telegram traffic. See
 [`docs/TELEGRAM_BOT.md`](docs/TELEGRAM_BOT.md) "Phase 11: the agent loop".
+
+### Always-on bot via launchd (v1.1 / Phase 12)
+
+For unattended operation across reboots, sleep/wake, and crashes, the bot
+runs as a `launchd` `LaunchAgent` with `KeepAlive=true` + `RunAtLoad=true`
++ `ThrottleInterval=10`. A top-level error handler
+(`tempo/bot/error_handler.py`) is registered on the PTB `Application` so
+any uncaught handler exception logs the full traceback + sends a fixed
+*"Sorry — something went wrong on my end. Check the logs."* reply to the
+offending chat without ever re-raising — combined with launchd
+`KeepAlive`, a single bad message can never take the worker down.
+
+```bash
+uv run tempo bot install-scheduler       # writes plist + prints next steps; doesn't run launchctl
+cp ~/.tempo/launchd/com.tempo.telegram-bot.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tempo.telegram-bot.plist
+launchctl kickstart -k gui/$(id -u)/com.tempo.telegram-bot
+```
+
+Logs land in `logs/tempo-bot.out.log` and `logs/tempo-bot.err.log`
+(gitignored). See
+[`docs/TELEGRAM_BOT.md`](docs/TELEGRAM_BOT.md) "Always-on under launchd"
+for the full lifecycle (install, kickstart, bootout, removal) and
+[`docs/PRIVACY.md`](docs/PRIVACY.md) for what the unattended worker
+touches.
 
 ## Scheduling (the daily run via launchd)
 
