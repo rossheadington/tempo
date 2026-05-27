@@ -236,9 +236,10 @@ template lives at [`launchd/com.tempo.daily.plist`](launchd/com.tempo.daily.plis
 rTSS) and optionally `TEMPO_MAX_HR` / `TEMPO_RESTING_HR` / `TEMPO_THRESHOLD_HR`
 (the hrTSS fallback). See `.env.example`.
 
-**Plan & race context**: copy `races.md.example` / `plan.md.example` into your
-data dir as `races.md` / `plan.md` (default `~/.tempo/`) and edit them. Tempo
-reads them for race-readiness context; they are never committed.
+**Tracker files**: copy `races.md.example` and `heat.md.example` into your
+content dir as `races.md` / `heat.md` (default `~/.tempo/`) and edit them.
+Tempo reads `races.md` for race-readiness context and `heat.md` for
+heat-adaptation context in the recovery report; both are never committed.
 
 ## Status
 
