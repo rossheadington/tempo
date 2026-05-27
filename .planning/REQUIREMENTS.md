@@ -87,9 +87,9 @@ Voice memos sent to a personal Telegram chat → local Whisper transcription →
 
 ### Telegram bot intake
 
-- [ ] **VOICE-01**: A Telegram bot runs as a long-polling local process and accepts voice messages ONLY from a single allowlisted chat id (the project owner); messages from any other chat are silently dropped
-- [ ] **VOICE-02**: Bot token and owner chat id load from `.env` via `pydantic-settings` (gitignored); `.env.example` documents both
-- [ ] **VOICE-03**: Inbound voice messages > 20 MB (Telegram's bot-API cap) are gracefully rejected with a clear reply rather than crashing the handler
+- [x] **VOICE-01**: A Telegram bot runs as a long-polling local process and accepts voice messages ONLY from a single allowlisted chat id (the project owner); messages from any other chat are silently dropped
+- [x] **VOICE-02**: Bot token and owner chat id load from `.env` via `pydantic-settings` (gitignored); `.env.example` documents both
+- [x] **VOICE-03**: Inbound voice messages > 20 MB (Telegram's bot-API cap) are gracefully rejected with a clear reply rather than crashing the handler
 
 ### Local transcription
 

@@ -22,10 +22,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Garmin Ingestion** - Isolated fragile connector, login-once token persistence, no-retry-on-429, calendarDate wellness, baselines
 - [x] **Phase 7: Recovery + Correlation + Scheduler** - Multi-signal recovery, honest correlation, launchd daily loop with catch-up and noteworthy-only surfacing
 - [x] **Phase 8: Modular Trackers + Heat Adaptation** - races.md result + auto-link, heat.md tracker surfaced in recovery report, plan.md retired
-- [ ] **Phase 9: Telegram Bot Foundation (v1.1)** - python-telegram-bot scaffold, owner-only allowlist, `.env` secrets, `tempo bot run` subcommand
-- [ ] **Phase 10: Voice Intake + Local Transcription (v1.1)** - Voice download into gitignored cache, 20 MB guard, faster-whisper singleton (small.en int8 default), transcript echoed to chat
-- [ ] **Phase 11: Claude Code Agent Loop (v1.1)** - claude-agent-sdk wiring, per-chat session-id store with 4hr resume window, HTML reply formatting with 4096-char split, `/new` reset, per-turn token logging
-- [ ] **Phase 12: Lifecycle, Hardening, Privacy (v1.1)** - launchd LaunchAgent with KeepAlive, top-level error handler, voice-file retention policy, project-scoped working dir
+- [x] **Phase 9: Telegram Bot Foundation (v1.1)** - python-telegram-bot scaffold, owner-only allowlist, `.env` secrets, `tempo bot run` subcommand
+- [x] **Phase 10: Voice Intake + Local Transcription (v1.1)** - Voice download into gitignored cache, 20 MB guard, faster-whisper singleton (small.en int8 default), transcript echoed to chat
+- [x] **Phase 11: Claude Code Agent Loop (v1.1)** - claude-agent-sdk wiring, per-chat session-id store with 4hr resume window, HTML reply formatting with 4096-char split, `/new` reset, per-turn token logging
+- [x] **Phase 12: Lifecycle, Hardening, Privacy (v1.1)** - launchd LaunchAgent with KeepAlive, top-level error handler, voice-file retention policy, project-scoped working dir
 
 ## Phase Details
 
@@ -189,8 +189,8 @@ Plans:
   5. The README's "Telegram Voice Coach (v1.1)" section documents the privacy contract end-to-end: voice bytes never leave the laptop (faster-whisper is CPU-local); transcripts + Claude Code calls flow through the user's existing Claude subscription (same surface they already accept by using Claude Code); Telegram carries the memo and the reply text; no additional cloud surface vs. baseline Claude Code use
 **Plans**: 2 plans
 Plans:
-- [ ] 12-01-PLAN.md — launchd plist + install-scheduler + voice retention + cwd log (VOICE-11, VOICE-14, VOICE-15)
-- [ ] 12-02-PLAN.md — Top-level PTB error handler + docs/PRIVACY.md + TELEGRAM_BOT.md / README updates (VOICE-12)
+- [x] 12-01-PLAN.md — launchd plist + install-scheduler + voice retention + cwd log (VOICE-11, VOICE-14, VOICE-15)
+- [x] 12-02-PLAN.md — Top-level PTB error handler + docs/PRIVACY.md + TELEGRAM_BOT.md / README updates (VOICE-12)
 **UI hint**: yes
 
 ## Progress
@@ -215,4 +215,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 **Milestone status:**
 - **v1.0 (Phases 1–8):** COMPLETE — all 45 v1 + Phase-8 v1.1 requirements shipped (2026-05-27).
-- **v1.1 Telegram Voice Coach (Phases 9–12):** Planning — 15 VOICE-* requirements mapped, 0 complete.
+- **v1.1 Telegram Voice Coach (Phases 9–12):** **COMPLETE** (2026-05-28) — all 15 VOICE-* requirements shipped, 497 tests passing, ruff clean. Voice memo to Telegram → local faster-whisper transcription → Claude Code via Agent SDK → reply back. launchd KeepAlive, top-level error boundary, voice-file retention (default delete-on-success), local-only voice processing.
