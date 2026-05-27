@@ -1,101 +1,48 @@
-"""Parsing of races.md / plan.md context files, including the missing-file path.
+"""Tests for the transition shim ``tempo.analysis.context``.
 
-Covers PLAN-01/02. Parsing is lenient: unknown lines ignored, malformed fields
-skipped, missing file -> empty result with ``present=False`` (analyses degrade).
+After Phase 8 the canonical races parser lives in :mod:`tempo.analysis.races`;
+``context`` is a re-export shim plus the still-inline ``plan.md`` parser. The
+shim assertions below ensure existing import sites keep resolving until Plan 04
+migrates them; the plan-portion tests stay until Plan 05 deletes the parser.
 """
 
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 
-import pytest
-
+from tempo.analysis import context as ctx_mod
 from tempo.analysis.context import (
-    parse_distance,
-    parse_goal_time,
+    PlanContext,
+    Race,
+    RacesContext,
     parse_plan,
     parse_races,
 )
 
-# ---- races.md -------------------------------------------------------------
+# ---- shim re-export assertions --------------------------------------------
 
 
-def test_parse_races_missing_file(tmp_path: Path) -> None:
-    ctx = parse_races(tmp_path / "nope.md")
-    assert ctx.present is False
-    assert ctx.races == []
+def test_context_shim_reexports_races() -> None:
+    """The shim re-exports the canonical races names from tempo.analysis.races."""
+    from tempo.analysis import races as races_mod
+
+    # Same object identity proves it is a re-export, not a duplicate.
+    assert ctx_mod.parse_races is races_mod.parse_races
+    assert ctx_mod.Race is races_mod.Race
+    assert ctx_mod.RacesContext is races_mod.RacesContext
 
 
-def test_parse_races_basic(tmp_path: Path) -> None:
-    p = tmp_path / "races.md"
-    p.write_text(
-        "# My races\n\n"
-        "- Berlin Marathon - date: 2026-09-27 | distance: marathon | goal: 3:15:00 | priority: A\n"
-        "- Club 10k - date: 2026-06-07 | distance: 10k | goal: 39:30 | priority: C\n",
-        encoding="utf-8",
-    )
-    ctx = parse_races(p)
-    assert ctx.present is True
-    assert len(ctx.races) == 2
-    berlin = ctx.races[0]
-    assert berlin.name == "Berlin Marathon"
-    assert berlin.race_date == date(2026, 9, 27)
-    assert berlin.distance_m == pytest.approx(42195.0)
-    assert berlin.goal_time_s == pytest.approx(3 * 3600 + 15 * 60)
-    assert berlin.priority == "A"
+def test_context_shim_still_exports_parse_plan_for_now() -> None:
+    """parse_plan stays inline on the shim until Plan 05 deletes plan.md support."""
+    assert callable(parse_plan)
+    assert PlanContext.__name__ == "PlanContext"
+    # And the parse_races / Race / RacesContext re-exports remain importable.
+    assert callable(parse_races)
+    assert Race.__name__ == "Race"
+    assert RacesContext.__name__ == "RacesContext"
 
 
-def test_parse_races_ignores_prose_and_headings(tmp_path: Path) -> None:
-    # Documentation-style bullets (no recognised race fields) must not become races.
-    p = tmp_path / "races.md"
-    p.write_text(
-        "# Format\n\n"
-        "Recognised keys:\n\n"
-        "- `date` - ISO date YYYY-MM-DD\n"
-        "- `distance` - marathon, half, 10k\n\n"
-        "## Races\n\n"
-        "- Spring Half - date: 2026-03-15 | distance: half\n",
-        encoding="utf-8",
-    )
-    ctx = parse_races(p)
-    assert len(ctx.races) == 1
-    assert ctx.races[0].name == "Spring Half"
-
-
-def test_parse_races_lenient_partial_fields(tmp_path: Path) -> None:
-    p = tmp_path / "races.md"
-    p.write_text("- Mystery Race - distance: 10k\n", encoding="utf-8")
-    ctx = parse_races(p)
-    assert len(ctx.races) == 1
-    r = ctx.races[0]
-    assert r.race_date is None
-    assert r.goal is None
-    assert r.distance_m == pytest.approx(10000.0)
-
-
-def test_parse_races_bad_date_is_dropped_not_fatal(tmp_path: Path) -> None:
-    p = tmp_path / "races.md"
-    p.write_text("- Race X - date: not-a-date | distance: 5k\n", encoding="utf-8")
-    ctx = parse_races(p)
-    assert len(ctx.races) == 1
-    assert ctx.races[0].race_date is None
-
-
-def test_upcoming_sorts_and_filters(tmp_path: Path) -> None:
-    p = tmp_path / "races.md"
-    p.write_text(
-        "- Past - date: 2026-01-01 | distance: 5k\n"
-        "- Later - date: 2026-12-01 | distance: marathon\n"
-        "- Soon - date: 2026-06-01 | distance: 10k\n",
-        encoding="utf-8",
-    )
-    ctx = parse_races(p)
-    upcoming = ctx.upcoming(date(2026, 5, 1))
-    assert [r.name for r in upcoming] == ["Soon", "Later"]
-
-
-# ---- plan.md --------------------------------------------------------------
+# ---- plan.md (kept until Plan 05 deletes it) ------------------------------
 
 
 def test_parse_plan_missing_file(tmp_path: Path) -> None:
@@ -131,22 +78,3 @@ def test_parse_plan_first_field_wins(tmp_path: Path) -> None:
     p.write_text("Phase: Base\nPhase: Peak\n", encoding="utf-8")
     ctx = parse_plan(p)
     assert ctx.fields["phase"] == "Base"
-
-
-# ---- helpers --------------------------------------------------------------
-
-
-def test_parse_goal_time_variants() -> None:
-    assert parse_goal_time("3:15:00") == pytest.approx(11700.0)
-    assert parse_goal_time("39:30") == pytest.approx(2370.0)
-    assert parse_goal_time("sub-3") is None
-
-
-def test_parse_distance_named_and_numeric() -> None:
-    assert parse_distance("marathon")[0] == pytest.approx(42195.0)
-    assert parse_distance("half")[0] == pytest.approx(21097.5)
-    assert parse_distance("10k")[0] == pytest.approx(10000.0)
-    assert parse_distance("42.195km")[0] == pytest.approx(42195.0)
-    assert parse_distance("21100m")[0] == pytest.approx(21100.0)
-    assert parse_distance("13.1mi")[0] == pytest.approx(13.1 * 1609.34)
-    assert parse_distance("gibberish")[0] is None
