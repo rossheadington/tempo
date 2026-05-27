@@ -20,14 +20,14 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from tempo.analysis import context as ctx
 from tempo.analysis import correlation as corr_mod
 from tempo.analysis import data as dataread
 from tempo.analysis import fitness, load, race
+from tempo.analysis import races as ctx
 from tempo.analysis import recovery as recovery_mod
 from tempo.analysis import report as report_mod
-from tempo.analysis.context import Race
 from tempo.analysis.race_link import link_races_to_activities
+from tempo.analysis.races import Race
 
 
 @dataclass(frozen=True, slots=True)

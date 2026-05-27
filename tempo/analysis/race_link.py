@@ -32,7 +32,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
-from tempo.analysis.context import Race
+from tempo.analysis.races import Race
 
 
 @dataclass(frozen=True, slots=True)

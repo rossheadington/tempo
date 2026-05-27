@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from tempo.analysis.context import PlanContext, Race, RacesContext
+from tempo.analysis.races import Race, RacesContext
 from tempo.analysis.data import SourceFreshness
 from tempo.analysis.fitness import FitnessPoint, Guardrail
 from tempo.analysis.load import DayLoad

@@ -217,7 +217,7 @@ def test_thresholds_are_configurable() -> None:
 
 
 def test_next_race_within_days() -> None:
-    from tempo.analysis.context import Race, RacesContext
+    from tempo.analysis.races import Race, RacesContext
 
     ctx = RacesContext(
         present=True,
@@ -230,6 +230,6 @@ def test_next_race_within_days() -> None:
 
 
 def test_next_race_within_days_none_when_absent() -> None:
-    from tempo.analysis.context import RacesContext
+    from tempo.analysis.races import RacesContext
 
     assert nw.next_race_within_days(RacesContext(present=False), AS_OF) is None

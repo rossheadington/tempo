@@ -31,8 +31,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from tempo.analysis import context as ctx
 from tempo.analysis import data as dataread
+from tempo.analysis import races as ctx
 from tempo.analysis import fitness
 from tempo.analysis import noteworthy as nw
 from tempo.analysis import recovery as recovery_mod
