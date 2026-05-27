@@ -2,7 +2,7 @@
 
 This is a small read-only composition layer above :mod:`tempo.analysis.data`
 that implements the race-to-activity auto-link for TRACK-03. Given the list of
-:class:`~tempo.analysis.context.Race` objects parsed from the user's
+:class:`~tempo.analysis.races.Race` objects parsed from the user's
 ``races.md`` and a SQLite connection over the structured store, it produces a
 parallel list of :class:`RaceLink` results -- one per input race, in the same
 order -- classifying each race against the activities on its local date.
