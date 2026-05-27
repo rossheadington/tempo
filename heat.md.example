@@ -1,0 +1,35 @@
+# Heat sessions -- EXAMPLE / TEMPLATE
+
+Copy this file to your Tempo content dir as `heat.md` (default
+`~/.tempo/heat.md`) and edit it. Tempo reads it for heat-adaptation context in
+the recovery report (TRACK-04/05); it is never committed (the content dir lives
+outside the repo tree).
+
+## Format
+
+One session per markdown list item. Each entry leads with the date, then
+`key: value` pairs separated by `|` (or commas), in any order. Parsing is
+lenient: unknown keys are ignored and a malformed line is skipped, so you can't
+break analysis by editing this file. Append new sessions to the bottom -- the
+file is treated as append-only by convention (Tempo never edits it).
+
+Recognised keys:
+
+- `date` -- ISO date `YYYY-MM-DD` (the session day). If omitted, the leading
+  date before the first ` - ` on the bullet is used. An entry without any
+  parseable date is dropped (it would break the rolling-window rollup).
+- `type` -- free-form label, e.g. `sauna`, `hot-bath`, `hot-run`, `steam-room`.
+  Stored verbatim; no enum.
+- `duration_min` -- session length in minutes (integer or decimal).
+- `temp_c` -- ambient temperature in Celsius (optional).
+- `hr_avg` -- average heart rate during the session (optional).
+- `notes` -- free-form text (optional).
+
+## Sessions
+
+- 2026-05-26 - type: sauna | duration_min: 20 | temp_c: 85 | hr_avg: 105 | notes: post-run felt easier than last week
+- 2026-05-24 - type: hot-bath | duration_min: 25 | temp_c: 41 | notes: shorter than planned -- water cooled fast
+- 2026-05-22 - type: hot-run | duration_min: 45 | hr_avg: 158 | notes: midday run in 28C fully exposed
+- 2026-05-20 - type: sauna | duration_min: 30 | temp_c: 90 | hr_max: 128 | notes: hr_max is ignored by the parser -- unrecognised keys are silently skipped
+- 2026-05-18 - type: steam-room | duration_min: 15
+- 2026-05-15 - type: sauna | duration_min: 22 | temp_c: 82 | hr_avg: 108
