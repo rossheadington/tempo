@@ -350,6 +350,37 @@ def garmin_sync_cmd() -> None:
         typer.secho(f"Garmin sync skipped -- {result.detail}", fg=typer.colors.YELLOW)
 
 
+# ---------------------------------------------------------------------------
+# Telegram bot (v1.1 voice-coach intake)
+# ---------------------------------------------------------------------------
+
+bot_app = typer.Typer(
+    help="Telegram bot (v1.1): owner-only long-polling worker.",
+    no_args_is_help=True,
+)
+app.add_typer(bot_app, name="bot")
+
+
+@bot_app.command("run")
+def bot_run_cmd() -> None:
+    """Run the Telegram bot as an owner-only long-polling worker (VOICE-01/02).
+
+    Blocks until SIGINT/SIGTERM (PTB handles graceful shutdown). Requires
+    TELEGRAM_BOT_TOKEN and TELEGRAM_OWNER_CHAT_ID in your .env -- see
+    docs/TELEGRAM_BOT.md for the @BotFather + getUpdates walkthrough.
+    """
+    # Lazy import so `tempo --help` on a machine without python-telegram-bot
+    # installed doesn't blow up at module load. Mirrors the lazy-import
+    # pattern used by `sync()` above.
+    from tempo.bot import run as bot_run
+
+    try:
+        bot_run()
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+
 @app.command()
 def transform() -> None:
     """Derive structured tables from stored raw responses (no network).
