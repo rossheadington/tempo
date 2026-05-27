@@ -214,9 +214,7 @@ def test_voice_handler_filter_drops_non_owner(
     assert handler.check_update(owner_update)
 
     # Non-owner voice Update -- falsy.
-    non_owner_update = _make_voice_update(
-        chat_id=111, file_size=4096, message_id=99, with_bot=True
-    )
+    non_owner_update = _make_voice_update(chat_id=111, file_size=4096, message_id=99, with_bot=True)
     assert not handler.check_update(non_owner_update)
 
 

@@ -16,9 +16,15 @@ import asyncio
 import logging
 import sys
 
-from telegram.ext import Application, ApplicationBuilder, CommandHandler, filters
+from telegram.ext import (
+    Application,
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    filters,
+)
 
-from tempo.bot.handlers import start_handler
+from tempo.bot.handlers import start_handler, voice_handler
 from tempo.bot.transcribe import warm_model
 from tempo.config import Settings, get_settings
 
@@ -103,9 +109,14 @@ def build_application(settings: Settings) -> Application:
 
     owner_filter = filters.Chat(chat_id=owner_chat_id)
     app.add_handler(CommandHandler("start", start_handler, filters=owner_filter))
+    # VOICE-03/04/06: owner-only voice intake. ``filters.VOICE & owner_filter``
+    # means non-owner voice memos are silently dropped at the dispatcher,
+    # same as non-owner /start (research/telegram-bot-research.md
+    # "Single-chat allowlist").
+    app.add_handler(MessageHandler(filters.VOICE & owner_filter, voice_handler))
 
     logger.info(
-        "Bot configured -- owner_chat_id=%d, concurrent_updates=True",
+        "Bot configured -- owner_chat_id=%d, concurrent_updates=True, voice_handler=registered",
         owner_chat_id,
     )
     return app
