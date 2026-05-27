@@ -20,6 +20,7 @@ dev dependency.
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,7 +38,12 @@ from tempo.bot import (
     start_handler,
     text_handler,
 )
-from tempo.bot.app import _require_telegram_config, _verify_claude_cli, build_application
+from tempo.bot.app import (
+    _require_telegram_config,
+    _sweep_voice_cache,
+    _verify_claude_cli,
+    build_application,
+)
 from tempo.config import Settings
 
 # ---------------------------------------------------------------------------
@@ -425,3 +431,139 @@ def test_build_application_registers_text_and_new_handlers(
     non_owner_new_update = Update(update_id=104, message=non_owner_new)
     non_owner_new_update.set_bot(non_owner_new.get_bot())
     assert not new_handler.check_update(non_owner_new_update)
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: voice cache startup sweep
+# ---------------------------------------------------------------------------
+
+
+def test_sweep_voice_cache_noop_when_retention_zero(tmp_path: Path) -> None:
+    """retention=0 -> sweep is a no-op (per-handler cleanup already deletes)."""
+    cache = tmp_path / "voice"
+    cache.mkdir()
+    f = cache / "x.ogg"
+    f.write_bytes(b"\x00")
+    deleted = _sweep_voice_cache(cache, retention_days=0)
+    assert deleted == 0
+    assert f.exists()
+
+
+def test_sweep_voice_cache_noop_when_dir_missing(tmp_path: Path) -> None:
+    """Missing cache dir is fine (bot never received a voice memo yet)."""
+    cache = tmp_path / "voice"
+    deleted = _sweep_voice_cache(cache, retention_days=7)
+    assert deleted == 0
+
+
+def test_sweep_voice_cache_deletes_old_keeps_recent(tmp_path: Path) -> None:
+    """retention=7: file older than 7 days is removed; younger file kept.
+
+    Fakes file mtimes via :func:`os.utime` so the test does not need to wait
+    real seconds.
+    """
+    import os
+
+    cache = tmp_path / "voice"
+    cache.mkdir()
+    old = cache / "old.ogg"
+    young = cache / "young.ogg"
+    old.write_bytes(b"\x00")
+    young.write_bytes(b"\x00")
+
+    now = time.time()
+    # old: 10 days ago; young: 1 day ago.
+    os.utime(old, (now - 10 * 86400, now - 10 * 86400))
+    os.utime(young, (now - 1 * 86400, now - 1 * 86400))
+
+    deleted = _sweep_voice_cache(cache, retention_days=7)
+    assert deleted == 1
+    assert not old.exists()
+    assert young.exists()
+
+
+def test_sweep_voice_cache_handles_subdirectories(tmp_path: Path) -> None:
+    """Subdirectories under voice_cache_dir are not deleted (iterdir + is_file)."""
+    cache = tmp_path / "voice"
+    cache.mkdir()
+    (cache / "sub").mkdir()
+    deleted = _sweep_voice_cache(cache, retention_days=1)
+    assert deleted == 0
+    assert (cache / "sub").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: cwd log line at startup
+# ---------------------------------------------------------------------------
+
+
+def test_post_init_logs_agent_cwd_and_data_dir(
+    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
+) -> None:
+    """`_post_init` emits an "agent cwd = <abs>" log line at startup.
+
+    Builds the Application, captures the post_init hook directly (PTB stores
+    it as ``app.post_init``), and runs it under asyncio.run with a mock bot.
+    Stubs out ``delete_webhook``, ``init_db``, ``warm_model`` so the test
+    does not touch the network or Whisper.
+    """
+    import logging
+
+    _clear_telegram_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-123")
+    monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "987654321")
+    monkeypatch.setenv("VOICE_RETENTION_DAYS", "3")
+    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
+    # Stub out the work _post_init does so we can assert on the side log lines.
+    monkeypatch.setattr("tempo.bot.app.init_db", lambda path: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr("tempo.bot.app.warm_model", lambda settings: None)
+
+    settings = Settings(_env_file=None)
+    app = build_application(settings)
+
+    # PTB v22 stores the post-init callback as ``app.post_init`` (a property
+    # that returns the configured coroutine). We invoke it directly with a
+    # MagicMock Application so the bot.delete_webhook call does not need a
+    # live bot.
+    fake_bot = MagicMock()
+    fake_bot.delete_webhook = AsyncMock(return_value=None)
+    fake_app = SimpleNamespace(bot=fake_bot)
+
+    caplog.set_level(logging.INFO, logger="tempo.bot")
+    asyncio.run(app.post_init(fake_app))  # type: ignore[arg-type]
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("agent cwd =" in m for m in messages), messages
+    assert any("data_dir =" in m for m in messages), messages
+    # Sweep ran for retention > 0 (empty dir -> deleted=0 but the line fires).
+    assert any("voice cache startup sweep" in m for m in messages), messages
+
+
+def test_post_init_no_sweep_log_when_retention_zero(
+    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
+) -> None:
+    """With VOICE_RETENTION_DAYS=0 (default) the sweep is silent (no log line)."""
+    import logging
+
+    _clear_telegram_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-123")
+    monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "987654321")
+    monkeypatch.delenv("VOICE_RETENTION_DAYS", raising=False)
+    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
+    monkeypatch.setattr("tempo.bot.app.init_db", lambda path: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr("tempo.bot.app.warm_model", lambda settings: None)
+
+    settings = Settings(_env_file=None)
+    app = build_application(settings)
+
+    fake_bot = MagicMock()
+    fake_bot.delete_webhook = AsyncMock(return_value=None)
+    fake_app = SimpleNamespace(bot=fake_bot)
+
+    caplog.set_level(logging.INFO, logger="tempo.bot")
+    asyncio.run(app.post_init(fake_app))  # type: ignore[arg-type]
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert not any("voice cache startup sweep" in m for m in messages)
+    # The cwd line is still emitted regardless of retention.
+    assert any("agent cwd =" in m for m in messages)

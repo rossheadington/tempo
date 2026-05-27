@@ -415,10 +415,14 @@ def test_voice_handler_happy_path_writes_file_transcribes_and_replies(
     assert settings.voice_cache_dir.exists()
     assert settings.voice_cache_dir.is_dir()
 
-    # The .ogg landed at the expected deterministic path.
+    # The .ogg WAS downloaded to the expected deterministic path
+    # (captured via the fake_download write_bytes call).
     expected_path = settings.voice_cache_dir / "42-abc123.ogg"
-    assert expected_path.exists()
     assert written_paths == [expected_path]
+    # Phase 12 retention policy: with VOICE_RETENTION_DAYS=0 (default), the
+    # handler deletes the .ogg in the finally-block after the agent turn.
+    # Privacy-safe: audio is never retained after transcription.
+    assert not expected_path.exists()
 
     # transcribe_file was called with the same path.
     fake_transcribe.assert_called_once()
@@ -1150,4 +1154,157 @@ def test_new_command_handler_defensive_check_rejects_mismatched_chat(
     asyncio.run(new_command_handler(update, context))  # type: ignore[arg-type]
 
     assert mock_reply.await_count == 0
-    no_reset.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: voice-retention policy (VOICE_RETENTION_DAYS)
+# ---------------------------------------------------------------------------
+
+
+def test_cleanup_voice_file_deletes_when_retention_zero(tmp_path: Path) -> None:
+    """retention=0 -> the file is unlinked. Privacy-safe default."""
+    from tempo.bot.handlers import _cleanup_voice_file
+
+    f = tmp_path / "msg.ogg"
+    f.write_bytes(b"\x00\x01")
+    _cleanup_voice_file(f, retention_days=0)
+    assert not f.exists()
+
+
+def test_cleanup_voice_file_keeps_when_retention_nonzero(tmp_path: Path) -> None:
+    """retention>0 -> file untouched; startup sweep is responsible later."""
+    from tempo.bot.handlers import _cleanup_voice_file
+
+    f = tmp_path / "msg.ogg"
+    f.write_bytes(b"\x00\x01")
+    _cleanup_voice_file(f, retention_days=7)
+    assert f.exists()
+
+
+def test_cleanup_voice_file_idempotent_on_missing(tmp_path: Path) -> None:
+    """retention=0 on a missing file is a no-op (no FileNotFoundError)."""
+    from tempo.bot.handlers import _cleanup_voice_file
+
+    # Should not raise.
+    _cleanup_voice_file(tmp_path / "does-not-exist.ogg", retention_days=0)
+
+
+def test_voice_handler_keeps_file_when_retention_is_positive(
+    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With VOICE_RETENTION_DAYS=7 the handler leaves the .ogg on disk."""
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("VOICE_RETENTION_DAYS", "7")
+
+    _setup_voice_mocks(monkeypatch)
+    monkeypatch.setattr("tempo.bot.handlers.get_or_create_session", MagicMock(return_value=None))
+    fake_run_turn = AsyncMock(
+        return_value=_make_agent_turn(text="ok", session_id="sess-KEEP")
+    )
+    monkeypatch.setattr("tempo.bot.handlers.run_turn", fake_run_turn)
+    monkeypatch.setattr("tempo.bot.handlers.save_session", MagicMock())
+
+    settings = Settings(_env_file=None)
+    assert settings.voice_retention_days == 7
+
+    update = _make_voice_update(
+        chat_id=987654321,
+        file_size=2048,
+        file_unique_id="keep01",
+        message_id=99,
+        with_bot=False,
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data=_make_bot_data(owner_chat_id=987654321, tmp_path=tmp_path, settings=settings),
+        ),
+    )
+
+    asyncio.run(voice_handler(update, context))  # type: ignore[arg-type]
+
+    # File survives the handler (the startup sweep deletes it later, not here).
+    target = settings.voice_cache_dir / "99-keep01.ogg"
+    assert target.exists()
+
+
+def test_voice_handler_cleanup_runs_even_when_agent_raises(
+    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """retention=0 + run_turn raising != AgentInvocationError -> file still deleted.
+
+    The finally-block guarantees no audio leak even on an unhandled exception
+    inside the agent pipeline (matches the Phase 12 privacy invariant).
+    """
+    _clear_env(monkeypatch)
+    _setup_voice_mocks(monkeypatch)
+    monkeypatch.setattr("tempo.bot.handlers.get_or_create_session", MagicMock(return_value=None))
+
+    fake_run_turn = AsyncMock(side_effect=RuntimeError("boom"))
+    monkeypatch.setattr("tempo.bot.handlers.run_turn", fake_run_turn)
+    monkeypatch.setattr("tempo.bot.handlers.save_session", MagicMock())
+
+    settings = Settings(_env_file=None)
+    update = _make_voice_update(
+        chat_id=987654321,
+        file_size=2048,
+        file_unique_id="boom01",
+        message_id=77,
+        with_bot=False,
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data=_make_bot_data(owner_chat_id=987654321, tmp_path=tmp_path, settings=settings),
+        ),
+    )
+
+    # The exception is allowed to propagate (Phase 11 LIGHT error handling).
+    with pytest.raises(RuntimeError, match="boom"):
+        asyncio.run(voice_handler(update, context))  # type: ignore[arg-type]
+
+    target = settings.voice_cache_dir / "77-boom01.ogg"
+    assert not target.exists(), "finally-block must delete the .ogg even on agent failure"
+
+
+def test_voice_handler_cleans_up_empty_transcript_path(
+    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Empty transcript short-circuits the agent but still honours retention=0."""
+    _clear_env(monkeypatch)
+
+    mock_reply = AsyncMock()
+    monkeypatch.setattr(Message, "reply_text", mock_reply)
+    monkeypatch.setattr("tempo.bot.handlers.transcribe_file", MagicMock(return_value=""))
+
+    async def fake_download(custom_path: object) -> None:
+        Path(str(custom_path)).write_bytes(b"\x00")
+
+    fake_file = SimpleNamespace(download_to_drive=fake_download)
+
+    async def fake_get_file(self: object) -> object:
+        return fake_file
+
+    monkeypatch.setattr(Voice, "get_file", fake_get_file)
+
+    no_run_turn = AsyncMock(side_effect=AssertionError("run_turn must not be called"))
+    monkeypatch.setattr("tempo.bot.handlers.run_turn", no_run_turn)
+
+    settings = Settings(_env_file=None)
+    update = _make_voice_update(
+        chat_id=987654321,
+        file_size=2048,
+        file_unique_id="empty01",
+        message_id=55,
+        with_bot=False,
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data=_make_bot_data(owner_chat_id=987654321, tmp_path=tmp_path, settings=settings),
+        ),
+    )
+
+    asyncio.run(voice_handler(update, context))  # type: ignore[arg-type]
+
+    # Empty-transcript reply went out + the .ogg got cleaned up.
+    mock_reply.assert_awaited_once()
+    target = settings.voice_cache_dir / "55-empty01.ogg"
+    assert not target.exists()
