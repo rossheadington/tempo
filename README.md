@@ -265,6 +265,21 @@ the bot and the voice-file retention/deletion policy are Phase 12. Until
 then, the `voice/` cache grows unbounded — clean it manually if it bothers
 you. See [`.planning/ROADMAP.md`](.planning/ROADMAP.md) for the full plan.
 
+### Claude Code agent loop (v1.1 / Phase 11)
+
+With Phase 11 plan 11-03 wired, voice memos and text messages route
+through Claude Code via the [`claude-agent-sdk`](https://github.com/anthropics/claude-agent-sdk-python)
+Python package; the final assistant reply comes back to Telegram as HTML
+and is split across the 4096-character per-message cap with `[k/N] `
+prefixes when needed. Per-chat session memory resumes within a 4-hour
+window via the `bot_session` table; send `/new` to start a fresh session
+on demand. Per-turn token usage and cost are logged at INFO
+(`agent turn · chat=… · session=… · tokens_in=… · tokens_out=… · cost=$… · wall=…s`).
+The bot uses your existing `claude login` — **no** `ANTHROPIC_API_KEY` is
+needed or used. If the `claude` CLI is missing from PATH the bot exits at
+startup with a clear error before any Telegram traffic. See
+[`docs/TELEGRAM_BOT.md`](docs/TELEGRAM_BOT.md) "Phase 11: the agent loop".
+
 ## Scheduling (the daily run via launchd)
 
 The daily loop — `tempo run-daily` — runs **sync → transform → analyze** and
