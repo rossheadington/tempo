@@ -16,6 +16,7 @@ Modules:
 * :mod:`tempo.analysis.races`   -- parse ``races.md`` (the canonical home).
 * :mod:`tempo.analysis.context` -- transition shim re-exporting ``races`` +
   the legacy ``plan.md`` parser (both deleted in Plan 05 of Phase 8).
+* :mod:`tempo.analysis.heat`    -- parse ``heat.md`` + heat-session rollups (TRACK-04/05).
 * :mod:`tempo.analysis.data`    -- read daily inputs + per-source freshness.
 * :mod:`tempo.analysis.report`  -- render dated markdown reports.
 * :mod:`tempo.analysis.runner`  -- orchestrate the analyses and write reports.
