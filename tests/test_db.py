@@ -138,3 +138,61 @@ def test_daily_summary_exposes_wellness_columns(tmp_path: Path) -> None:
         assert {"hrv_last_night", "resting_hr", "sleep_score", "steps", "has_wellness"} <= cols
     finally:
         conn.close()
+
+
+def test_migrate_creates_bot_session_table(tmp_path: Path) -> None:
+    """Migration 0005 creates the bot_session table and bumps SCHEMA_VERSION to 5."""
+    conn = db.init_db(tmp_path / "tempo.db")
+    try:
+        assert "bot_session" in db.table_names(conn)
+        version = conn.execute("PRAGMA user_version;").fetchone()[0]
+        assert version == 5
+        assert db.SCHEMA_VERSION == 5
+        assert db.BOT_TABLES == ("bot_session",)
+    finally:
+        conn.close()
+
+
+def test_bot_session_table_has_expected_columns(tmp_path: Path) -> None:
+    """bot_session has the four documented columns with chat_id as PK (VOICE-08)."""
+    conn = db.init_db(tmp_path / "tempo.db")
+    try:
+        info = list(conn.execute("PRAGMA table_info(bot_session);"))
+        cols = {r[1] for r in info}
+        assert cols == {"chat_id", "session_id", "last_message_at", "started_at"}
+        # PK is chat_id only.
+        pk = [r[1] for r in info if r[5]]
+        assert pk == ["chat_id"]
+        # session_id / last_message_at / started_at are NOT NULL.
+        not_null = {r[1] for r in info if r[3]}
+        assert {"session_id", "last_message_at", "started_at"} <= not_null
+        # Column types match.
+        types = {r[1]: r[2] for r in info}
+        assert types["chat_id"] == "INTEGER"
+        assert types["session_id"] == "TEXT"
+        assert types["last_message_at"] == "TEXT"
+        assert types["started_at"] == "TEXT"
+    finally:
+        conn.close()
+
+
+def test_migrate_is_idempotent_at_v5(tmp_path: Path) -> None:
+    """Re-running migrate() on a current v5 DB is a no-op (no error, version stays 5)."""
+    db_path = tmp_path / "tempo.db"
+    conn = db.init_db(db_path)
+    try:
+        # Already migrated by init_db; calling migrate again must be a no-op.
+        result = db.migrate(conn)
+        assert result == 5
+        # Prior tables still present.
+        names = db.table_names(conn)
+        for expected in (
+            *db.FOUNDATION_TABLES,
+            *db.STRUCTURED_TABLES,
+            *db.JOURNAL_TABLES,
+            *db.WELLNESS_TABLES,
+            *db.BOT_TABLES,
+        ):
+            assert expected in names, f"missing table {expected}"
+    finally:
+        conn.close()
