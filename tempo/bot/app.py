@@ -40,6 +40,7 @@ from telegram.ext import (
     filters,
 )
 
+from tempo.bot.error_handler import telegram_error_handler
 from tempo.bot.handlers import (
     new_command_handler,
     start_handler,
@@ -238,9 +239,18 @@ def build_application(settings: Settings) -> Application:
     # Phase 11 (Plan 11-03): owner-only non-command text -> agent loop.
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & owner_filter, text_handler))
 
+    # Phase 12 (Plan 12-02): top-level error boundary (VOICE-12). Any
+    # exception raised by a registered handler that the handler itself does
+    # not catch routes through ``telegram_error_handler``: log full traceback
+    # + send a fixed "something went wrong" reply to the offending chat +
+    # never re-raise. Combined with the launchd KeepAlive plist (Plan 12-01),
+    # this means a single bad message can never take the worker down.
+    app.add_error_handler(telegram_error_handler)
+
     logger.info(
         "Bot configured -- owner_chat_id=%d, concurrent_updates=True, "
-        "voice_handler=registered, text_handler=registered, new_command_handler=registered",
+        "voice_handler=registered, text_handler=registered, new_command_handler=registered, "
+        "error_handler=registered",
         owner_chat_id,
     )
     return app

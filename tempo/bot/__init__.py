@@ -45,6 +45,7 @@ from tempo.bot.agent import (
     run_turn,
 )
 from tempo.bot.app import CLAUDE_CLI_MISSING_ERROR, build_application, run
+from tempo.bot.error_handler import ERROR_REPLY, telegram_error_handler
 from tempo.bot.handlers import (
     GREETING,
     MAX_VOICE_BYTES,
@@ -67,6 +68,7 @@ __all__ = [
     "AgentInvocationError",
     "AgentTurn",
     "CLAUDE_CLI_MISSING_ERROR",
+    "ERROR_REPLY",
     "GREETING",
     "MAX_VOICE_BYTES",
     "MISSING_CLI_REPLY",
@@ -82,6 +84,7 @@ __all__ = [
     "run_turn",
     "save_session",
     "start_handler",
+    "telegram_error_handler",
     "text_handler",
     "transcribe_file",
     "voice_handler",
