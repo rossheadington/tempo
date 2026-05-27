@@ -116,6 +116,40 @@ the chat id of *your* account, and re-run.
 in-flight handler tasks, and shuts down cleanly. Phase 12 will run the same
 process under launchd, which sends `SIGTERM` on `bootout`.
 
+## Phase 11 prerequisites (Claude Code agent loop)
+
+Phase 11 routes every voice memo and text message through Claude Code via the
+`claude-agent-sdk` Python package, which spawns the `claude` Node CLI as a
+subprocess and uses your existing Claude Code login. The bot does NOT use
+`ANTHROPIC_API_KEY`.
+
+Prerequisites:
+
+1. **Node 18+ on PATH.** `brew install node` on macOS. The Tempo bot worker
+   process must inherit a PATH that includes Node; under launchd (Phase 12),
+   the LaunchAgent plist will need an `EnvironmentVariables.PATH` that finds
+   it.
+2. **The `claude` CLI must be installed and logged in.** Run `claude login`
+   once in a terminal and complete the OAuth flow; the SDK reuses those
+   credentials.
+3. **The `claude-agent-sdk` Python package is installed by `uv sync`** (added
+   to `pyproject.toml` in Plan 11-02). Nothing else to do here.
+
+Quick check before starting the bot:
+
+```bash
+command -v claude || echo "claude CLI missing"
+```
+
+Auth precedence: if `ANTHROPIC_API_KEY` is set in the user's environment, the
+SDK may prefer it over the Claude Code subscription credentials. Tempo's
+invocation explicitly does NOT pass an API key; leave `ANTHROPIC_API_KEY`
+unset for v1.1 so the bot uses your Claude subscription via `claude login`.
+
+Session memory: the bot remembers the last 4 hours of conversation per chat
+(resumed via the session id stored in the `bot_session` table). Send `/new`
+to start a fresh session before the window expires.
+
 ## Troubleshooting
 
 - **`409 Conflict: terminated by other getUpdates request`** -- either another
