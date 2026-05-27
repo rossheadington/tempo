@@ -150,9 +150,7 @@ def test_bot_install_scheduler_does_not_touch_launch_agents(
     project_root.mkdir()
     monkeypatch.chdir(project_root)
 
-    result = cli.invoke(
-        app, ["bot", "install-scheduler", "--uv-bin", "/fake/uv", "--tz", "UTC"]
-    )
+    result = cli.invoke(app, ["bot", "install-scheduler", "--uv-bin", "/fake/uv", "--tz", "UTC"])
     assert result.exit_code == 0, result.output
     assert str(project_root / "launchd") in result.output
     assert str(scheduler.launch_agents_dir()) not in result.output.split("To enable")[0]

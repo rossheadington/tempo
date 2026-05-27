@@ -1198,9 +1198,7 @@ def test_voice_handler_keeps_file_when_retention_is_positive(
 
     _setup_voice_mocks(monkeypatch)
     monkeypatch.setattr("tempo.bot.handlers.get_or_create_session", MagicMock(return_value=None))
-    fake_run_turn = AsyncMock(
-        return_value=_make_agent_turn(text="ok", session_id="sess-KEEP")
-    )
+    fake_run_turn = AsyncMock(return_value=_make_agent_turn(text="ok", session_id="sess-KEEP"))
     monkeypatch.setattr("tempo.bot.handlers.run_turn", fake_run_turn)
     monkeypatch.setattr("tempo.bot.handlers.save_session", MagicMock())
 
