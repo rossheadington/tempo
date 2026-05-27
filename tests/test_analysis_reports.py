@@ -302,3 +302,90 @@ def test_race_readiness_renders_nothing_when_unlinked_no_date() -> None:
     assert "No activity recorded for race date" not in text
     assert "Multiple activities on race day" not in text
     assert "cannot auto-link" not in text
+
+
+# ---- End-to-end: heat + race-link wiring through generate_recovery / _readiness
+
+
+def _write_heat(tmp_path: Path, *, as_of: date = GEN_ON) -> Path:
+    """Write a small heat.md with 2 recent sessions (within 7 days of as_of)."""
+    heat = tmp_path / "heat.md"
+    d1 = as_of - timedelta(days=1)
+    d2 = as_of - timedelta(days=4)
+    heat.write_text(
+        f"- {d1.isoformat()} - type: sauna | duration_min: 25 | temp_c: 85\n"
+        f"- {d2.isoformat()} - type: sauna | duration_min: 30 | temp_c: 88\n",
+        encoding="utf-8",
+    )
+    return heat
+
+
+def test_recovery_renders_heat_section_end_to_end(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    """heat.md with recent sessions -> recovery report contains the heat section."""
+    _seed(conn)
+    heat = _write_heat(tmp_path)
+    reports = tmp_path / "reports"
+    path = runner.generate_recovery(
+        conn, cfg=CFG, heat_path=heat, reports_dir=reports, generated_on=GEN_ON
+    )
+    text = path.read_text(encoding="utf-8")
+    assert "## Heat adaptation" in text
+    # The full rollup line lists the 7-day count + last-session phrase.
+    assert "sessions" in text
+    assert "last session" in text
+
+
+def test_recovery_omits_heat_section_when_no_heat_file(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """No heat.md -> recovery report still writes, heat section omitted."""
+    _seed(conn)
+    missing = tmp_path / "no-heat.md"
+    reports = tmp_path / "reports"
+    path = runner.generate_recovery(
+        conn, cfg=CFG, heat_path=missing, reports_dir=reports, generated_on=GEN_ON
+    )
+    text = path.read_text(encoding="utf-8")
+    assert "## Heat adaptation" not in text
+
+
+def test_race_readiness_links_activities_end_to_end(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """An upcoming Race whose date matches a seeded activity day -> link line appears.
+
+    The race must be ``upcoming`` (race_date >= GEN_ON) for it to reach the
+    per-race rendering loop. We seed an extra activity on GEN_ON (2026-03-15)
+    and pin the race to that day so the link surfaces via the
+    ``Activity recorded on race day`` phrasing.
+    """
+    _seed(conn)
+    # Add one activity on the race day so the linker matches.
+    race_day = GEN_ON  # 2026-03-15
+    raw = RawWriter(conn, "strava")
+    last_ts_after = f"{race_day.isoformat()}T08:00:00Z"
+    with conn:
+        raw.put(
+            "activity_summary",
+            "9999",
+            make_run(9999, day=race_day.isoformat(), average_speed=4.5),
+        )
+        state.mark_synced(conn, "strava", last_entity_ts=last_ts_after)
+    run_transform(conn, fill_to=GEN_ON)
+
+    races = tmp_path / "races.md"
+    races.write_text(
+        f"- Spring 10k - date: {race_day.isoformat()} | distance: 10k | priority: A\n",
+        encoding="utf-8",
+    )
+    plan = tmp_path / "plan.md"
+    plan.write_text("Phase: Base\n", encoding="utf-8")
+    reports = tmp_path / "reports"
+    path = runner.generate_race_readiness(
+        conn, cfg=CFG, races_path=races, plan_path=plan, reports_dir=reports, generated_on=GEN_ON
+    )
+    text = path.read_text(encoding="utf-8")
+    # The race has no `result:` so the link line uses the
+    # "Activity recorded on race day" phrasing with the activity id (9999).
+    assert "Activity recorded on race day" in text
+    assert "id: 9999" in text

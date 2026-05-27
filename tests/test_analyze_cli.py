@@ -61,6 +61,18 @@ def seeded_cli(tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         encoding="utf-8",
     )
     settings.plan_path.write_text("Phase: Base\nFocus: aerobic\n", encoding="utf-8")
+    # Seed a small heat.md within the last week so the recovery report renders
+    # the full heat-adaptation rollup section (TRACK-04/05 wiring). The recovery
+    # report anchors heat windows to the latest fitness-point day, so use the
+    # seeded run's last date (2026-02-19, i=49) as the heat reference.
+    last_seeded_day = start + timedelta(days=49)
+    h1 = last_seeded_day - timedelta(days=1)
+    h2 = last_seeded_day - timedelta(days=3)
+    settings.heat_path.write_text(
+        f"- {h1.isoformat()} - type: sauna | duration_min: 25 | temp_c: 85\n"
+        f"- {h2.isoformat()} - type: sauna | duration_min: 30 | temp_c: 88\n",
+        encoding="utf-8",
+    )
     return tempo_data_dir
 
 
@@ -105,6 +117,8 @@ def test_analyze_recovery_subcommand(seeded_cli: Path) -> None:
     assert "## Data freshness" in text
     # No Garmin wellness seeded -> recovery markers report insufficient honestly.
     assert "insufficient" in text.lower() or "no data" in text.lower()
+    # The seeded heat.md has recent sessions, so the heat section must surface.
+    assert "## Heat adaptation" in text
 
 
 def test_analyze_correlations_subcommand(seeded_cli: Path) -> None:
