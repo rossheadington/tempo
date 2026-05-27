@@ -43,7 +43,6 @@ from tempo.bot.agent import (
     run_turn,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fake-iterator helpers
 # ---------------------------------------------------------------------------
@@ -151,9 +150,7 @@ def test_run_turn_captures_session_id_and_usage_from_result_message(
     assert turn.duration_s >= 0.0
 
 
-def test_run_turn_returns_new_session_id_when_resume_is_none(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_run_turn_returns_new_session_id_when_resume_is_none(monkeypatch, tmp_path: Path) -> None:
     captured: list[dict] = []
     messages = [
         _assistant_message("fresh"),
@@ -208,9 +205,7 @@ def test_run_turn_cost_is_none_when_result_message_omits_total_cost_usd(
     assert turn.tokens_out == 7
 
 
-def test_run_turn_raises_agent_invocation_error_on_missing_cli(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_run_turn_raises_agent_invocation_error_on_missing_cli(monkeypatch, tmp_path: Path) -> None:
     """FileNotFoundError from the SDK (Node CLI missing) becomes AgentInvocationError."""
 
     async def boom(*, prompt: str, options):  # noqa: ARG001
