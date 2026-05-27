@@ -218,3 +218,87 @@ def test_best_recent_effort_picks_highest_vdot(conn: sqlite3.Connection) -> None
     # The quality (4.0 m/s) runs have the best VDOT; pick one of those.
     assert dist_m == pytest.approx(4.0 * 3600)
     assert "km in" in label
+
+
+# ---- Race-link surfacing in render_race_readiness (TRACK-03 wiring) --------
+
+
+def _render_with_links(race, link) -> str:
+    """Render a one-race readiness section through render_race_readiness directly."""
+    from tempo.analysis.context import PlanContext, RacesContext
+    from tempo.analysis.report import RaceReadiness, render_race_readiness
+
+    races_ctx = RacesContext(present=True, races=[race])
+    plan_ctx = PlanContext(present=False, fields={})
+    readiness = [
+        RaceReadiness(
+            race=race,
+            prediction=None,
+            goal_gap_s=None,
+            weeks_out=None,
+            form_note="no fitness data yet.",
+        )
+    ]
+    return render_race_readiness(
+        generated_on=date(2026, 4, 1),
+        freshness=[],
+        data_range=None,
+        races_ctx=races_ctx,
+        plan_ctx=plan_ctx,
+        readiness=readiness,
+        best_effort_label=None,
+        latest_point=None,
+        race_links=[link],
+    )
+
+
+def test_race_readiness_renders_result_when_linked() -> None:
+    """A linked race with a result string surfaces the result + activity id."""
+    from tempo.analysis.race_link import RaceLink
+    from tempo.analysis.races import Race
+
+    race = Race(
+        name="Local Half",
+        race_date=date(2026, 3, 22),
+        distance_label="half",
+        result="1:31:48",
+    )
+    link = RaceLink(race=race, activity_id=987654321, link_status="linked")
+    text = _render_with_links(race, link)
+    assert "1:31:48" in text
+    assert "987654321" in text
+
+
+def test_race_readiness_renders_no_activity_when_unlinked_no_match() -> None:
+    """An unlinked-no-match race surfaces the explicit 'no activity' marker."""
+    from tempo.analysis.race_link import RaceLink
+    from tempo.analysis.races import Race
+
+    race = Race(name="Past 10k", race_date=date(2026, 3, 22), distance_label="10k")
+    link = RaceLink(race=race, activity_id=None, link_status="unlinked_no_match")
+    text = _render_with_links(race, link)
+    assert "No activity recorded for race date" in text
+
+
+def test_race_readiness_renders_ambiguous_when_multiple() -> None:
+    """A race with 2+ activities on day surfaces the 'multiple activities' marker."""
+    from tempo.analysis.race_link import RaceLink
+    from tempo.analysis.races import Race
+
+    race = Race(name="Crit", race_date=date(2026, 3, 22), distance_label="40km")
+    link = RaceLink(race=race, activity_id=None, link_status="unlinked_ambiguous")
+    text = _render_with_links(race, link)
+    assert "Multiple activities on race day" in text
+
+
+def test_race_readiness_renders_nothing_when_unlinked_no_date() -> None:
+    """A race without a date emits no link line (the missing date is its own marker)."""
+    from tempo.analysis.race_link import RaceLink
+    from tempo.analysis.races import Race
+
+    race = Race(name="Someday Marathon", race_date=None, distance_label="marathon")
+    link = RaceLink(race=race, activity_id=None, link_status="unlinked_no_date")
+    text = _render_with_links(race, link)
+    assert "No activity recorded for race date" not in text
+    assert "Multiple activities on race day" not in text
+    assert "cannot auto-link" not in text

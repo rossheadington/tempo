@@ -22,6 +22,7 @@ from tempo.analysis.data import SourceFreshness
 from tempo.analysis.fitness import FitnessPoint, Guardrail
 from tempo.analysis.load import DayLoad
 from tempo.analysis.race import RacePrediction, format_hms
+from tempo.analysis.race_link import RaceLink
 
 # A source synced longer ago than this is flagged stale in the header.
 STALE_AFTER_DAYS = 2
@@ -185,6 +186,37 @@ class RaceReadiness:
     form_note: str
 
 
+def _link_line(link: RaceLink | None) -> str | None:
+    """Render the per-race auto-link line (TRACK-03), or None to emit nothing.
+
+    The four ``link_status`` values map to four phrasings:
+
+    * ``linked`` -- if ``race.result`` is populated, surface the result (the race
+      already happened and the user logged a time) plus the activity id for the
+      audit trail; otherwise just note an activity was recorded on the day.
+    * ``unlinked_no_match`` -- explicit "no activity" marker (the date passed and
+      nothing showed up; the user might not have worn the watch).
+    * ``unlinked_ambiguous`` -- multiple activities on the day; the linker
+      refuses to guess and surfaces the ambiguity so the user can resolve it.
+    * ``unlinked_no_date`` -- the race has no parseable date; the missing date
+      is already obvious from the heading not carrying one, so we emit nothing.
+    """
+    if link is None:
+        return None
+    status = link.link_status
+    race = link.race
+    if status == "linked":
+        if race.result is not None:
+            return f"- **Result**: {race.result} (activity id: {link.activity_id})"
+        return f"- Activity recorded on race day (id: {link.activity_id})."
+    if status == "unlinked_no_match":
+        return "- _No activity recorded for race date._"
+    if status == "unlinked_ambiguous":
+        return "- _Multiple activities on race day; cannot auto-link._"
+    # unlinked_no_date -- emit nothing; the heading already tells the story.
+    return None
+
+
 def render_race_readiness(
     *,
     generated_on: date,
@@ -195,8 +227,9 @@ def render_race_readiness(
     readiness: list[RaceReadiness],
     best_effort_label: str | None,
     latest_point: FitnessPoint | None,
+    race_links: list[RaceLink] | None = None,
 ) -> str:
-    """Render the race-readiness report (ANL-02 + CTL/TSB form check)."""
+    """Render the race-readiness report (ANL-02 + CTL/TSB form check + TRACK-03 links)."""
     out = [
         freshness_header(
             report_title="Race Readiness",
@@ -275,5 +308,12 @@ def render_race_readiness(
         else:
             out.append("- **Predicted time**: insufficient data to predict.")
         out.append(f"- **Form check**: {r.form_note}")
+        # Identity-match the race against the parallel race_links list (when
+        # provided) and append the auto-link line in the relevant phrasing.
+        if race_links:
+            matching = next((lk for lk in race_links if lk.race is race), None)
+            line = _link_line(matching)
+            if line is not None:
+                out.append(line)
         out.append("")
     return "\n".join(out)
