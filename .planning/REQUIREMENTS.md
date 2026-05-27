@@ -81,6 +81,40 @@ Iterative refinements on the v1 base. Mapped to Phase 8+.
 - [x] **TRACK-05**: Parsed heat sessions surface in analyses — at minimum a rolling-window count + total minutes (last 7 / 14 / 28 days) appears in the recovery report context so Claude knows current heat-adaptation status
 - [x] **TRACK-06**: `plan.md` is retired entirely — the parser, `PlanContext`, config field, example file, report integration, and CLAUDE.md / docs mentions all removed; race-readiness report degrades cleanly without it
 
+## v1.1 Requirements — Telegram Voice Coach (current milestone)
+
+Voice memos sent to a personal Telegram chat → local Whisper transcription → Claude Code session driven via the Claude Agent SDK → reply back via Telegram. Uses the user's existing Claude subscription (not the Anthropic API). Runs on Mac via launchd; Pi port deferred to v1.2.
+
+### Telegram bot intake
+
+- [ ] **VOICE-01**: A Telegram bot runs as a long-polling local process and accepts voice messages ONLY from a single allowlisted chat id (the project owner); messages from any other chat are silently dropped
+- [ ] **VOICE-02**: Bot token and owner chat id load from `.env` via `pydantic-settings` (gitignored); `.env.example` documents both
+- [ ] **VOICE-03**: Inbound voice messages > 20 MB (Telegram's bot-API cap) are gracefully rejected with a clear reply rather than crashing the handler
+
+### Local transcription
+
+- [ ] **VOICE-04**: Voice memos (Opus-in-OGG) are downloaded to a gitignored local voice cache and transcribed locally via `faster-whisper` — no audio bytes ever leave the laptop
+- [ ] **VOICE-05**: Default Whisper model is `small.en` int8 (CPU-only on Apple Silicon — faster-whisper has no Metal support); model is configurable via `pydantic-settings` so the user can swap to `base.en` / `medium.en` / `large-v3-turbo` if they choose to wait
+- [ ] **VOICE-06**: Model is loaded once at process start (singleton) and reused across transcriptions; first-run model download is warmed at startup, not on first request
+
+### Claude Code session loop
+
+- [ ] **VOICE-07**: The transcribed text is fed to Claude Code via the Claude Agent SDK (the `claude-agent-sdk` Python package), which spawns the `claude` CLI as a subprocess — auth comes from the user's existing Claude Code login (their Claude subscription), NOT a separate `ANTHROPIC_API_KEY`
+- [ ] **VOICE-08**: Each Telegram chat has a session id that is reused via `--resume` for follow-up messages within 4 hours; after 4 hours of silence (or on the explicit `/new` command) the next message starts a fresh session
+- [ ] **VOICE-09**: Claude Code's final assistant message is captured and sent back to the chat as a single Telegram message (split across messages if it exceeds Telegram's 4096-char body cap), formatted as HTML (`& < >` escaped — NOT MarkdownV2)
+- [ ] **VOICE-10**: Tool-call activity inside the Claude Code session (Bash, Edit, etc.) is not surfaced as separate Telegram messages by default; only the final assistant reply goes back — keeps the UX clean. (A `/verbose` toggle for tool-call streaming is OUT OF SCOPE for v1.1.)
+
+### Lifecycle, errors, observability
+
+- [ ] **VOICE-11**: The bot runs as a launchd LaunchAgent with `KeepAlive=true` so it survives crashes, sleep/wake, and reboots without manual restart; logs land in a gitignored `logs/` directory
+- [ ] **VOICE-12**: Any failure in the voice → transcript → Claude Code → reply pipeline is caught, logged with a structured error, and acknowledged in Telegram with a brief "something went wrong" message — the bot worker never crashes on a single bad message
+- [ ] **VOICE-13**: Per-turn token usage and cost (as reported by the Claude Code subprocess) is logged so the user can monitor Claude-subscription quota consumption over time
+
+### Privacy + safety boundaries
+
+- [ ] **VOICE-14**: Voice files are deleted from local cache after successful transcription (configurable retention window, default = delete immediately on success); transcripts are kept so the user can re-run analysis later
+- [ ] **VOICE-15**: The agent session runs in the Tempo project directory so Claude Code has access to `tempo` CLI + GSD slash commands; no additional working-directory permissions are required and no read/write access is granted outside the project tree
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -161,16 +195,38 @@ Explicitly excluded. Documented to prevent scope creep.
 | SCHED-01 | Phase 7 | Complete |
 | SCHED-02 | Phase 7 | Complete |
 | SCHED-03 | Phase 7 | Complete |
+| TRACK-01 | Phase 8 | Complete |
+| TRACK-02 | Phase 8 | Complete |
+| TRACK-03 | Phase 8 | Complete |
+| TRACK-04 | Phase 8 | Complete |
+| TRACK-05 | Phase 8 | Complete |
+| TRACK-06 | Phase 8 | Complete |
+| VOICE-01 | Phase 9 | Pending |
+| VOICE-02 | Phase 9 | Pending |
+| VOICE-03 | Phase 10 | Pending |
+| VOICE-04 | Phase 10 | Pending |
+| VOICE-05 | Phase 10 | Pending |
+| VOICE-06 | Phase 10 | Pending |
+| VOICE-07 | Phase 11 | Pending |
+| VOICE-08 | Phase 11 | Pending |
+| VOICE-09 | Phase 11 | Pending |
+| VOICE-10 | Phase 11 | Pending |
+| VOICE-13 | Phase 11 | Pending |
+| VOICE-11 | Phase 12 | Pending |
+| VOICE-12 | Phase 12 | Pending |
+| VOICE-14 | Phase 12 | Pending |
+| VOICE-15 | Phase 12 | Pending |
 
 **Coverage:**
-- v1 requirements: 39 total
-- Mapped to phases: 39 (100%)
-- Complete: 39 (100%) — **all v1 requirements delivered**
-- Unmapped: 0
+- v1 requirements: 39 total — Complete (100%)
+- v1.1 requirements (Phase 8 TRACK-*): 6 total — Complete (100%)
+- v1.1 requirements (Phases 9–12 VOICE-*): 15 total — Pending (0%)
+- All requirements mapped to phases (100%); 0 unmapped
 
 ---
 *Requirements defined: 2026-05-26*
-*Last updated: 2026-05-26 after Phase 7 (Recovery + Correlation + Scheduler) completed — ANL-03, ANL-04, SCHED-01..03 Complete. **This completes v1: all 39 requirements across all 7 phases are done.** A multi-signal recovery / overtraining analysis (`tempo analyze recovery`, `tempo/analysis/recovery.py`) combines the rising-load half (CTL ramp rate / ACWR from `fitness.py`) with baseline-relative recovery markers (HRV / resting HR / sleep z-scored against personal rolling baselines from `baselines.py`); it encodes the "HRV abnormal in EITHER direction" subtlety (a drop = suppressed recovery; a spike = possible parasympathetic saturation in deep overtraining), flagging deviation magnitude not just direction, and degrades to "insufficient data" when baselines lack history (ANL-03). An honest correlation insight (`tempo analyze correlations`, `tempo/analysis/correlation.py`, stdlib Pearson) links prior-night sleep/HRV and subjective RPE to training load (performance proxy) and RPE, reporting a relationship ONLY at >= 20 paired days and otherwise emitting an explicit "insufficient data — N paired days, need 20" message rather than asserting a weak signal (ANL-04). A daily launchd LaunchAgent (NOT cron — `tempo install-scheduler` generates a `StartCalendarInterval` plist with absolute paths + explicit PATH/TEMPO_DATA_DIR + log capture; committed secret-free template at `launchd/com.tempo.daily.plist`; Tempo never runs `launchctl` itself) drives `tempo run-daily` = sync → transform → analyze (`tempo/sync/daily.py`), which is idempotent and catch-up-aware: a missed day is recovered on the next run via the watermark-driven resumable sync, with Garmin still isolated (SCHED-01/02). The daily run surfaces output only when noteworthy (`tempo/analysis/noteworthy.py`, configurable+documented thresholds: ACWR out of safe range, aggressive ramp, monitor/elevated recovery, strong baseline z, race within ~14 days, source staleness) — all reports are always written but a NOTEWORTHY log block + `reports/NOTEWORTHY.md` marker appear only on a threshold crossing (SCHED-03). 358 pytest tests (70 new), all mocked/seeded, no network; ruff clean; plist validated with plutil.*
+*Last updated: 2026-05-27 — v1.1 Telegram Voice Coach milestone roadmapped. 15 VOICE-* requirements mapped to four new phases: Phase 9 (Telegram bot scaffold + owner allowlist + secrets — VOICE-01/02), Phase 10 (voice download + 20 MB guard + faster-whisper singleton with small.en int8 default + transcript echo — VOICE-03/04/05/06), Phase 11 (claude-agent-sdk wiring + per-chat session-id store with 4hr resume + /new reset + HTML reply with 4096-char split + tool-call suppression + per-turn token logging — VOICE-07/08/09/10/13), Phase 12 (launchd LaunchAgent with KeepAlive + top-level error boundary + voice-file retention policy + project-scoped agent cwd + privacy contract docs — VOICE-11/12/14/15). All four phases are vertical slices: end of Phase 9 = owner gets a /start reply (others silently dropped); end of Phase 10 = speak into Telegram, see the transcript come back; end of Phase 11 = full agent loop with conversation memory; end of Phase 12 = always-on, hardened, retention-managed. Phase 8 TRACK-* rows backfilled into the traceability table. Coverage: 60/60 = 100% (45 complete + 15 pending).*
+*Previously updated: 2026-05-26 after Phase 7 (Recovery + Correlation + Scheduler) completed — ANL-03, ANL-04, SCHED-01..03 Complete. **This completes v1: all 39 requirements across all 7 phases are done.** A multi-signal recovery / overtraining analysis (`tempo analyze recovery`, `tempo/analysis/recovery.py`) combines the rising-load half (CTL ramp rate / ACWR from `fitness.py`) with baseline-relative recovery markers (HRV / resting HR / sleep z-scored against personal rolling baselines from `baselines.py`); it encodes the "HRV abnormal in EITHER direction" subtlety (a drop = suppressed recovery; a spike = possible parasympathetic saturation in deep overtraining), flagging deviation magnitude not just direction, and degrades to "insufficient data" when baselines lack history (ANL-03). An honest correlation insight (`tempo analyze correlations`, `tempo/analysis/correlation.py`, stdlib Pearson) links prior-night sleep/HRV and subjective RPE to training load (performance proxy) and RPE, reporting a relationship ONLY at >= 20 paired days and otherwise emitting an explicit "insufficient data — N paired days, need 20" message rather than asserting a weak signal (ANL-04). A daily launchd LaunchAgent (NOT cron — `tempo install-scheduler` generates a `StartCalendarInterval` plist with absolute paths + explicit PATH/TEMPO_DATA_DIR + log capture; committed secret-free template at `launchd/com.tempo.daily.plist`; Tempo never runs `launchctl` itself) drives `tempo run-daily` = sync → transform → analyze (`tempo/sync/daily.py`), which is idempotent and catch-up-aware: a missed day is recovered on the next run via the watermark-driven resumable sync, with Garmin still isolated (SCHED-01/02). The daily run surfaces output only when noteworthy (`tempo/analysis/noteworthy.py`, configurable+documented thresholds: ACWR out of safe range, aggressive ramp, monitor/elevated recovery, strong baseline z, race within ~14 days, source staleness) — all reports are always written but a NOTEWORTHY log block + `reports/NOTEWORTHY.md` marker appear only on a threshold crossing (SCHED-03). 358 pytest tests (70 new), all mocked/seeded, no network; ruff clean; plist validated with plutil.*
 *Previously updated: 2026-05-26 after Phase 6 (Garmin Ingestion) completed — GRMN-01..05 Complete. A `garminconnect`-backed connector implements the same `Connector` protocol as Strava and is isolated as a failure domain: a 429 / auth break / library exception is caught, logged, and skipped with NO retry (the connector never retries a 429; the `tempo.sync.pipeline` wraps it so Strava sync + transforms + analysis still complete on existing data — verified by an end-to-end `tempo sync` where a simulated Garmin 429 left Strava ok and transform/analyze succeeding). Garmin auth happens once via interactive `tempo garmin login` (MFA via prompt callback); session tokens are persisted under `~/.tempo/tokens/garmin` and REUSED — the scheduled `sync`/`backfill` load only from the token store and never trigger a fresh SSO login (verified: 0 credential logins on backfill). Wellness (HRV, sleep score/duration/stages, resting HR, body battery, stress, steps) is stored raw (endpoints `sleep`/`hrv`/`stats`, keyed by ISO date) then collapsed by pure no-network transforms into a `wellness_day` table keyed by Garmin's `calendarDate` (the local wake-up day); `daily_summary` LEFT-JOINs wellness preserving one-row-per-spine-day (wellness-only rest days included). Personal rolling baselines (trailing mean+SD z-score + EWMA) for HRV / resting HR / sleep are computed from `wellness_day` (`tempo/analysis/baselines.py`), reporting "insufficient data" until enough history accumulates, exposed for Phase 7's recovery analysis. All proven with a fake garminconnect client (`tests/garmin_fakes.py`) — no real credentials.*
 *Previously updated: 2026-05-26 after Phase 5 (Journaling via Claude) completed — JRNL-01..03 Complete. A validated `tempo journal add` entrypoint records structured subjective entries (RPE 1–10, feel, notes), resolves the activity by date+sport, computes an sRPE (RPE × duration) load track, and surfaces journal fields in `daily_summary` (one row per spine day preserved); sRPE fills the daily load on otherwise-insufficient days, flagged `sRPE`. Claude captures entries only through this boundary — never raw SQL (docs/JOURNALING.md).*
 *Previously updated: 2026-05-26 after Phase 4 (Load Metrics + First Analysis) completed — LOAD-01..03, ANL-01, ANL-02, ANL-05, PLAN-01, PLAN-02, DELIV-01 Complete. This is the Strava end-to-end milestone: pull → store → transform → analyze → report works end-to-end on stored data.*

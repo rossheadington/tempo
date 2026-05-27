@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: shipped
-stopped_at: Phase 8 (Modular Trackers + Heat Adaptation) complete, verified, and pushed to origin/main; next up — new milestone for Telegram bot + voice intake (faster-whisper, large-v3-turbo) + Claude Agent SDK loop, Mac-first then port to Raspberry Pi
-last_updated: "2026-05-27T19:30:00.000Z"
-last_activity: 2026-05-27 — Phase 8 shipped (treated as shipped per branching_strategy=none; commits live on origin/main)
+milestone: v1.1
+milestone_name: telegram-voice-coach
+status: planning
+last_updated: "2026-05-27T21:00:00.000Z"
+last_activity: 2026-05-27
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,16 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** Phase 8 — modular-trackers-heat-adaptation
+**Current focus:** Milestone v1.1 — Telegram Voice Coach (Mac). Defining requirements + roadmap.
 
 ## Current Position
 
-Phase: 8 (modular-trackers-heat-adaptation) — COMPLETE
-Plan: 5 of 5 (all plans complete; plan.md retired)
-Status: Phase 8 complete -- analysis.context shim deleted, plan_path removed, plan.md.example gone
-Last activity: 2026-05-27 -- 08-05 complete (398 tests, ruff clean, 10 import sites migrated, 3 files deleted, net -211 lines)
-
-Progress: [██████████] 100%
+Phase: Not started (roadmap complete; ready to plan Phase 9)
+Plan: —
+Status: Roadmap defined. v1.1 spans Phases 9–12 (Telegram bot foundation → voice intake + transcription → Claude Code agent loop → lifecycle/hardening/privacy). 15 VOICE-* requirements all mapped. Next: `/gsd:plan-phase 9`.
+Last activity: 2026-05-27 — v1.1 ROADMAP.md written, REQUIREMENTS traceability extended (Phase 8 TRACK-* + Phases 9–12 VOICE-*)
 
 ## What's Done (Phase 1: Foundation)
 
