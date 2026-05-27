@@ -32,9 +32,9 @@ from datetime import date
 from pathlib import Path
 
 from tempo.analysis import data as dataread
-from tempo.analysis import races as ctx
 from tempo.analysis import fitness
 from tempo.analysis import noteworthy as nw
+from tempo.analysis import races as ctx
 from tempo.analysis import recovery as recovery_mod
 from tempo.analysis import runner as analysis_runner
 from tempo.analysis.load import LoadConfig
@@ -107,7 +107,6 @@ def run_daily(
         conn,
         cfg=cfg,
         races_path=settings.races_path,
-        plan_path=settings.plan_path,
         heat_path=settings.heat_path,
         reports_dir=settings.reports_dir,
         generated_on=generated_on,

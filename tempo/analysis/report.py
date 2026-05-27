@@ -17,12 +17,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from tempo.analysis.races import Race, RacesContext
 from tempo.analysis.data import SourceFreshness
 from tempo.analysis.fitness import FitnessPoint, Guardrail
 from tempo.analysis.load import DayLoad
 from tempo.analysis.race import RacePrediction, format_hms
 from tempo.analysis.race_link import RaceLink
+from tempo.analysis.races import Race, RacesContext
 
 # A source synced longer ago than this is flagged stale in the header.
 STALE_AFTER_DAYS = 2
@@ -223,7 +223,6 @@ def render_race_readiness(
     freshness: list[SourceFreshness],
     data_range: tuple[str, str] | None,
     races_ctx: RacesContext,
-    plan_ctx: PlanContext,
     readiness: list[RaceReadiness],
     best_effort_label: str | None,
     latest_point: FitnessPoint | None,
@@ -248,12 +247,6 @@ def render_race_readiness(
     elif not races_ctx.races:
         out.append("## Races\n")
         out.append("`races.md` is present but lists no parseable races.\n")
-
-    if plan_ctx.present and plan_ctx.fields:
-        out.append("## Plan context\n")
-        for key, val in plan_ctx.fields.items():
-            out.append(f"- **{key}**: {val}")
-        out.append("")
 
     if latest_point is not None:
         out.append("## Current form (CTL/TSB)\n")

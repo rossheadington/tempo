@@ -1,7 +1,7 @@
 """End-to-end CLI verification of `tempo analyze` (Phase 4).
 
 Seeds the CLI's own DB (via the TEMPO_DATA_DIR temp dir), sets load config + the
-races.md/plan.md context in that data dir, runs the commands as a user would, and
+races.md/heat.md context in that data dir, runs the commands as a user would, and
 asserts dated markdown reports are written into the gitignored reports dir with
 per-source freshness headers. No network, no credentials.
 """
@@ -27,7 +27,7 @@ cli = CliRunner()
 
 @pytest.fixture
 def seeded_cli(tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A CLI data dir seeded with activities + load config + races/plan context."""
+    """A CLI data dir seeded with activities + load config + races/heat context."""
     monkeypatch.setenv("TEMPO_THRESHOLD_PACE_S_PER_KM", "240")
     monkeypatch.setenv("TEMPO_MAX_HR", "190")
     monkeypatch.setenv("TEMPO_RESTING_HR", "50")
@@ -60,7 +60,6 @@ def seeded_cli(tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "- Goal Race - date: 2099-05-01 | distance: 10k | goal: 50:00 | priority: A\n",
         encoding="utf-8",
     )
-    settings.plan_path.write_text("Phase: Base\nFocus: aerobic\n", encoding="utf-8")
     # Seed a small heat.md within the last week so the recovery report renders
     # the full heat-adaptation rollup section (TRACK-04/05 wiring). The recovery
     # report anchors heat windows to the latest fitness-point day, so use the
@@ -104,7 +103,6 @@ def test_analyze_race_readiness_subcommand(seeded_cli: Path) -> None:
     text = files[0].read_text(encoding="utf-8")
     assert "Goal Race" in text
     assert "Predicted time" in text
-    assert "**phase**: Base" in text
 
 
 def test_analyze_recovery_subcommand(seeded_cli: Path) -> None:

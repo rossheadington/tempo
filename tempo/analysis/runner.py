@@ -1,8 +1,8 @@
 """Orchestrate the Phase-4 analyses and write the dated markdown reports.
 
 This wires the read layer (:mod:`tempo.analysis.data`), the pure metrics
-(:mod:`load`, :mod:`fitness`, :mod:`race`), and the context parsers
-(:mod:`context`) into the two reports the milestone ships:
+(:mod:`load`, :mod:`fitness`, :mod:`race`), and the races/heat parsers
+(:mod:`races`, :mod:`heat`) into the two reports the milestone ships:
 
 * ``tempo analyze load-trend``      -> ``reports/YYYY-MM-DD-load-trend.md``
 * ``tempo analyze race-readiness``  -> ``reports/YYYY-MM-DD-race-readiness.md``
@@ -261,7 +261,6 @@ def generate_race_readiness(
     *,
     cfg: load.LoadConfig,
     races_path: Path,
-    plan_path: Path,
     reports_dir: Path,
     generated_on: date,
 ) -> Path:
@@ -273,7 +272,6 @@ def generate_race_readiness(
     """
     series = build_load_series(conn, cfg)
     races_ctx = ctx.parse_races(races_path)
-    plan_ctx = ctx.parse_plan(plan_path)
     race_links = link_races_to_activities(races_ctx.races, conn)
     findings, best_label = build_race_readiness(conn, races_ctx, series, as_of=generated_on)
     freshness = dataread.source_freshness(conn, as_of=generated_on)
@@ -285,7 +283,6 @@ def generate_race_readiness(
         freshness=freshness,
         data_range=data_range,
         races_ctx=races_ctx,
-        plan_ctx=plan_ctx,
         readiness=findings,
         best_effort_label=best_label,
         latest_point=latest,
@@ -371,7 +368,6 @@ def generate_all(
     *,
     cfg: load.LoadConfig,
     races_path: Path,
-    plan_path: Path,
     heat_path: Path,
     reports_dir: Path,
     generated_on: date,
@@ -390,7 +386,6 @@ def generate_all(
             conn,
             cfg=cfg,
             races_path=races_path,
-            plan_path=plan_path,
             reports_dir=reports_dir,
             generated_on=generated_on,
         ),

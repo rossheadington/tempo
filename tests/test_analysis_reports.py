@@ -7,7 +7,7 @@ run the analysis runner and assert:
 * dated markdown report files are written into the reports dir;
 * each report header states per-source last-successful-sync + data freshness;
 * the load series is built on the zero-filled spine (rest days included);
-* race readiness uses races.md/plan.md context and degrades when absent.
+* race readiness uses races.md context and degrades when absent.
 
 No network, no credentials.
 """
@@ -55,16 +55,14 @@ def _seed(conn: sqlite3.Connection, *, n_days: int = 70, synced: bool = True) ->
     run_transform(conn, fill_to=GEN_ON)
 
 
-def _write_context(tmp_path: Path) -> tuple[Path, Path]:
+def _write_context(tmp_path: Path) -> Path:
     races = tmp_path / "races.md"
-    plan = tmp_path / "plan.md"
     races.write_text(
         "- Spring 10k - date: 2026-03-22 | distance: 10k | goal: 38:00 | priority: A\n"
         "- Autumn Marathon - date: 2026-10-04 | distance: marathon | goal: 3:00:00 | priority: A\n",
         encoding="utf-8",
     )
-    plan.write_text("Phase: Base\nFocus: build aerobic base\n", encoding="utf-8")
-    return races, plan
+    return races
 
 
 # ---- load series built on the spine ---------------------------------------
@@ -125,10 +123,10 @@ def test_race_readiness_report_written_with_predictions(
     conn: sqlite3.Connection, tmp_path: Path
 ) -> None:
     _seed(conn)
-    races, plan = _write_context(tmp_path)
+    races = _write_context(tmp_path)
     reports = tmp_path / "reports"
     path = runner.generate_race_readiness(
-        conn, cfg=CFG, races_path=races, plan_path=plan, reports_dir=reports, generated_on=GEN_ON
+        conn, cfg=CFG, races_path=races, reports_dir=reports, generated_on=GEN_ON
     )
     assert path == reports / "2026-03-15-race-readiness.md"
     text = path.read_text(encoding="utf-8")
@@ -139,7 +137,6 @@ def test_race_readiness_report_written_with_predictions(
     assert "Predicted time" in text  # Riegel/VDOT (ANL-02)
     assert "VDOT" in text and "Riegel" in text
     assert "Form check" in text  # CTL/TSB form half
-    assert "**phase**: Base" in text  # plan.md context
 
 
 def test_freshness_header_flags_stale_source(conn: sqlite3.Connection, tmp_path: Path) -> None:
@@ -166,7 +163,6 @@ def test_reports_degrade_when_no_data(conn: sqlite3.Connection, tmp_path: Path) 
         conn,
         cfg=LoadConfig(),
         races_path=tmp_path / "missing-races.md",
-        plan_path=tmp_path / "missing-plan.md",
         reports_dir=reports,
         generated_on=GEN_ON,
     )
@@ -182,7 +178,6 @@ def test_race_readiness_no_races_file_degrades(conn: sqlite3.Connection, tmp_pat
         conn,
         cfg=CFG,
         races_path=tmp_path / "absent.md",
-        plan_path=tmp_path / "absent-plan.md",
         reports_dir=reports,
         generated_on=GEN_ON,
     )
@@ -199,11 +194,9 @@ def test_goal_gap_marks_ahead_or_behind(conn: sqlite3.Connection, tmp_path: Path
         "- Hard Goal - date: 2026-04-05 | distance: marathon | goal: 2:30:00\n",
         encoding="utf-8",
     )
-    plan = tmp_path / "plan.md"
-    plan.write_text("Phase: peak\n", encoding="utf-8")
     reports = tmp_path / "reports"
     rr = runner.generate_race_readiness(
-        conn, cfg=CFG, races_path=races, plan_path=plan, reports_dir=reports, generated_on=GEN_ON
+        conn, cfg=CFG, races_path=races, reports_dir=reports, generated_on=GEN_ON
     )
     text = rr.read_text(encoding="utf-8")
     assert "on track" in text
@@ -225,11 +218,10 @@ def test_best_recent_effort_picks_highest_vdot(conn: sqlite3.Connection) -> None
 
 def _render_with_links(race, link) -> str:
     """Render a one-race readiness section through render_race_readiness directly."""
-    from tempo.analysis.context import PlanContext, RacesContext
+    from tempo.analysis.races import RacesContext
     from tempo.analysis.report import RaceReadiness, render_race_readiness
 
     races_ctx = RacesContext(present=True, races=[race])
-    plan_ctx = PlanContext(present=False, fields={})
     readiness = [
         RaceReadiness(
             race=race,
@@ -244,7 +236,6 @@ def _render_with_links(race, link) -> str:
         freshness=[],
         data_range=None,
         races_ctx=races_ctx,
-        plan_ctx=plan_ctx,
         readiness=readiness,
         best_effort_label=None,
         latest_point=None,
@@ -378,11 +369,9 @@ def test_race_readiness_links_activities_end_to_end(
         f"- Spring 10k - date: {race_day.isoformat()} | distance: 10k | priority: A\n",
         encoding="utf-8",
     )
-    plan = tmp_path / "plan.md"
-    plan.write_text("Phase: Base\n", encoding="utf-8")
     reports = tmp_path / "reports"
     path = runner.generate_race_readiness(
-        conn, cfg=CFG, races_path=races, plan_path=plan, reports_dir=reports, generated_on=GEN_ON
+        conn, cfg=CFG, races_path=races, reports_dir=reports, generated_on=GEN_ON
     )
     text = path.read_text(encoding="utf-8")
     # The race has no `result:` so the link line uses the

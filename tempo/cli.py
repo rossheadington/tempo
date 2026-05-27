@@ -446,7 +446,6 @@ def analyze_main(ctx: typer.Context) -> None:
             conn,
             cfg=cfg,
             races_path=settings.races_path,
-            plan_path=settings.plan_path,
             heat_path=settings.heat_path,
             reports_dir=settings.reports_dir,
             generated_on=today,
@@ -491,7 +490,6 @@ def analyze_race_readiness() -> None:
             conn,
             cfg=cfg,
             races_path=settings.races_path,
-            plan_path=settings.plan_path,
             reports_dir=settings.reports_dir,
             generated_on=datetime.now(UTC).date(),
         )

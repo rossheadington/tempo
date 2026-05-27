@@ -18,8 +18,8 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, timedelta
 
-from tempo.analysis.races import Race
 from tempo.analysis.race_link import RaceLink, link_races_to_activities
+from tempo.analysis.races import Race
 
 # Minimal subset of the activity columns the linker reads (day + activity_id),
 # plus `sport` so the no-sport-filter test (L5) can assert a Ride row links
