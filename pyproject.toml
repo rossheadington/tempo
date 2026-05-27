@@ -12,6 +12,7 @@ dependencies = [
     "garminconnect>=0.3.3",
     "python-telegram-bot>=22.7",
     "faster-whisper>=1.2.1",
+    "claude-agent-sdk>=0.2.87",
 ]
 
 [project.scripts]
