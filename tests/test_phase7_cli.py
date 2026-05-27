@@ -156,3 +156,70 @@ def test_bot_install_scheduler_does_not_touch_launch_agents(
     assert result.exit_code == 0, result.output
     assert str(project_root / "launchd") in result.output
     assert str(scheduler.launch_agents_dir()) not in result.output.split("To enable")[0]
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: `tempo bot purge-voice` (manual privacy hatch)
+# ---------------------------------------------------------------------------
+
+
+def test_bot_purge_voice_with_yes_deletes_all_files(tempo_data_dir: Path) -> None:
+    """`tempo bot purge-voice --yes` deletes every file in voice_cache_dir."""
+    settings = get_settings()
+    cache = settings.voice_cache_dir
+    cache.mkdir(parents=True, exist_ok=True)
+    (cache / "a.ogg").write_bytes(b"\x00" * 100)
+    (cache / "b.ogg").write_bytes(b"\x00" * 200)
+
+    result = cli.invoke(app, ["bot", "purge-voice", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "Deleted 2 voice file(s)" in result.output
+    # Files gone; dir preserved (next memo recreates it anyway).
+    assert list(cache.iterdir()) == []
+    assert cache.is_dir()
+
+
+def test_bot_purge_voice_no_files(tempo_data_dir: Path) -> None:
+    """Empty cache dir is handled without prompting (exit 0, "empty" message)."""
+    settings = get_settings()
+    settings.voice_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    result = cli.invoke(app, ["bot", "purge-voice", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "empty" in result.output.lower()
+
+
+def test_bot_purge_voice_no_dir(tempo_data_dir: Path) -> None:
+    """Missing cache dir is handled gracefully (no error, "nothing to purge")."""
+    result = cli.invoke(app, ["bot", "purge-voice", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "Nothing to purge" in result.output
+
+
+def test_bot_purge_voice_without_yes_prompts_and_aborts_on_no(tempo_data_dir: Path) -> None:
+    """Without --yes the command asks for confirmation; "n" -> exit 1, no deletion."""
+    settings = get_settings()
+    cache = settings.voice_cache_dir
+    cache.mkdir(parents=True, exist_ok=True)
+    f = cache / "keep.ogg"
+    f.write_bytes(b"\x00" * 10)
+
+    # CliRunner's input= feeds the typer.confirm prompt.
+    result = cli.invoke(app, ["bot", "purge-voice"], input="n\n")
+    assert result.exit_code == 1
+    assert "Aborted" in result.output
+    assert f.exists()
+
+
+def test_bot_purge_voice_without_yes_proceeds_on_yes(tempo_data_dir: Path) -> None:
+    """Interactive "y" confirmation triggers the deletion."""
+    settings = get_settings()
+    cache = settings.voice_cache_dir
+    cache.mkdir(parents=True, exist_ok=True)
+    f = cache / "del.ogg"
+    f.write_bytes(b"\x00" * 10)
+
+    result = cli.invoke(app, ["bot", "purge-voice"], input="y\n")
+    assert result.exit_code == 0, result.output
+    assert "Deleted 1 voice file(s)" in result.output
+    assert not f.exists()
