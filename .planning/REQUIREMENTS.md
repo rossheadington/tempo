@@ -68,6 +68,19 @@ the Strava end-to-end milestone and the Garmin/analysis milestone.
 - [x] **SCHED-03**: The daily analysis surfaces output only when noteworthy (threshold check), not noise every day
 - [x] **DELIV-01**: Analyses are written as dated markdown reports into a local (gitignored) `reports/` folder
 
+## v1.1 Requirements (post-v1)
+
+Iterative refinements on the v1 base. Mapped to Phase 8+.
+
+### Modular Trackers + Heat Adaptation (Phase 8)
+
+- [ ] **TRACK-01**: `races.md` supports an optional `result:` field per race (free-form time like `3:17:42` or text like `DNF`); past races remain in the same file
+- [ ] **TRACK-02**: `RacesContext` exposes a `completed(today)` helper (mirroring `upcoming(today)`) so reports can surface recent races with their results
+- [ ] **TRACK-03**: Each race in `races.md` auto-links by local date to the Strava activity on that day (0 / 1 / many handled honestly: ambiguous or missing → unlinked, single match → linked); race-readiness report can show the actual time vs. goal when linked
+- [ ] **TRACK-04**: A new `heat.md` (in the content dir) captures heat-adaptation sessions as an append-only list (date + type like `sauna` / `hot-bath` / `hot-run` + duration + optional temp / HR / notes); parsing is lenient (missing fields don't break the file)
+- [ ] **TRACK-05**: Parsed heat sessions surface in analyses — at minimum a rolling-window count + total minutes (last 7 / 14 / 28 days) appears in the recovery report context so Claude knows current heat-adaptation status
+- [ ] **TRACK-06**: `plan.md` is retired entirely — the parser, `PlanContext`, config field, example file, report integration, and CLAUDE.md / docs mentions all removed; race-readiness report degrades cleanly without it
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.

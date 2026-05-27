@@ -5,11 +5,11 @@
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** v1 COMPLETE — all 7 phases done. No active phase.
+**Current focus:** v1 COMPLETE. Phase 8 (Modular Trackers + Heat Adaptation) queued for planning.
 
 ## Current Position
 
-Phase: 7 of 7 (Recovery + Correlation + Scheduler) — COMPLETE. **v1 feature-complete.**
+Phase: 7 of 6 (Recovery + Correlation + Scheduler) — COMPLETE. **v1 feature-complete.**
 Plan: 1 of 1 in Phase 7 complete
 Status: Phase 7 done — the analysis suite is closed and the daily scheduler ships. (1) Multi-signal recovery/overtraining (`tempo analyze recovery`, `tempo/analysis/recovery.py`): combines rising load (CTL ramp / ACWR from `fitness.py`) with HRV/resting-HR/sleep z-scored against personal rolling baselines (`baselines.py`); encodes the "HRV abnormal in EITHER direction" subtlety (low = suppressed recovery, high = possible parasympathetic saturation in deep OTS — flags |z| magnitude, not just direction); degrades to "insufficient data" without baseline history. (2) Honest correlation (`tempo analyze correlations`, `tempo/analysis/correlation.py`, stdlib Pearson): prior-night sleep/HRV + RPE vs load (performance proxy) / RPE, reported only at >= 20 paired days, else explicit "insufficient data — N paired days, need 20". (3) launchd daily job (NOT cron): `tempo install-scheduler` generates a `StartCalendarInterval` plist (absolute paths + explicit PATH/TEMPO_DATA_DIR + log capture; secret-free committed template `launchd/com.tempo.daily.plist`; never runs launchctl itself). `tempo run-daily` (`tempo/sync/daily.py`) = sync → transform → analyze, idempotent + catch-up-aware (a missed day recovered next run via the watermark-driven sync; Garmin still isolated). (4) Noteworthy-only surfacing (`tempo/analysis/noteworthy.py`, configurable thresholds) — reports always written, NOTEWORTHY log block + `reports/NOTEWORTHY.md` marker only on a threshold crossing (SCHED-03). 358 tests (70 new) all green, ruff clean, plist plutil-validated, end-to-end verified on seeded synthetic data.
 Last activity: 2026-05-26 — Phase 7 (Recovery + Correlation + Scheduler) implemented, tested, committed, and pushed. ALL 7 PHASES / v1 COMPLETE.
@@ -345,6 +345,10 @@ Recent decisions affecting current work:
 - Two-layer raw → structured storage: connectors write only to `raw_response`; transforms read raw and write structured, enabling `tempo rederive` with no network
 - Date spine in Phase 3 (not later): CTL/ATL EWMAs and ACWR windows are silently wrong without a zero-filled spine
 - Journaling early (Phase 5): correlation analysis is data-hungry, so paired subjective history must start accumulating before Garmin
+
+### Roadmap Evolution
+
+- Phase 8 added: Modular Trackers + Heat Adaptation — split plan.md into focused tracker files (`races.md` w/ result + auto-link, new `heat.md`); retire `plan.md`. (2026-05-27)
 
 ### Pending Todos
 

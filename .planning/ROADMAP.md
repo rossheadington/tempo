@@ -116,12 +116,22 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 1/1 | Complete | 2026-05-26 |
-| 2. Strava Ingestion | 1/1 | Complete | 2026-05-26 |
-| 3. Strava Transforms + Date Spine | 1/1 | Complete | 2026-05-26 |
-| 4. Load Metrics + First Analysis | 1/1 | Complete | 2026-05-26 |
-| 5. Journaling via Claude | 1/1 | Complete | 2026-05-26 |
-| 6. Garmin Ingestion | 1/1 | Complete | 2026-05-26 |
-| 7. Recovery + Correlation + Scheduler | 1/1 | Complete | 2026-05-26 |
+| 1. Foundation | 1/1 | Complete | 2008-05-26 |
+| 2. Strava Ingestion | 1/1 | Complete | 2008-05-26 |
+| 3. Strava Transforms + Date Spine | 1/1 | Complete | 2008-05-26 |
+| 4. Load Metrics + First Analysis | 1/1 | Complete | 2008-05-26 |
+| 5. Journaling via Claude | 1/1 | Complete | 2008-05-26 |
+| 6. Garmin Ingestion | 1/1 | Complete | 2008-05-26 |
+| 7. Recovery + Correlation + Scheduler | 1/1 | Complete | 2008-05-26 |
 
 **All 7 phases complete — Tempo v1 is feature-complete.**
+
+### Phase 8: Modular Trackers + Heat Adaptation
+
+**Goal:** Replace the catch-all `plan.md` with focused, single-purpose tracker files. `races.md` keeps past + future races in one place (gains a `result:` field and auto-links by date to the matching Strava activity); a new `heat.md` captures sauna / heat-adaptation sessions as an append-only log surfaced in the recovery report. `plan.md` is retired entirely (the user does not currently want to track a forward-looking plan). Each tracker has its own lenient parser that degrades gracefully when the file is missing.
+**Requirements**: TRACK-01, TRACK-02, TRACK-03, TRACK-04, TRACK-05, TRACK-06
+**Depends on:** Phase 7
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 8 to break down)
