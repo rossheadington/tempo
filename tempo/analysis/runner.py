@@ -27,6 +27,7 @@ from tempo.analysis import fitness, load, race
 from tempo.analysis import recovery as recovery_mod
 from tempo.analysis import report as report_mod
 from tempo.analysis.context import Race
+from tempo.analysis.race_link import link_races_to_activities
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,10 +265,16 @@ def generate_race_readiness(
     reports_dir: Path,
     generated_on: date,
 ) -> Path:
-    """Compute the race-readiness findings and write the dated markdown report."""
+    """Compute the race-readiness findings and write the dated markdown report.
+
+    Also computes the race-to-activity auto-link (TRACK-03) from the parsed
+    races, threading the parallel ``RaceLink`` list into the renderer so each
+    race surfaces its linked activity / unlinked-status marker.
+    """
     series = build_load_series(conn, cfg)
     races_ctx = ctx.parse_races(races_path)
     plan_ctx = ctx.parse_plan(plan_path)
+    race_links = link_races_to_activities(races_ctx.races, conn)
     findings, best_label = build_race_readiness(conn, races_ctx, series, as_of=generated_on)
     freshness = dataread.source_freshness(conn, as_of=generated_on)
     data_range = dataread.data_date_range(conn)
@@ -282,6 +289,7 @@ def generate_race_readiness(
         readiness=findings,
         best_effort_label=best_label,
         latest_point=latest,
+        race_links=race_links,
     )
     return _write_report(reports_dir, "race-readiness", generated_on, text)
 
@@ -290,14 +298,22 @@ def generate_recovery(
     conn: sqlite3.Connection,
     *,
     cfg: load.LoadConfig,
+    heat_path: Path,
     reports_dir: Path,
     generated_on: date,
 ) -> Path:
-    """Compute the multi-signal recovery findings and write the dated report (ANL-03)."""
+    """Compute the multi-signal recovery findings and write the dated report (ANL-03).
+
+    ``heat_path`` points at the user's optional ``heat.md`` heat-adaptation log;
+    a missing file is fine -- the recovery report degrades to omitting the heat
+    section rather than failing. When present, the parsed rollup is rendered
+    into a ``## Heat adaptation`` section (per the A4 3-state degradation rule
+    implemented in :func:`tempo.analysis.recovery._render_heat_section`).
+    """
     series = build_load_series(conn, cfg)
     guardrail = fitness.evaluate_guardrail(series.points)
     assessment = recovery_mod.assess_recovery_from_db(
-        conn, points=series.points, guardrail=guardrail
+        conn, points=series.points, guardrail=guardrail, heat_path=heat_path
     )
     freshness = dataread.source_freshness(conn, as_of=generated_on)
     data_range = dataread.data_date_range(conn)
@@ -356,6 +372,7 @@ def generate_all(
     cfg: load.LoadConfig,
     races_path: Path,
     plan_path: Path,
+    heat_path: Path,
     reports_dir: Path,
     generated_on: date,
 ) -> AnalyzeResult:
@@ -378,7 +395,11 @@ def generate_all(
             generated_on=generated_on,
         ),
         recovery=generate_recovery(
-            conn, cfg=cfg, reports_dir=reports_dir, generated_on=generated_on
+            conn,
+            cfg=cfg,
+            heat_path=heat_path,
+            reports_dir=reports_dir,
+            generated_on=generated_on,
         ),
         correlations=generate_correlations(
             conn, cfg=cfg, reports_dir=reports_dir, generated_on=generated_on

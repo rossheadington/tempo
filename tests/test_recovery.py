@@ -3,7 +3,8 @@
 Covers:
 * the multi-signal combination (rising load + baseline-relative wellness);
 * the HRV "abnormal in EITHER direction" subtlety (low AND high are concerns);
-* insufficient-data honesty (no baselines, or too little history).
+* insufficient-data honesty (no baselines, or too little history);
+* the heat-adaptation section rendering with the A4 3-state degradation rule.
 
 All numbers are hand-built so the thresholds are unit-testable; no network.
 """
@@ -275,3 +276,163 @@ def test_render_recovery_has_freshness_and_either_direction_note(conn: sqlite3.C
     assert "# Recovery & Overtraining" in text
     assert "Data freshness" in text  # ANL-05 header
     assert "EITHER" in text or "either" in text  # the HRV subtlety is documented
+
+
+# ---- Heat-adaptation section rendering (A4 override: 3 degradation states) --
+
+
+def _ok_assessment(
+    *, heat: object = None, heat_present: bool = False
+) -> recovery.RecoveryAssessment:
+    """Hand-built RecoveryAssessment with neutral signals so we exercise ONLY the heat path."""
+    signals = [
+        recovery.SignalAssessment(
+            metric="hrv",
+            status="normal",
+            direction="none",
+            value=60.0,
+            mean=60.0,
+            z=0.0,
+            n=60,
+            message="HRV nominal.",
+        ),
+        recovery.SignalAssessment(
+            metric="resting_hr",
+            status="normal",
+            direction="none",
+            value=48.0,
+            mean=48.0,
+            z=0.0,
+            n=60,
+            message="Resting HR nominal.",
+        ),
+        recovery.SignalAssessment(
+            metric="sleep",
+            status="normal",
+            direction="none",
+            value=27000.0,
+            mean=27000.0,
+            z=0.0,
+            n=60,
+            message="Sleep nominal.",
+        ),
+    ]
+    return recovery.RecoveryAssessment(
+        day="2026-04-01",
+        status="ok",
+        rising_load=False,
+        load_reasons=["Load is not spiking (ACWR 1.00)."],
+        signals=signals,
+        messages=["Recovery looks good."],
+        heat=heat,  # type: ignore[arg-type]
+        heat_present=heat_present,
+    )
+
+
+def _render(a: recovery.RecoveryAssessment) -> str:
+    return recovery.render_recovery(
+        generated_on=date(2026, 4, 1),
+        freshness=[],
+        data_range=None,
+        assessment=a,
+    )
+
+
+def test_render_recovery_omits_heat_when_no_heat_file() -> None:
+    """heat.md missing -> the section is omitted entirely (no header)."""
+    a = _ok_assessment(heat=None, heat_present=False)
+    text = _render(a)
+    assert "## Heat adaptation" not in text
+
+
+def test_render_recovery_omits_heat_when_present_but_empty() -> None:
+    """heat.md present but no sessions parsed -> section omitted (no header)."""
+    from tempo.analysis.heat import HeatRollup
+
+    empty = HeatRollup(
+        today=date(2026, 4, 1),
+        last_7d_count=0,
+        last_7d_minutes=0.0,
+        last_14d_count=0,
+        last_14d_minutes=0.0,
+        last_28d_count=0,
+        last_28d_minutes=0.0,
+        last_session_date=None,
+        last_session_days_ago=None,
+    )
+    a = _ok_assessment(heat=empty, heat_present=True)
+    text = _render(a)
+    assert "## Heat adaptation" not in text
+
+
+def test_render_recovery_renders_heat_when_recent_sessions() -> None:
+    """Sessions in the 7/14/28-day windows -> full rollup line."""
+    from tempo.analysis.heat import HeatRollup
+
+    rollup = HeatRollup(
+        today=date(2026, 4, 1),
+        last_7d_count=3,
+        last_7d_minutes=78.0,
+        last_14d_count=6,
+        last_14d_minutes=154.0,
+        last_28d_count=10,
+        last_28d_minutes=260.0,
+        last_session_date=date(2026, 3, 30),
+        last_session_days_ago=2,
+    )
+    a = _ok_assessment(heat=rollup, heat_present=True)
+    text = _render(a)
+    assert "## Heat adaptation" in text
+    assert "3 sessions" in text
+    assert "78 min" in text
+    assert "last session" in text
+    assert "2 days ago" in text
+    # The full-rollup line must NOT be a lapsed-nudge.
+    assert "lapsed" not in text.lower()
+
+
+def test_render_recovery_renders_heat_lapsed_nudge() -> None:
+    """Sessions exist in history but ALL >28 days old -> one-line lapsed nudge (A4 override)."""
+    from tempo.analysis.heat import HeatRollup
+
+    lapsed = HeatRollup(
+        today=date(2026, 4, 1),
+        last_7d_count=0,
+        last_7d_minutes=0.0,
+        last_14d_count=0,
+        last_14d_minutes=0.0,
+        last_28d_count=0,
+        last_28d_minutes=0.0,
+        last_session_date=date(2026, 2, 13),
+        last_session_days_ago=47,
+    )
+    a = _ok_assessment(heat=lapsed, heat_present=True)
+    text = _render(a)
+    assert "## Heat adaptation" in text
+    assert "lapsed" in text.lower()
+    assert "47 days ago" in text
+    # The lapsed nudge is the ONLY heat line -- no rollup numbers.
+    assert "sessions /" not in text
+    assert "last 7 days" not in text
+
+
+def test_render_recovery_heat_today_phrase() -> None:
+    """A session today renders 'last session: today' (NOT '0 days ago')."""
+    from tempo.analysis.heat import HeatRollup
+
+    today_rollup = HeatRollup(
+        today=date(2026, 4, 1),
+        last_7d_count=1,
+        last_7d_minutes=20.0,
+        last_14d_count=1,
+        last_14d_minutes=20.0,
+        last_28d_count=1,
+        last_28d_minutes=20.0,
+        last_session_date=date(2026, 4, 1),
+        last_session_days_ago=0,
+    )
+    a = _ok_assessment(heat=today_rollup, heat_present=True)
+    text = _render(a)
+    assert "## Heat adaptation" in text
+    assert "last session: today" in text
+    assert "0 days ago" not in text

@@ -27,11 +27,15 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 
 from tempo.analysis import baselines
 from tempo.analysis import data as dataread
 from tempo.analysis.baselines import BaselinePoint
 from tempo.analysis.fitness import FitnessPoint, Guardrail
+from tempo.analysis.heat import HeatRollup
+from tempo.analysis.heat import heat_rollup as _heat_rollup
+from tempo.analysis.heat import parse_heat as _parse_heat
 
 # |z| beyond this is a notable deviation from personal baseline (~2 SD = the
 # unusual 5% tail). Configurable so the noteworthy thresholds can be tuned.
@@ -245,6 +249,8 @@ class RecoveryAssessment:
     load_reasons: list[str]
     signals: list[SignalAssessment]
     messages: list[str] = field(default_factory=list)
+    heat: HeatRollup | None = None
+    heat_present: bool = False
 
     @property
     def concern_signals(self) -> list[SignalAssessment]:
@@ -387,16 +393,111 @@ def assess_recovery_from_db(
     guardrail: Guardrail,
     window: int = baselines.DEFAULT_WINDOW,
     min_points: int = baselines.MIN_POINTS,
+    heat_path: Path | None = None,
 ) -> RecoveryAssessment:
     """Read the latest wellness baselines from the DB and assess recovery.
 
     A thin wrapper over :func:`assess_recovery` that pulls the latest baseline per
     metric from ``wellness_day`` (read-only). The load ``points`` / ``guardrail``
     are passed in so the caller (the runner) computes them once and shares them.
+
+    If ``heat_path`` is provided, the heat-adaptation log at that path is parsed
+    and rolled into 7/14/28-day windows, then attached to the returned assessment
+    (``heat`` + ``heat_present`` fields). When omitted, both fields default to the
+    "no heat data" state and the renderer omits the section -- back-compat with
+    callers from earlier phases.
     """
     latest = baselines.latest_baselines(conn, window=window, min_points=min_points)
     day = points[-1].day if points else None
-    return assess_recovery(day=day, points=points, guardrail=guardrail, latest_baselines=latest)
+    assessment = assess_recovery(
+        day=day, points=points, guardrail=guardrail, latest_baselines=latest
+    )
+
+    if heat_path is None:
+        return assessment
+
+    # Align the heat windows with the recovery report's "as of" day so the
+    # rolling counts match the recovery verdict's day, not the wall clock.
+    if points:
+        try:
+            today_for_heat = date.fromisoformat(points[-1].day)
+        except ValueError:
+            today_for_heat = date.today()
+    else:
+        today_for_heat = date.today()
+
+    heat_ctx = _parse_heat(heat_path)
+    rollup = _heat_rollup(heat_ctx.sessions, today_for_heat)
+    # Replace the (frozen) assessment with one that carries the heat fields.
+    return RecoveryAssessment(
+        day=assessment.day,
+        status=assessment.status,
+        rising_load=assessment.rising_load,
+        load_reasons=assessment.load_reasons,
+        signals=assessment.signals,
+        messages=assessment.messages,
+        heat=rollup,
+        heat_present=heat_ctx.present,
+    )
+
+
+def _fmt_days_ago(n: int) -> str:
+    """Render a 'days ago' phrase the way humans say it (today / 1 day ago / N days ago)."""
+    if n == 0:
+        return "today"
+    if n == 1:
+        return "1 day ago"
+    return f"{n} days ago"
+
+
+def _fmt_minutes(value: float) -> str:
+    """Render a minutes total without trailing '.0' when it's an integer count."""
+    return f"{int(value)} min" if value == int(value) else f"{value:.1f} min"
+
+
+def _render_heat_section(out: list[str], heat: HeatRollup | None, heat_present: bool) -> None:
+    """Append the heat-adaptation section per the A4 3-state degradation rule.
+
+    The renderer never asks the user "do you have a heat.md?" -- the answer rides
+    on the two fields the assessment carries. The three states are:
+
+    * ``heat_present is False`` OR ``heat is None`` -- heat.md is absent (or the
+      caller did not thread it through). Section omitted entirely.
+    * heat.md is present but parsed zero sessions ever -- section omitted.
+    * heat.md is present, all 7/14/28-day window counts are zero, but a prior
+      session exists in history (``last_session_date is not None``) -- render the
+      ``## Heat adaptation`` header plus a single-line *lapsed* nudge. This is
+      the A4 override of the researcher's silent-default.
+    * heat.md is present and ANY of the 7/14/28-day windows is non-zero -- render
+      the full rollup line: counts, minutes, last-session age.
+    """
+    if not heat_present or heat is None:
+        return
+    # Present-but-empty: parsed file but no sessions ever.
+    if heat.last_session_date is None:
+        return
+
+    any_recent = heat.last_7d_count > 0 or heat.last_14d_count > 0 or heat.last_28d_count > 0
+    out.append("## Heat adaptation\n")
+    if any_recent:
+        days_ago = heat.last_session_days_ago or 0
+        out.append(
+            "- last 7 days: "
+            f"{heat.last_7d_count} sessions / {_fmt_minutes(heat.last_7d_minutes)} · "
+            f"last 14 days: {heat.last_14d_count} sessions / "
+            f"{_fmt_minutes(heat.last_14d_minutes)} · "
+            f"last 28 days: {heat.last_28d_count} sessions / "
+            f"{_fmt_minutes(heat.last_28d_minutes)} · "
+            f"last session: {_fmt_days_ago(days_ago)}"
+        )
+    else:
+        # Lapsed nudge (A4 override): no rollup numbers, one terse line.
+        days_ago = heat.last_session_days_ago or 0
+        out.append(
+            f"_Heat protocol lapsed -- last session {_fmt_days_ago(days_ago)}. "
+            "(No sessions in the last 28 days.)_"
+        )
+    out.append("")
 
 
 def render_recovery(
@@ -446,6 +547,8 @@ def render_recovery(
         }.get(s.status, "")
         out.append(f"- {icon} {s.message}")
     out.append("")
+
+    _render_heat_section(out, a.heat, a.heat_present)
 
     if a.status == "insufficient":
         out.append(
