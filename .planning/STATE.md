@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 5 (Journaling via Claude) complete. Validated `tempo journal add` entrypoint
-last_updated: "2026-05-27T17:20:40.844Z"
-last_activity: 2026-05-27 -- Phase 8 execution started
+last_updated: "2026-05-27T17:47:28.759Z"
+last_activity: 2026-05-27
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 5
-  completed_plans: 0
+  completed_plans: 4
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-26)
 ## Current Position
 
 Phase: 8 (modular-trackers-heat-adaptation) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 8
-Last activity: 2026-05-27 -- Phase 8 execution started
+Plan: 5 of 5 (08-04 complete; 08-05 = Plan E retirement up next)
+Status: Wave 2 complete -- heat + race-link surfaced in recovery / race-readiness reports
+Last activity: 2026-05-27 -- 08-04 complete (12 new tests, 402 total, 0 deviations from spec other than runner/recovery delegation choice)
 
-Progress: [██████████] 100% (7 of 7 phases) — v1 feature-complete
+Progress: [████████░░] 80%
 
 ## What's Done (Phase 1: Foundation)
 
@@ -443,7 +443,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-26
+Last session: 2026-05-27T17:47:28.754Z
 Stopped at: Phase 5 (Journaling via Claude) complete. Validated `tempo journal add` entrypoint
 (`tempo/journal/service.py`) records structured subjective entries (RPE 1–10, feel, notes),
 resolves the activity by date+sport (none/one/many handled), computes an sRPE (RPE × duration)
