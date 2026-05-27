@@ -186,6 +186,25 @@ paired days**; below that floor each pair shows an explicit *"insufficient data 
 N paired days, need 20"* note instead of asserting a weak signal from too little
 history. Correlation is not causation — relationships are a prompt to investigate.
 
+## Telegram bot (v1.1)
+
+A personal, owner-only Telegram bot that runs as a local long-polling worker —
+the **v1.1 voice-coach intake**. Single chat allowlisted at the filter level;
+any other chat is silently dropped before any handler runs. Phase 9 ships the
+worker + `/start` greeting; later phases add voice-memo transcription and a
+Claude Code agent loop on top of the same allowlist.
+
+```
+# One-time setup: see docs/TELEGRAM_BOT.md (full @BotFather + getUpdates walkthrough).
+# Add TELEGRAM_BOT_TOKEN and TELEGRAM_OWNER_CHAT_ID to .env (no TEMPO_ prefix).
+chmod 600 .env
+uv run tempo bot run
+```
+
+See [`docs/TELEGRAM_BOT.md`](docs/TELEGRAM_BOT.md) for the @BotFather +
+`getUpdates` walkthrough, the sanity-check from a second account, and the
+troubleshooting list (409 Conflict, token rotation).
+
 ## Scheduling (the daily run via launchd)
 
 The daily loop — `tempo run-daily` — runs **sync → transform → analyze** and
