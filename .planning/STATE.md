@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 5 (Journaling via Claude) complete. Validated `tempo journal add` entrypoint
-last_updated: "2026-05-27T17:59:00.000Z"
-last_activity: 2026-05-27
+status: shipped
+stopped_at: Phase 8 (Modular Trackers + Heat Adaptation) complete, verified, and pushed to origin/main; next up — new milestone for Telegram bot + voice intake (faster-whisper, large-v3-turbo) + Claude Agent SDK loop, Mac-first then port to Raspberry Pi
+last_updated: "2026-05-27T19:30:00.000Z"
+last_activity: 2026-05-27 — Phase 8 shipped (treated as shipped per branching_strategy=none; commits live on origin/main)
 progress:
   total_phases: 8
-  completed_phases: 0
+  completed_phases: 8
   total_plans: 5
   completed_plans: 5
   percent: 100
