@@ -12,12 +12,14 @@ are called.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, filters
 
 from tempo.bot.handlers import start_handler
+from tempo.bot.transcribe import warm_model
 from tempo.config import Settings, get_settings
 
 logger = logging.getLogger("tempo.bot")
@@ -83,11 +85,21 @@ def build_application(settings: Settings) -> Application:
         # Pitfall fix: clears any stale webhook so getUpdates doesn't 409.
         # Pending updates are preserved so offline messages still get handled.
         await application.bot.delete_webhook(drop_pending_updates=False)
+        # VOICE-06: warm the WhisperModel ONCE so the first voice memo does
+        # not pay the multi-second model load. ``asyncio.to_thread`` because
+        # the WhisperModel constructor blocks (file I/O + native init) and
+        # would otherwise stall PTB's event loop.
+        await asyncio.to_thread(warm_model, settings)
+        logger.info("Whisper model loaded and ready")
 
     app: Application = (
         ApplicationBuilder().token(token).concurrent_updates(True).post_init(_post_init).build()
     )
     app.bot_data["owner_chat_id"] = owner_chat_id
+    # Stash the validated Settings so Plan 10-02's voice handler can read
+    # ``settings.voice_cache_dir`` without re-running ``get_settings()`` (and
+    # without having to import the module from a handler).
+    app.bot_data["settings"] = settings
 
     owner_filter = filters.Chat(chat_id=owner_chat_id)
     app.add_handler(CommandHandler("start", start_handler, filters=owner_filter))
