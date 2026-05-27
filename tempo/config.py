@@ -148,11 +148,6 @@ class Settings(BaseSettings):
         """Path to the user-maintained heat-adaptation log (read for recovery context)."""
         return self.content_root / "heat.md"
 
-    @property
-    def plan_path(self) -> Path:
-        """Path to the user-maintained training-plan markdown (read for context)."""
-        return self.content_root / "plan.md"
-
     def ensure_dirs(self) -> None:
         """Create the data, tokens, and reports directories with safe perms.
 
