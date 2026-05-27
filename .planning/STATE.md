@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: executing
+stopped_at: Phase 5 (Journaling via Claude) complete. Validated `tempo journal add` entrypoint
+last_updated: "2026-05-27T17:20:40.844Z"
+last_activity: 2026-05-27 -- Phase 8 execution started
+progress:
+  total_phases: 8
+  completed_phases: 0
+  total_plans: 5
+  completed_plans: 0
+  percent: 0
+---
+
 # Project State
 
 ## Project Reference
@@ -5,14 +21,14 @@
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** v1 COMPLETE. Phase 8 (Modular Trackers + Heat Adaptation) queued for planning.
+**Current focus:** Phase 8 — modular-trackers-heat-adaptation
 
 ## Current Position
 
-Phase: 7 of 6 (Recovery + Correlation + Scheduler) — COMPLETE. **v1 feature-complete.**
-Plan: 1 of 1 in Phase 7 complete
-Status: Phase 7 done — the analysis suite is closed and the daily scheduler ships. (1) Multi-signal recovery/overtraining (`tempo analyze recovery`, `tempo/analysis/recovery.py`): combines rising load (CTL ramp / ACWR from `fitness.py`) with HRV/resting-HR/sleep z-scored against personal rolling baselines (`baselines.py`); encodes the "HRV abnormal in EITHER direction" subtlety (low = suppressed recovery, high = possible parasympathetic saturation in deep OTS — flags |z| magnitude, not just direction); degrades to "insufficient data" without baseline history. (2) Honest correlation (`tempo analyze correlations`, `tempo/analysis/correlation.py`, stdlib Pearson): prior-night sleep/HRV + RPE vs load (performance proxy) / RPE, reported only at >= 20 paired days, else explicit "insufficient data — N paired days, need 20". (3) launchd daily job (NOT cron): `tempo install-scheduler` generates a `StartCalendarInterval` plist (absolute paths + explicit PATH/TEMPO_DATA_DIR + log capture; secret-free committed template `launchd/com.tempo.daily.plist`; never runs launchctl itself). `tempo run-daily` (`tempo/sync/daily.py`) = sync → transform → analyze, idempotent + catch-up-aware (a missed day recovered next run via the watermark-driven sync; Garmin still isolated). (4) Noteworthy-only surfacing (`tempo/analysis/noteworthy.py`, configurable thresholds) — reports always written, NOTEWORTHY log block + `reports/NOTEWORTHY.md` marker only on a threshold crossing (SCHED-03). 358 tests (70 new) all green, ruff clean, plist plutil-validated, end-to-end verified on seeded synthetic data.
-Last activity: 2026-05-26 — Phase 7 (Recovery + Correlation + Scheduler) implemented, tested, committed, and pushed. ALL 7 PHASES / v1 COMPLETE.
+Phase: 8 (modular-trackers-heat-adaptation) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 8
+Last activity: 2026-05-27 -- Phase 8 execution started
 
 Progress: [██████████] 100% (7 of 7 phases) — v1 feature-complete
 
@@ -21,21 +37,27 @@ Progress: [██████████] 100% (7 of 7 phases) — v1 feature-c
 - uv project scaffold: `pyproject.toml` (`[project.scripts] tempo = "tempo.cli:app"`),
   `tempo/` package, `uv.lock` committed. Python 3.14. Runtime deps: typer,
   pydantic-settings. Dev deps: pytest, ruff.
+
 - `tempo/config.py` — typed pydantic-settings reading a gitignored `.env`; runtime
   data dir defaults to `~/.tempo/` (OUTSIDE the repo tree); derived db/tokens/reports
   paths; 0700 dir perms. (FND-02, FND-04)
+
 - `tempo/db.py` + `tempo/migrations/0001_init.sql` — raw `sqlite3` connection (WAL +
   foreign keys), integer `user_version` migration runner; tables `raw_response`,
   `date_spine`, `sync_state`. (FND-01)
+
 - `tempo/cli.py` — typer app; bare `tempo` / `tempo init` initialises the DB;
   `sync`/`transform`/`rederive`/`analyze`/`journal[ add]` wired as "not yet
   implemented" stubs. (FND-05)
+
 - `.githooks/pre-commit` — gitleaks scan of staged changes (`gitleaks git --staged`);
   fails loudly if gitleaks absent. Enabled via `core.hooksPath=.githooks`. Also
   `.pre-commit-config.yaml` for pre-commit-framework users. (FND-03)
+
 - `.env.example` committed; `.gitignore` hardened (`.tempo/`). (FND-02)
 - `docs/DATE_BUCKETING.md` — authoritative local-date attribution rule (Strava fake-Z,
   Garmin calendarDate, edge cases). (FND-06)
+
 - `tests/` — 25 pytest tests, all green; `ruff check` + `ruff format` clean.
 
 All Phase-1 success criteria verified (incl. gitleaks blocking a deliberately-staged
@@ -47,9 +69,11 @@ fake credential). Commits pushed to origin/main.
   that Garmin will share in Phase 6, plus `RawWriter`: idempotent upsert into
   `raw_response` keyed on `(source, endpoint, entity_key)`. Connectors write ONLY
   here. (STRV-06)
+
 - `tempo/connectors/tokens.py` — atomic rotating-token store: temp-write → fsync →
   `os.replace`, mode 0600, dir fsync. A crash mid-write can never strand the user
   back in the OAuth browser flow. (STRV-01/02; PITFALLS 4)
+
 - `tempo/connectors/strava.py` — `StravaConnector`: OAuth handshake (authorize URL +
   code exchange), refresh-only-near-expiry with atomic persistence of the rotated
   refresh token, resumable all-time backfill via `backfill_cursor` (batch raw rows +
@@ -58,13 +82,17 @@ fake credential). Commits pushed to origin/main.
   `fetch_streams` / `fetch_detail`. Verbatim raw via `client.protocol.get` (no model
   round-trip). tenacity backoff on 429, then checkpoint-and-exit (never hammer).
   (STRV-01..06; PITFALLS 5)
+
 - `tempo/sync/state.py` — `sync_state` read/write: watermark advances forward-only and
   only on success; backfill cursor + complete flag. (ARCHITECTURE Anti-Pattern 3)
+
 - `tempo/connectors/factory.py` — wires config → token store → connector; clean
   "credentials missing" error.
+
 - `tempo/cli.py` — `tempo strava auth|backfill|streams|sync`; top-level `tempo sync`
   runs the Strava incremental sync. `transform`/`rederive`/`analyze`/`journal` remain
   stubs.
+
 - `tempo/config.py` / `.env.example` — added `strava_redirect_uri`; documented setup.
 - README — "Strava setup (one-time)" section + accepted-API-terms note.
 - Deps: `stravalib` 2.4, `tenacity` 9.1; dev `responses`.
@@ -86,28 +114,34 @@ recorded as accepted (README + REQUIREMENTS Known Accepted Conflicts).
   late-night / DST / timezone-travel runs all land on the correct local day.
   `local_day_from_calendar_date` (Garmin parity, Phase 6) takes a `calendarDate` verbatim.
   Defensive: rejects empty / malformed / impossible dates with `BucketingError`. (STORE-05)
+
 - `tempo/transforms/strava.py` — pure raw→structured projection. `transform_activity`
   (payload → typed `ActivityRow`, deriving `avg_pace_s_km` from `average_speed`) and
   `transform_streams` (key_by_type payload → one `StreamRow` per type). `rebuild_activities`
   ensures each activity's spine day exists before insert (FK-safe), preferring the richer
   `activity` detail over `activity_summary`; `rebuild_streams` skips orphans. (STORE-01)
+
 - `tempo/transforms/spine.py` — zero-fills `date_spine`: a CONTINUOUS run of days across
   `[min data day, max data day]` (rest days + gap days included), optionally extended
   forward to `fill_to` (today). Missing spine days would silently corrupt Phase-4 EWMA /
   ACWR windows, so continuity is enforced. Spine metadata (dow/ISO-week/month/year)
   recomputed deterministically. (STORE-03)
+
 - `tempo/transforms/coerce.py` — defensive optional-value coercion (absent/empty → None).
 - `tempo/transforms/runner.py` — orchestrates `run_transform` (incremental upsert) and
   `run_rederive` (clear + full rebuild) as ONE atomic, ZERO-NETWORK transaction; ordering
   respects the spine→activity→stream foreign keys. Both produce identical state for a
   given raw layer. (STORE-02)
+
 - `tempo/migrations/0002_structured.sql` — `activity`, `activity_stream` tables (FK to
   `date_spine`/`activity`) + `daily_summary` VIEW: a LEFT JOIN from `date_spine` rolling up
   activities per day (n_activities, totals, max HR, sports), one row per calendar day, rest
   days first-class — shaped for Phase-6 wellness and Phase-5 journal to LEFT JOIN in later.
   (STORE-04). `db.SCHEMA_VERSION` bumped to 2; `STRUCTURED_TABLES` added.
+
 - `tempo/cli.py` — `tempo transform` and `tempo rederive` wired to the runner (spine filled
   forward to today); report activity/stream/spine-day counts.
+
 - `tests/` — 113 pytest tests (was 73, +40), all green; ruff check + format clean. New:
   `test_bucketing.py` (all four edge cases — 11pm, tz-travel, DST spring/fall, fake-Z — plus
   Garmin calendarDate parity and defensive parsing), `test_transforms.py` (pure transform,
@@ -127,30 +161,40 @@ days. Re-derivation confirmed no-network (socket-blocked test + CLI rerun reprod
   **method flag** (`rTSS` / `hrTSS` / `insufficient` / `rest`). When neither pace nor HR
   inputs exist, the activity is `insufficient` — load is never invented (LOAD-01; PITFALLS).
   Numerically verified: 1 h at threshold pace/HR ⇒ 100. (LOAD-01)
+
 - `tempo/analysis/fitness.py` — **CTL/ATL/TSB** EWMA series (42 / 7 day, PMC `1/N`
   recurrence; TSB uses yesterday's CTL−ATL), **ACWR** (coupled rolling avg; sweet spot
   0.8–1.3, danger >1.5), **ramp rate** (CTL change/week; aggressive >8), and a
   `evaluate_guardrail` verdict. All built on the zero-filled spine (rest days = 0).
   Degrades to `insufficient` rather than fabricating. (LOAD-02/03)
+
 - `tempo/analysis/race.py` — **Riegel** (`T2=T1·(D2/D1)^1.06`) + **VDOT** (Daniels'
   published vo2/pct formulas, inverted by fixed-point iteration) race prediction, with a
   reliability flag when the distance ratio exceeds 4:1. Verified: VDOT(5k 19:57)=50.0.
+
 - `tempo/analysis/context.py` — lenient **races.md / plan.md** parsers; missing file →
   empty result (analyses degrade). Race lines need a recognised field so prose/doc bullets
   aren't mistaken for races. (PLAN-01/02)
+
 - `tempo/analysis/data.py` — read-only DB access: activities, the zero-filled spine days,
   and **per-source `sync_state` freshness** (days-stale vs as-of) for the report header.
+
 - `tempo/analysis/report.py` — markdown renderers; every report opens with a **per-source
   last-successful-sync + staleness freshness header** and the data date range (ANL-05).
+
 - `tempo/analysis/runner.py` — orchestrates raw inputs → load series (on the spine) →
   PMC + guardrail + weekly rollups + race readiness → writes
   `reports/YYYY-MM-DD-load-trend.md` and `…-race-readiness.md`. Zero network. (ANL-01/02; DELIV-01)
+
 - `tempo/config.py` / `.env.example` — `TEMPO_THRESHOLD_PACE_S_PER_KM`, `TEMPO_MAX_HR`,
   `TEMPO_RESTING_HR`, `TEMPO_THRESHOLD_HR` settings; `races_path` / `plan_path` derived paths.
+
 - `tempo/cli.py` — `tempo analyze` (both reports) + `tempo analyze load-trend` /
   `tempo analyze race-readiness`.
+
 - `races.md.example` / `plan.md.example` — committed templates documenting the format;
   real files live in the gitignored data dir (also gitignored in repo root defensively).
+
 - `tests/` — 183 pytest tests (was 113, +70), all green; ruff check + format clean. New:
   `test_load.py` (rTSS/hrTSS/method/insufficient, numeric), `test_fitness.py` (CTL/ATL/TSB
   EWMA numeric, ACWR/ramp/guardrail thresholds), `test_race.py` (Riegel/VDOT numeric +
@@ -174,6 +218,7 @@ user's own Strava API app.**
   `daily_summary` VIEW is dropped+recreated to LEFT-JOIN a per-day journal rollup
   (latest-entry rpe/feel, SUM(srpe), has_journal, has_notes) while preserving the
   one-row-per-spine-day invariant (no day dropped). (JRNL-01/03; STORE-04)
+
 - `tempo/journal/service.py` — the **validated boundary** (`add_entry`): validates
   RPE to an integer 1–10 (rejects 0/11/fractional/non-numeric/bool), validates an
   optional positive `duration_min`, resolves the activity by **local date + sport**
@@ -183,21 +228,27 @@ user's own Strava API app.**
   moving/elapsed time), and inserts via parameterised SQL in a transaction. Also
   `resolve_activity`, `compute_srpe`, `list_entries`, and `ensure_days` of the spine
   for rest-day entries. NO free-form-SQL path. (JRNL-01/02)
+
 - `tempo/analysis/load.py` — new `LoadMethod.SRPE` + `apply_srpe_fallback(day_load, srpe)`:
   uses the day's sRPE as the load **only** when objective load is `insufficient` or it's a
   `rest` day with a journaled (e.g. cross-training) session; rTSS/hrTSS always win when
   present; flagged `method='sRPE'`. (JRNL-03)
+
 - `tempo/analysis/data.py` — `srpe_by_day()` (SUM of journal sRPE per day; empty/safe when
   the journal table is absent), wired into `runner.build_load_series` so the daily load
   series fills insufficient days from sRPE.
+
 - `tempo/cli.py` — `tempo journal add` (thin wrapper over `add_entry`; `--rpe` required,
   `--feel/--notes/--day/--sport/--activity-id/--duration-min`; day defaults to today) and
   `tempo journal list`. Validation failures exit 1 with the error.
+
 - `docs/JOURNALING.md` — the "Claude in the loop" contract: Claude captures entries ONLY by
   calling `tempo journal add`, never SQL; documents the date+sport resolution rule, sRPE, and
   that journal content stays in the gitignored `~/.tempo/` DB.
+
 - `tests/` — 235 pytest tests (was 183), all green; ruff check + format clean. New:
   `test_journal_service.py` (RPE validation incl. 0/11/non-int/bool; resolution none/one/many
+
   + disambiguation + case-insensitive sport; sRPE linked-vs-explicit; persistence; failed
   validation writes nothing; rest-day spine creation), `test_journal_summary.py` (journal in
   daily_summary, one-row-per-spine-day invariant, null journal cols, multi-entry rollup; sRPE
@@ -211,25 +262,32 @@ was rejected (exit 1); and on an activity-with-no-pace/HR day the analysis load 
 the day `method='sRPE'` with the sRPE value as the load.
 
 ### Conventions established this phase
+
 - Subjective rows are written ONLY through the validated `tempo.journal.service.add_entry`
   boundary (CLI is a thin wrapper); Claude never writes SQL (ARCHITECTURE Pattern 5 / Anti-
   Pattern 4). Activity resolution by date+sport refuses to guess on ambiguity.
+
 - sRPE is a **fallback** load track flagged `sRPE`; objective rTSS/hrTSS always wins when
   available. Journal content is personal data — lives only in the gitignored `~/.tempo/` DB.
 
 ### Conventions established earlier (Phase 4)
+
 - Analysis layer (`tempo/analysis/`) is **read-only over the structured/gold layer + the
   user's races.md/plan.md context**, pure-Python metric math (stdlib only — no pandas/polars),
   and **never touches the network**. Reports are dated markdown into the gitignored reports
   dir; every report states per-source data freshness; thin data degrades to "insufficient".
+
 - Threshold pace / HR are configurable pydantic settings (`TEMPO_*`), documented in `.env.example`.
 
 ### Conventions established earlier
+
 - Flat `tempo/` package layout (not `src/`).
 - No ORM / no Alembic: raw sqlite3 + hand-written SQL + integer `user_version`
   migrations applied from `tempo/migrations/NNNN_*.sql`.
+
 - All runtime data (DB, tokens, reports) lives under `~/.tempo/` by default,
   configurable via `TEMPO_DATA_DIR`; never inside the repo tree.
+
 - Settings env prefix is `TEMPO_`.
 - (Phase 3) Transforms live in `tempo/transforms/`, are PURE functions of the raw layer
   (no network), and bucket via the single rule in `tempo/transforms/bucketing.py`. The
@@ -244,6 +302,7 @@ the day `method='sRPE'` with the sRPE value as the load.
   steps, updated_at`. `daily_summary` VIEW dropped+recreated to LEFT-JOIN wellness
   (one row per spine day preserved; `has_wellness` flag; wellness-only rest days kept).
   (GRMN-04; STORE-04)
+
 - `tempo/connectors/garmin.py` — `GarminConnector` implements the SAME `Connector`
   protocol as Strava (`backfill`/`sync`). Behind a narrow `GarminClient` Protocol seam
   (so the fragile library is decoupled + fakeable). Token-reuse only: `_authenticated_client`
@@ -255,34 +314,41 @@ the day `method='sRPE'` with the sRPE value as the load.
   so a 429 mid-pull rolls back cleanly and never advances the watermark (Anti-Pattern 3).
   `GarminAuthError` (no tokens → run `tempo garmin login`) vs `GarminSyncError` (runtime).
   (GRMN-01/02/03/04)
+
 - `tempo/sync/pipeline.py` — the ISOLATION seam. `run_garmin_sync` wraps the connector in
   try/except catching `GarminSyncError`/`GarminAuthError`/`Exception` → returns a
   `SourceResult(ok=False)`, NEVER raising. `run_full_sync` runs Strava (authoritative,
   not isolated) THEN attempts Garmin isolated, so a Garmin failure can't block Strava or
   analysis (GRMN-01/03; Anti-Pattern 5). Per-source status reported honestly (no silent
   partial-success).
+
 - `tempo/connectors/factory.py` — `build_garmin_connector` (token-only client, NEVER
   credentials), `garmin_login` (the ONLY credential path: submits email/password + MFA
   via `prompt_mfa`, library dumps DI tokens to `~/.tempo/tokens/garmin`), `garmin_token_dir`.
+
 - `tempo/transforms/wellness.py` — pure no-network `rebuild_wellness`: groups raw
   sleep/hrv/stats by ISO key and collapses each day into ONE `wellness_day` row keyed by
   Garmin's `calendarDate` (via shared `local_day_from_calendar_date`); tolerates missing
   endpoints / corrupt payloads; idempotent upsert. Wired into `transform`/`rederive` runner
   (rebuilds wellness, clears it on rederive). Spine `data_day_bounds` now unions wellness +
   journal days so wellness-only days extend the spine. (GRMN-04; STORE-02)
+
 - `tempo/analysis/baselines.py` — personal rolling baselines (GRMN-05): trailing-window
   mean + sample-SD z-score (exclusive of today) + EWMA per metric (HRV/resting HR/sleep)
   over `wellness_day`; `<MIN_POINTS` priors or zero variance → `None` ("insufficient data",
   honest). Read helpers skip NULL days. Exposed (`compute_baselines`/`latest_baselines`) for
   Phase 7's recovery analysis.
+
 - `tempo/cli.py` — `tempo garmin login` (interactive, one-time, MFA prompt; warns NOT to
   retry on 429), `tempo garmin backfill --days N`, `tempo garmin sync` (token reuse, reports
   skip not crash), and `tempo sync` now runs Strava then isolated Garmin with per-source
   status. transform/rederive echo wellness counts.
+
 - `tests/garmin_fakes.py` — fake garminconnect client (no network/credentials): realistic
   sleep/hrv/stats payloads, a 429 exception named `GarminConnectTooManyRequestsError`,
   token-reuse vs credential-login distinction (counts credential logins), and per-call
   429/error/missing-token scripting.
+
 - `tests/` — 288 pytest tests (was 235), all green; ruff check + format clean. New:
   `test_garmin_connector.py` (interface conformance, verbatim raw keyed by date, watermark,
   token-reuse no-credential-login, 429 no-retry + rollback, idempotency, backfill),
@@ -304,13 +370,16 @@ calendarDate, surfaced in `daily_summary`; (5) baselines produced real z-scores 
 vs a 39-day mean) and `None` where variance/history was insufficient.
 
 ### Conventions established this phase
+
 - Garmin is an **isolated failure domain**: the connector raises, the `tempo.sync.pipeline`
   catches — a Garmin failure NEVER blocks Strava or analysis (Anti-Pattern 5). Contrast
   Strava, where tenacity backoff on a 429 is fine; a Garmin 429 gets NO retry (account-lockout
   risk, PITFALLS 2).
+
 - Garmin auth is login-once: only `tempo garmin login` touches credentials; sync/backfill
   reuse persisted tokens and never log in. The fragile library sits behind a `GarminClient`
   Protocol seam so it's swappable + fakeable.
+
 - Wellness buckets on Garmin's `calendarDate` (local wake-up day) via the shared bucketing
   rule; multiple raw endpoints collapse into one `wellness_day` row; rebuilt purely from raw
   (zero network).
@@ -318,6 +387,7 @@ vs a 39-day mean) and `None` where variance/history was insufficient.
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 1
 - Average duration: — min
 - Total execution time: — hours
@@ -329,6 +399,7 @@ vs a 39-day mean) and `None` where variance/history was insufficient.
 | 1. Foundation | 1 | — | — |
 
 **Recent Trend:**
+
 - Last 5 plans: —
 - Trend: —
 
