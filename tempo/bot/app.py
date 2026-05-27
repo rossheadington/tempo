@@ -179,9 +179,7 @@ def build_application(settings: Settings) -> Application:
     # "Single-chat allowlist").
     app.add_handler(MessageHandler(filters.VOICE & owner_filter, voice_handler))
     # Phase 11 (Plan 11-03): owner-only non-command text -> agent loop.
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND & owner_filter, text_handler)
-    )
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & owner_filter, text_handler))
 
     logger.info(
         "Bot configured -- owner_chat_id=%d, concurrent_updates=True, "

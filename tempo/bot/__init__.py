@@ -1,4 +1,4 @@
-"""Telegram bot scaffold (Phase 9 / v1.1) + voice transcription (Phase 10) + sessions (Phase 11) + agent loop (Phase 11-03).
+"""Telegram bot scaffold + voice transcription + sessions + agent loop.
 
 Owner-only Telegram bot that runs locally via long-polling. Phase 9 added the
 wiring; Phase 10 layers local faster-whisper transcription (Plan 10-01) and

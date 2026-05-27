@@ -70,15 +70,11 @@ OVERSIZED_REPLY: str = (
 #: Fixed reply when the Claude Agent SDK cannot reach the ``claude`` CLI
 #: (VOICE-07). No backticks so HTML quoting is trivial. Tests assert
 #: against this constant directly.
-MISSING_CLI_REPLY: str = (
-    "Claude Code isn't running. Try claude login in a terminal."
-)
+MISSING_CLI_REPLY: str = "Claude Code isn't running. Try claude login in a terminal."
 
 #: Fixed reply for ``/new``: the previous session id has been deleted from
 #: ``bot_session`` and the next message will start a fresh Claude Code session.
-NEW_SESSION_REPLY: str = (
-    "Started a fresh session. Next message gets a clean slate."
-)
+NEW_SESSION_REPLY: str = "Started a fresh session. Next message gets a clean slate."
 
 #: Fixed reply when the voice transcript is empty (Whisper detected no
 #: speech). The agent is NOT called for empty transcripts -- we just tell
@@ -185,7 +181,8 @@ async def _run_agent_turn(
             await update.message.reply_text(chunk, parse_mode=ParseMode.HTML)
 
         logger.info(
-            "agent turn · chat=%d · session=%s · tokens_in=%d · tokens_out=%d · cost=%s · wall=%.2fs",
+            "agent turn · chat=%d · session=%s · tokens_in=%d · tokens_out=%d "
+            "· cost=%s · wall=%.2fs",
             chat_id,
             turn.session_id[:8],
             turn.tokens_in,
@@ -369,5 +366,3 @@ async def new_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     logger.info("session reset · chat=%d", chat_id)
     await update.message.reply_text(NEW_SESSION_REPLY, parse_mode=ParseMode.HTML)
-
-
