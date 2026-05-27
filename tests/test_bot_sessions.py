@@ -13,7 +13,6 @@ from datetime import UTC, datetime, timedelta
 
 from tempo.bot import sessions
 
-
 T0 = datetime(2026, 5, 27, 12, 0, tzinfo=UTC)
 
 

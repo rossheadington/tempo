@@ -171,7 +171,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   6. Per-turn token usage (input / output / cache-read / cache-creation tokens AND the SDK-reported cost in USD, as returned on the `ResultMessage`) is logged in a structured form (logger field or SQLite `agent_turns` table) so the user can monitor Claude-subscription quota consumption over time
 **Plans**: 3 plans
 Plans:
-- [ ] 11-01-PLAN.md — Session-id store + migration 0005_bot_sessions (SCHEMA_VERSION → 5) + docs prereqs (VOICE-08)
+- [x] 11-01-PLAN.md — Session-id store + migration 0005_bot_sessions (SCHEMA_VERSION → 5) + docs prereqs (VOICE-08)
 - [ ] 11-02-PLAN.md — claude-agent-sdk wrapper: AgentTurn + run_turn + format_for_telegram (VOICE-07/09/13)
 - [ ] 11-03-PLAN.md — Wire voice_handler + text_handler + /new + typing indicator + startup CLI check (VOICE-07/08/09/10/13)
 **UI hint**: yes
@@ -207,7 +207,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Modular Trackers + Heat Adaptation | 5/5 | Complete | 2026-05-27 |
 | 9. Telegram Bot Foundation | 0/0 | Not started | — |
 | 10. Voice Intake + Local Transcription | 1/2 | In Progress|  |
-| 11. Claude Code Agent Loop | 0/3 | Not started | — |
+| 11. Claude Code Agent Loop | 1/3 | In Progress|  |
 | 12. Lifecycle, Hardening, Privacy | 0/0 | Not started | — |
 
 **Milestone status:**
