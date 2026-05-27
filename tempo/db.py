@@ -14,7 +14,7 @@ from pathlib import Path
 
 # The expected schema version after all bundled migrations have been applied.
 # Bump this (and add a migration file) whenever the schema changes.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Tables the foundation schema guarantees exist. Used by tests and `tempo` for
 # a quick post-init sanity check.
@@ -31,6 +31,11 @@ JOURNAL_TABLES = ("journal",)
 # Wellness (Garmin) table added in migration 0004 (Phase 6). One row per local
 # calendar day (Garmin's calendarDate), re-derived purely from raw Garmin payloads.
 WELLNESS_TABLES = ("wellness_day",)
+
+# Phase 11 (v1.1): Telegram bot per-chat Claude Code session-id store. Rows are
+# written only via tempo.bot.sessions (the validated boundary for VOICE-08); no
+# free-form SQL writes this table.
+BOT_TABLES = ("bot_session",)
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
