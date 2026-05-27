@@ -87,6 +87,31 @@ EMPTY_TRANSCRIPT_REPLY: str = "<i>(no speech detected)</i>"
 _TYPING_REFRESH_S: float = 4.0
 
 
+def _cleanup_voice_file(path: Path, retention_days: int) -> None:
+    """Delete a transcribed voice file when retention=0; otherwise leave it.
+
+    Phase 12 voice-retention policy (VOICE_RETENTION_DAYS):
+
+    * ``retention_days == 0`` (default): delete the ``.ogg`` immediately after
+      the transcript flows to the agent. Privacy-safe: the audio is never
+      retained on disk after the text has been extracted.
+    * ``retention_days > 0``: leave the file in place; the startup sweep in
+      :func:`tempo.bot.app._post_init` deletes anything older than that many
+      days. This lets the operator keep recent memos for debugging Whisper
+      misfires without committing to permanent retention.
+
+    Idempotent: ``missing_ok=True`` so a file already cleaned up by a sibling
+    handler (or by the startup sweep racing with this call) is not an error.
+    """
+    if retention_days != 0:
+        return
+    try:
+        path.unlink(missing_ok=True)
+        logger.debug("voice file deleted (retention=0): %s", path.name)
+    except OSError as exc:  # noqa: BLE001 - log + swallow; deletion is best-effort
+        logger.warning("voice file cleanup failed for %s: %s", path.name, exc)
+
+
 async def _keep_typing(chat: object) -> None:
     """Refresh Telegram's TYPING indicator until the task is cancelled.
 
@@ -291,11 +316,14 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     # Empty / whitespace-only transcript: skip the agent and tell the user
     # the pipeline ran but found nothing. Don't burn an agent turn on it.
+    # Phase 12: still apply the retention policy -- empty transcripts produced
+    # the same .ogg on disk as a normal flow, so honour VOICE_RETENTION_DAYS=0.
     if not transcript or not transcript.strip():
         await update.message.reply_text(
             EMPTY_TRANSCRIPT_REPLY,
             parse_mode=ParseMode.HTML,
         )
+        _cleanup_voice_file(target_path, settings.voice_retention_days)
         return
 
     # Log the raw transcript at INFO so the developer can still see what
@@ -305,7 +333,13 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.info("voice transcript (chat=%d): %s", update.effective_chat.id, transcript)
 
     chat_id = update.effective_chat.id
-    await _run_agent_turn(update, context, transcript, chat_id)
+    try:
+        await _run_agent_turn(update, context, transcript, chat_id)
+    finally:
+        # Phase 12 voice-retention policy: delete immediately when
+        # VOICE_RETENTION_DAYS=0 (the privacy-safe default). The finally
+        # block ensures cleanup happens even if the agent turn raises.
+        _cleanup_voice_file(target_path, settings.voice_retention_days)
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

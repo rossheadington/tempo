@@ -160,3 +160,18 @@ def test_ensure_dirs_does_not_create_voice_cache_dir(tempo_data_dir: Path) -> No
     settings = get_settings()
     settings.ensure_dirs()
     assert not settings.voice_cache_dir.exists()
+
+
+def test_voice_retention_days_defaults_to_zero(tempo_data_dir: Path, monkeypatch) -> None:
+    """Phase 12 default: delete voice files immediately after transcription."""
+    monkeypatch.delenv("VOICE_RETENTION_DAYS", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.voice_retention_days == 0
+
+
+def test_voice_retention_days_env_override(tempo_data_dir: Path, monkeypatch) -> None:
+    """VOICE_RETENTION_DAYS (BARE env-var name, not TEMPO_-prefixed) parses to int."""
+    monkeypatch.setenv("VOICE_RETENTION_DAYS", "7")
+    settings = Settings(_env_file=None)
+    assert settings.voice_retention_days == 7
+    assert isinstance(settings.voice_retention_days, int)

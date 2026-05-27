@@ -29,6 +29,8 @@ import asyncio
 import logging
 import shutil
 import sys
+import time
+from pathlib import Path
 
 from telegram.ext import (
     Application,
@@ -84,6 +86,41 @@ def _verify_claude_cli() -> None:
     if path is None:
         raise RuntimeError(CLAUDE_CLI_MISSING_ERROR)
     logger.info("Claude Code CLI found at %s", path)
+
+
+def _sweep_voice_cache(voice_cache_dir: Path, retention_days: int) -> int:
+    """Delete voice files older than ``retention_days`` from ``voice_cache_dir``.
+
+    Phase 12 startup sweep: when ``VOICE_RETENTION_DAYS > 0``, the per-handler
+    cleanup (which only fires on retention=0) leaves files on disk. The bot
+    re-sweeps on every startup so a long-running bot that survives many
+    restarts cannot accumulate unbounded audio. With ``retention_days == 0``
+    or a missing cache dir the sweep is a no-op (the per-handler cleanup is
+    already doing the immediate-delete work).
+
+    Returns the count of files deleted, for the startup log line.
+    """
+    if retention_days <= 0:
+        return 0
+    if not voice_cache_dir.is_dir():
+        return 0
+    cutoff = time.time() - (retention_days * 86400)
+    deleted = 0
+    for entry in voice_cache_dir.iterdir():
+        if not entry.is_file():
+            continue
+        try:
+            mtime = entry.stat().st_mtime
+        except OSError as exc:  # noqa: BLE001 - file vanished mid-sweep is fine
+            logger.debug("voice sweep: stat failed for %s: %s", entry.name, exc)
+            continue
+        if mtime < cutoff:
+            try:
+                entry.unlink(missing_ok=True)
+                deleted += 1
+            except OSError as exc:  # noqa: BLE001 - best-effort
+                logger.warning("voice sweep: unlink failed for %s: %s", entry.name, exc)
+    return deleted
 
 
 def _configure_logging() -> None:
@@ -152,6 +189,26 @@ def build_application(settings: Settings) -> Application:
         # would otherwise stall PTB's event loop.
         await asyncio.to_thread(warm_model, settings)
         logger.info("Whisper model loaded and ready")
+        # Phase 12: log the agent cwd. The launchd plist sets WorkingDirectory
+        # to the project root; printing it at startup makes it trivial to
+        # debug "claude wrote files to /" or other cwd surprises. Also
+        # surfaces the resolved data dir for the same reason.
+        logger.info("agent cwd = %s", Path.cwd().resolve())
+        logger.info("data_dir = %s", settings.data_dir)
+        # Phase 12 voice-retention startup sweep: for retention > 0, delete
+        # cached voice files older than the policy. Bounded by retention_days
+        # so a long-running bot cannot accumulate unbounded audio across
+        # restarts. No-op when retention_days == 0 (the per-handler cleanup
+        # already does the immediate-delete work).
+        deleted = await asyncio.to_thread(
+            _sweep_voice_cache, settings.voice_cache_dir, settings.voice_retention_days
+        )
+        if settings.voice_retention_days > 0:
+            logger.info(
+                "voice cache startup sweep: retention=%d days, deleted=%d",
+                settings.voice_retention_days,
+                deleted,
+            )
 
     app: Application = (
         ApplicationBuilder().token(token).concurrent_updates(True).post_init(_post_init).build()

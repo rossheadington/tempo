@@ -361,6 +361,137 @@ bot_app = typer.Typer(
 app.add_typer(bot_app, name="bot")
 
 
+@bot_app.command("install-scheduler")
+def bot_install_scheduler_cmd(
+    to_launch_agents: bool = typer.Option(
+        False,
+        "--to-launch-agents",
+        help="Write the plist into ~/Library/LaunchAgents (still does NOT launchctl load).",
+    ),
+    uv_bin: str | None = typer.Option(
+        None,
+        "--uv-bin",
+        help="Override the auto-detected absolute path to `uv` (defaults to `which uv`).",
+    ),
+    tz: str | None = typer.Option(
+        None,
+        "--tz",
+        help="Override the auto-detected IANA timezone (e.g. Europe/London).",
+    ),
+) -> None:
+    """Generate a long-running launchd LaunchAgent plist for `tempo bot run`.
+
+    Renders the committed launchd/com.tempo.telegram-bot.plist TEMPLATE,
+    substituting absolute paths for ``{{UV_BIN}}``, ``{{PROJECT_ROOT}}``, and
+    ``{{TZ}}``. Always creates ``<project>/logs/`` (where the plist captures
+    stdout/stderr) and runs ``plutil -lint`` on the rendered output so a
+    broken substitution never lands in LaunchAgents.
+
+    KeepAlive=true means launchd restarts the bot if it crashes / the Mac
+    wakes from sleep; ThrottleInterval=10 caps the restart loop;
+    RunAtLoad=true means it starts the moment you ``launchctl load`` it.
+
+    Tempo NEVER runs ``launchctl`` for you -- loading is an explicit,
+    informed human step (printed below).
+    """
+    from pathlib import Path
+
+    from tempo import scheduler
+
+    project_root = Path.cwd()
+    try:
+        result = scheduler.install_telegram_bot_plist(
+            project_root=project_root,
+            to_launch_agents=to_launch_agents,
+            uv_bin=uv_bin,
+            tz=tz,
+        )
+    except RuntimeError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.secho("Telegram-bot LaunchAgent plist written:", fg="green")
+    typer.echo(f"  {result.plist_path}")
+    if result.plutil_lint_ok:
+        typer.echo("  (plutil -lint: OK)")
+    typer.echo(f"Logs directory ensured: {result.logs_dir}")
+
+    if not result.installed_to_launch_agents:
+        typer.echo(
+            "\nThis is a TEMPLATE. To enable the bot at login, copy it into "
+            "~/Library/LaunchAgents/ then load + start it:"
+        )
+    else:
+        typer.echo("\nWritten into ~/Library/LaunchAgents/. To enable the bot at login:")
+    typer.secho(f"  {result.load_command}", fg=typer.colors.CYAN)
+    typer.secho(f"  {result.start_command}", fg=typer.colors.CYAN)
+    typer.echo("To disable later:")
+    typer.secho(f"  {result.unload_command}", fg=typer.colors.CYAN)
+    typer.echo(
+        "\nlaunchd restarts the bot on crash + on wake-from-sleep "
+        "(KeepAlive=true). Tempo never runs launchctl for you."
+    )
+
+
+@bot_app.command("purge-voice")
+def bot_purge_voice_cmd(
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Skip the interactive confirmation. Use only in scripts you trust.",
+    ),
+) -> None:
+    """Delete every cached voice memo under the voice cache dir (Phase 12).
+
+    Privacy hatch: even with VOICE_RETENTION_DAYS=7, you may want to wipe the
+    cache after a sensitive conversation without waiting 7 days for the
+    startup sweep. Lists the count + total size, asks for confirmation
+    (interactive) unless --yes is passed, then unlinks every file in
+    settings.voice_cache_dir. The directory itself is preserved (the next
+    voice memo recreates it lazily anyway).
+    """
+    from pathlib import Path
+
+    settings = get_settings()
+    cache: Path = settings.voice_cache_dir
+    if not cache.is_dir():
+        typer.echo(f"Voice cache dir does not exist: {cache}")
+        typer.echo("Nothing to purge.")
+        return
+
+    files = [p for p in cache.iterdir() if p.is_file()]
+    if not files:
+        typer.echo(f"Voice cache dir is empty: {cache}")
+        return
+
+    total_bytes = sum(p.stat().st_size for p in files)
+    typer.echo(f"Voice cache dir: {cache}")
+    typer.echo(f"Files to delete: {len(files)} ({total_bytes / 1024:.1f} KB)")
+
+    if not yes:
+        confirm = typer.confirm("Delete all cached voice files?", default=False)
+        if not confirm:
+            typer.echo("Aborted. Nothing deleted.")
+            raise typer.Exit(code=1)
+
+    deleted = 0
+    failed: list[tuple[str, str]] = []
+    for path in files:
+        try:
+            path.unlink(missing_ok=True)
+            deleted += 1
+        except OSError as exc:
+            failed.append((path.name, str(exc)))
+
+    typer.secho(f"Deleted {deleted} voice file(s).", fg="green")
+    if failed:
+        typer.secho(f"Failed to delete {len(failed)} file(s):", fg=typer.colors.YELLOW, err=True)
+        for name, err in failed:
+            typer.secho(f"  {name}: {err}", fg=typer.colors.YELLOW, err=True)
+        raise typer.Exit(code=1)
+
+
 @bot_app.command("run")
 def bot_run_cmd() -> None:
     """Run the Telegram bot as an owner-only long-polling worker (VOICE-01/02).

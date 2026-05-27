@@ -23,13 +23,18 @@ itself into the user's launchd silently.
 from __future__ import annotations
 
 import shutil
+import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from xml.sax.saxutils import escape
 
 # The reverse-DNS LaunchAgent label. The plist filename mirrors this.
 LABEL = "com.tempo.daily"
+
+# Phase 12: the long-running Telegram bot LaunchAgent label.
+TELEGRAM_BOT_LABEL = "com.tempo.telegram-bot"
 
 # Default time-of-day the daily job fires (local time). Late enough that the
 # overnight Garmin sync + Strava activities of the prior day are available.
@@ -210,4 +215,163 @@ def install_plist(
         installed_to_launch_agents=to_launch_agents,
         load_command=f"launchctl load -w {final}",
         unload_command=f"launchctl unload -w {final}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: long-running Telegram-bot LaunchAgent (KeepAlive=true)
+# ---------------------------------------------------------------------------
+
+#: Project-root path to the committed Telegram-bot plist template.
+TELEGRAM_BOT_TEMPLATE = (
+    Path(__file__).resolve().parent.parent / "launchd" / "com.tempo.telegram-bot.plist"
+)
+
+
+def _resolve_uv_bin() -> str:
+    """Locate the absolute path to ``uv`` for the bot LaunchAgent.
+
+    launchd runs with a stripped PATH; the plist's ProgramArguments must be
+    absolute. Falls back to the current ``sys.executable`` only if ``uv`` is
+    not on PATH (extremely unusual on a uv-managed project, but keeps the
+    function total).
+    """
+    uv = shutil.which("uv")
+    if uv:
+        return uv
+    return sys.executable
+
+
+def _default_timezone() -> str:
+    """Resolve the local IANA timezone for the bot plist's ``TZ`` env var.
+
+    Prefers the standard ``/etc/localtime`` symlink resolution (e.g.
+    ``Europe/London``); falls back to ``UTC`` if the symlink is missing or
+    cannot be parsed (e.g. inside a sandbox).
+    """
+    localtime = Path("/etc/localtime")
+    try:
+        resolved = localtime.resolve()
+        parts = resolved.parts
+        # /var/db/timezone/zoneinfo/Europe/London -> "Europe/London"
+        # /usr/share/zoneinfo/UTC                -> "UTC"
+        if "zoneinfo" in parts:
+            idx = parts.index("zoneinfo")
+            tz = "/".join(parts[idx + 1 :])
+            if tz:
+                return tz
+    except OSError:
+        pass
+    return "UTC"
+
+
+def render_telegram_bot_plist(
+    *,
+    project_root: Path,
+    uv_bin: str | None = None,
+    tz: str | None = None,
+    template: Path | None = None,
+) -> str:
+    """Render the Telegram-bot plist by substituting ``{{PLACEHOLDER}}`` tokens.
+
+    The committed template (``launchd/com.tempo.telegram-bot.plist``) is the
+    source of truth for the plist *shape* (KeepAlive=true, ThrottleInterval=10,
+    RunAtLoad=true, OMP_NUM_THREADS=4, the {{PROJECT_ROOT}}/logs/ paths). This
+    function only fills in the three deployment-specific values:
+
+    * ``{{UV_BIN}}``        -- absolute path to ``uv``
+    * ``{{PROJECT_ROOT}}``  -- absolute path to the project checkout
+    * ``{{TZ}}``            -- the IANA timezone (e.g. ``Europe/London``)
+
+    Caller is expected to ``plutil -lint`` the result before writing it to
+    ``~/Library/LaunchAgents/``.
+    """
+    src = (template or TELEGRAM_BOT_TEMPLATE).read_text(encoding="utf-8")
+    return (
+        src.replace("{{UV_BIN}}", escape(uv_bin or _resolve_uv_bin()))
+        .replace("{{PROJECT_ROOT}}", escape(str(project_root)))
+        .replace("{{TZ}}", escape(tz or _default_timezone()))
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class TelegramBotInstallResult:
+    """Where the rendered Telegram-bot plist was written + manual launchctl steps."""
+
+    plist_path: Path
+    installed_to_launch_agents: bool
+    plutil_lint_ok: bool
+    load_command: str
+    start_command: str
+    unload_command: str
+    logs_dir: Path
+
+
+def install_telegram_bot_plist(
+    *,
+    project_root: Path,
+    out_dir: Path | None = None,
+    to_launch_agents: bool = False,
+    uv_bin: str | None = None,
+    tz: str | None = None,
+) -> TelegramBotInstallResult:
+    """Render + write the Telegram-bot LaunchAgent plist; never auto-load it.
+
+    Mirrors :func:`install_plist` (the daily-run sibling). Defaults to writing
+    the rendered plist under ``project_root/launchd/`` for inspection;
+    ``to_launch_agents=True`` writes it into ``~/Library/LaunchAgents/`` so the
+    user only has to ``launchctl load`` + ``launchctl start``. Always ensures
+    ``project_root/logs/`` exists so the plist's StandardOutPath/ErrorPath are
+    not orphaned. Always runs ``plutil -lint`` on the rendered output when
+    ``plutil`` is on PATH; raises :class:`RuntimeError` on a lint failure
+    rather than writing a broken plist into LaunchAgents.
+    """
+    text = render_telegram_bot_plist(project_root=project_root, uv_bin=uv_bin, tz=tz)
+
+    # Always create the logs dir before the plist is loaded; launchd will not
+    # create the StandardOutPath/StandardErrorPath parent dirs for you.
+    logs_dir = project_root / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    if to_launch_agents:
+        dest = launch_agents_dir() / plist_filename(TELEGRAM_BOT_LABEL)
+    else:
+        target_dir = out_dir or (project_root / "launchd")
+        dest = target_dir / plist_filename(TELEGRAM_BOT_LABEL)
+
+    # Lint BEFORE writing: validate the rendered text via a temp file so a
+    # broken substitution never reaches ~/Library/LaunchAgents.
+    plutil_lint_ok = False
+    if shutil.which("plutil") is not None:
+        # Use a sibling temp file so we don't mutate dest until lint passes.
+        tmp = dest.parent / f".{dest.name}.tmp-{int(time.time() * 1000)}"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(text, encoding="utf-8")
+        try:
+            result = subprocess.run(
+                ["plutil", "-lint", str(tmp)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Rendered Telegram-bot plist failed plutil -lint:\n"
+                    f"{result.stdout}{result.stderr}"
+                )
+            plutil_lint_ok = True
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    write_plist(text, dest)
+
+    final = launch_agents_dir() / plist_filename(TELEGRAM_BOT_LABEL)
+    return TelegramBotInstallResult(
+        plist_path=dest,
+        installed_to_launch_agents=to_launch_agents,
+        plutil_lint_ok=plutil_lint_ok,
+        load_command=f"launchctl load -w {final}",
+        start_command=f"launchctl start {TELEGRAM_BOT_LABEL}",
+        unload_command=f"launchctl unload -w {final}",
+        logs_dir=logs_dir,
     )

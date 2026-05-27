@@ -128,6 +128,20 @@ class Settings(BaseSettings):
         ),
     )
 
+    # ---- Voice cache retention (Phase 12 / v1.1) ----
+    # Bare env-var name (NOT prefixed) so the convention matches the other
+    # bot-side knobs (TELEGRAM_*, WHISPER_*). Default 0 = delete every voice
+    # file immediately after transcription -- the privacy-safe default.
+    voice_retention_days: int = Field(
+        default=0,
+        validation_alias="VOICE_RETENTION_DAYS",
+        description=(
+            "How many days to keep transcribed voice memos in voice_cache_dir. "
+            "0 (default) = delete immediately after transcription. >0 = keep on "
+            "disk for that many days; a startup sweep then deletes anything older."
+        ),
+    )
+
     # ---- Load / analysis settings (Phase 4) ----
     threshold_pace_s_per_km: float | None = Field(
         default=None,
