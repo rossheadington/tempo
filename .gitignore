@@ -23,6 +23,11 @@ store/
 data/
 raw/
 reports/
+# Phase 12: telegram-bot launchd plist + run-daily plist write StandardOutPath
+# /StandardErrorPath under <project>/logs/, and any other ad-hoc local logs
+# belong here too. Never commit run logs -- they can echo transcripts, tokens,
+# or other personal data.
+logs/
 # User-maintained context files live in the data dir (outside the tree); ignore
 # any local copy in the repo root too, but keep the committed .example templates.
 races.md
