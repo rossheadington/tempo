@@ -361,6 +361,78 @@ bot_app = typer.Typer(
 app.add_typer(bot_app, name="bot")
 
 
+@bot_app.command("install-scheduler")
+def bot_install_scheduler_cmd(
+    to_launch_agents: bool = typer.Option(
+        False,
+        "--to-launch-agents",
+        help="Write the plist into ~/Library/LaunchAgents (still does NOT launchctl load).",
+    ),
+    uv_bin: str | None = typer.Option(
+        None,
+        "--uv-bin",
+        help="Override the auto-detected absolute path to `uv` (defaults to `which uv`).",
+    ),
+    tz: str | None = typer.Option(
+        None,
+        "--tz",
+        help="Override the auto-detected IANA timezone (e.g. Europe/London).",
+    ),
+) -> None:
+    """Generate a long-running launchd LaunchAgent plist for `tempo bot run`.
+
+    Renders the committed launchd/com.tempo.telegram-bot.plist TEMPLATE,
+    substituting absolute paths for ``{{UV_BIN}}``, ``{{PROJECT_ROOT}}``, and
+    ``{{TZ}}``. Always creates ``<project>/logs/`` (where the plist captures
+    stdout/stderr) and runs ``plutil -lint`` on the rendered output so a
+    broken substitution never lands in LaunchAgents.
+
+    KeepAlive=true means launchd restarts the bot if it crashes / the Mac
+    wakes from sleep; ThrottleInterval=10 caps the restart loop;
+    RunAtLoad=true means it starts the moment you ``launchctl load`` it.
+
+    Tempo NEVER runs ``launchctl`` for you -- loading is an explicit,
+    informed human step (printed below).
+    """
+    from pathlib import Path
+
+    from tempo import scheduler
+
+    project_root = Path.cwd()
+    try:
+        result = scheduler.install_telegram_bot_plist(
+            project_root=project_root,
+            to_launch_agents=to_launch_agents,
+            uv_bin=uv_bin,
+            tz=tz,
+        )
+    except RuntimeError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.secho("Telegram-bot LaunchAgent plist written:", fg="green")
+    typer.echo(f"  {result.plist_path}")
+    if result.plutil_lint_ok:
+        typer.echo("  (plutil -lint: OK)")
+    typer.echo(f"Logs directory ensured: {result.logs_dir}")
+
+    if not result.installed_to_launch_agents:
+        typer.echo(
+            "\nThis is a TEMPLATE. To enable the bot at login, copy it into "
+            "~/Library/LaunchAgents/ then load + start it:"
+        )
+    else:
+        typer.echo("\nWritten into ~/Library/LaunchAgents/. To enable the bot at login:")
+    typer.secho(f"  {result.load_command}", fg=typer.colors.CYAN)
+    typer.secho(f"  {result.start_command}", fg=typer.colors.CYAN)
+    typer.echo("To disable later:")
+    typer.secho(f"  {result.unload_command}", fg=typer.colors.CYAN)
+    typer.echo(
+        "\nlaunchd restarts the bot on crash + on wake-from-sleep "
+        "(KeepAlive=true). Tempo never runs launchctl for you."
+    )
+
+
 @bot_app.command("run")
 def bot_run_cmd() -> None:
     """Run the Telegram bot as an owner-only long-polling worker (VOICE-01/02).

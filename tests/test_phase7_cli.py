@@ -97,3 +97,62 @@ def test_install_scheduler_does_not_touch_launch_agents(tempo_data_dir: Path) ->
     # The output path is the template under the data dir, not LaunchAgents.
     assert str(tempo_data_dir / "launchd") in result.output
     assert str(scheduler.launch_agents_dir()) not in result.output.split("To enable")[0]
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: `tempo bot install-scheduler` (long-running KeepAlive plist)
+# ---------------------------------------------------------------------------
+
+
+def test_bot_install_scheduler_writes_template_and_creates_logs(
+    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`tempo bot install-scheduler` writes a valid plist under the project's
+    launchd/ dir AND ensures <project>/logs/ exists (StandardOut/ErrorPath
+    parent dirs), without ever running launchctl.
+    """
+    project_root = tmp_path / "proj"
+    project_root.mkdir()
+    monkeypatch.chdir(project_root)
+
+    result = cli.invoke(
+        app, ["bot", "install-scheduler", "--uv-bin", "/fake/uv", "--tz", "Europe/London"]
+    )
+    assert result.exit_code == 0, result.output
+    # Manual launchctl steps are surfaced but never auto-run.
+    assert "launchctl load" in result.output
+    assert "launchctl start com.tempo.telegram-bot" in result.output
+    assert "never runs launchctl for you" in result.output.lower()
+
+    plist = project_root / "launchd" / "com.tempo.telegram-bot.plist"
+    assert plist.exists()
+    parsed = plistlib.loads(plist.read_text().encode())
+    assert parsed["Label"] == "com.tempo.telegram-bot"
+    assert parsed["KeepAlive"] is True
+    assert parsed["RunAtLoad"] is True
+    assert parsed["ThrottleInterval"] == 10
+    assert parsed["ProgramArguments"][0] == "/fake/uv"
+    assert parsed["WorkingDirectory"] == str(project_root)
+    assert parsed["EnvironmentVariables"]["TZ"] == "Europe/London"
+    assert parsed["EnvironmentVariables"]["OMP_NUM_THREADS"] == "4"
+
+    # Logs dir is created so launchd does not fail to open StandardOutPath.
+    assert (project_root / "logs").is_dir()
+
+
+def test_bot_install_scheduler_does_not_touch_launch_agents(
+    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Default `bot install-scheduler` writes under the project, not LaunchAgents."""
+    from tempo import scheduler
+
+    project_root = tmp_path / "proj"
+    project_root.mkdir()
+    monkeypatch.chdir(project_root)
+
+    result = cli.invoke(
+        app, ["bot", "install-scheduler", "--uv-bin", "/fake/uv", "--tz", "UTC"]
+    )
+    assert result.exit_code == 0, result.output
+    assert str(project_root / "launchd") in result.output
+    assert str(scheduler.launch_agents_dir()) not in result.output.split("To enable")[0]

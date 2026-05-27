@@ -102,6 +102,93 @@ def test_committed_template_is_valid_plist() -> None:
         assert out.returncode == 0, out.stdout + out.stderr
 
 
+# ---------------------------------------------------------------------------
+# Phase 12: long-running Telegram-bot LaunchAgent
+# ---------------------------------------------------------------------------
+
+
+def test_telegram_bot_template_committed_lints() -> None:
+    """The COMMITTED telegram-bot template parses as plist + lints (placeholders
+    are inside string elements, so the unrendered template must still be valid).
+    """
+    template = PROJECT_ROOT / "launchd" / "com.tempo.telegram-bot.plist"
+    assert template.exists()
+    parsed = plistlib.loads(template.read_text().encode())
+    assert parsed["Label"] == "com.tempo.telegram-bot"
+    assert parsed["KeepAlive"] is True
+    assert parsed["ThrottleInterval"] == 10
+    assert parsed["RunAtLoad"] is True
+    # ProgramArguments terminate with `tempo bot run`.
+    assert parsed["ProgramArguments"][-3:] == ["tempo", "bot", "run"]
+    env = parsed["EnvironmentVariables"]
+    assert env["OMP_NUM_THREADS"] == "4"
+    if shutil.which("plutil") is not None:
+        out = subprocess.run(["plutil", "-lint", str(template)], capture_output=True, text=True)
+        assert out.returncode == 0, out.stdout + out.stderr
+
+
+def test_render_telegram_bot_plist_substitutes_placeholders(tmp_path: Path) -> None:
+    """Render substitutes {{UV_BIN}} / {{PROJECT_ROOT}} / {{TZ}} and lints clean."""
+    project_root = tmp_path / "proj"
+    project_root.mkdir()
+    text = scheduler.render_telegram_bot_plist(
+        project_root=project_root,
+        uv_bin="/fake/uv",
+        tz="Europe/London",
+    )
+    # None of the three substitution placeholders remain (the literal token
+    # "{{PLACEHOLDER}}" appears once in the comment as a docstring example,
+    # which is fine -- it is inside the XML comment block and never reaches
+    # the substituted output).
+    for placeholder in ("{{UV_BIN}}", "{{PROJECT_ROOT}}", "{{TZ}}"):
+        assert placeholder not in text, f"placeholder {placeholder} not substituted"
+    parsed = plistlib.loads(text.encode())
+    assert parsed["ProgramArguments"][0] == "/fake/uv"
+    assert parsed["WorkingDirectory"] == str(project_root)
+    assert parsed["EnvironmentVariables"]["TZ"] == "Europe/London"
+    assert parsed["StandardOutPath"] == f"{project_root}/logs/telegram-bot.stdout.log"
+    assert parsed["StandardErrorPath"] == f"{project_root}/logs/telegram-bot.stderr.log"
+
+
+def test_install_telegram_bot_plist_writes_template_and_creates_logs(tmp_path: Path) -> None:
+    """Default install writes a template under the project's launchd/ dir,
+    ensures <project>/logs/ exists, and never auto-loads launchd.
+    """
+    project_root = tmp_path / "proj"
+    project_root.mkdir()
+    result = scheduler.install_telegram_bot_plist(
+        project_root=project_root,
+        uv_bin="/fake/uv",
+        tz="UTC",
+    )
+    assert result.installed_to_launch_agents is False
+    assert result.plist_path.exists()
+    assert result.plist_path.parent == project_root / "launchd"
+    assert result.logs_dir == project_root / "logs"
+    assert result.logs_dir.is_dir()
+    assert result.load_command.startswith("launchctl load")
+    assert result.start_command == "launchctl start com.tempo.telegram-bot"
+    assert result.unload_command.startswith("launchctl unload")
+    # Rendered plist parses.
+    parsed = plistlib.loads(result.plist_path.read_text().encode())
+    assert parsed["Label"] == "com.tempo.telegram-bot"
+    assert parsed["KeepAlive"] is True
+
+
+def test_install_telegram_bot_plist_lints_when_plutil_available(tmp_path: Path) -> None:
+    """When plutil is on PATH, the install runs `plutil -lint` and records the result."""
+    if shutil.which("plutil") is None:
+        return
+    project_root = tmp_path / "proj"
+    project_root.mkdir()
+    result = scheduler.install_telegram_bot_plist(
+        project_root=project_root,
+        uv_bin="/fake/uv",
+        tz="UTC",
+    )
+    assert result.plutil_lint_ok is True
+
+
 def test_find_program_prefers_uv(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         scheduler.shutil, "which", lambda name: "/fake/uv" if name == "uv" else None
