@@ -144,6 +144,11 @@ class Settings(BaseSettings):
         return self.content_root / "races.md"
 
     @property
+    def heat_path(self) -> Path:
+        """Path to the user-maintained heat-adaptation log (read for recovery context)."""
+        return self.content_root / "heat.md"
+
+    @property
     def plan_path(self) -> Path:
         """Path to the user-maintained training-plan markdown (read for context)."""
         return self.content_root / "plan.md"

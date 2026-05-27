@@ -36,6 +36,7 @@ def test_content_dir_defaults_to_data_dir(tempo_data_dir: Path) -> None:
     assert settings.content_root == tempo_data_dir
     assert settings.reports_dir == tempo_data_dir / "reports"
     assert settings.plan_path == tempo_data_dir / "plan.md"
+    assert settings.heat_path == tempo_data_dir / "heat.md"
 
 
 def test_content_dir_redirects_content_only(tempo_data_dir: Path, tmp_path: Path) -> None:
@@ -45,6 +46,7 @@ def test_content_dir_redirects_content_only(tempo_data_dir: Path, tmp_path: Path
     settings = Settings(data_dir=tempo_data_dir, content_dir=content)
     assert settings.plan_path == content / "plan.md"
     assert settings.races_path == content / "races.md"
+    assert settings.heat_path == content / "heat.md"
     assert settings.reports_dir == content / "reports"
     # DB + tokens unaffected.
     assert settings.db_path == tempo_data_dir / "tempo.db"
