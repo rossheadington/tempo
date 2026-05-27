@@ -202,7 +202,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Recovery + Correlation + Scheduler | 1/1 | Complete | 2026-05-26 |
 | 8. Modular Trackers + Heat Adaptation | 5/5 | Complete | 2026-05-27 |
 | 9. Telegram Bot Foundation | 0/0 | Not started | — |
-| 10. Voice Intake + Local Transcription | 0/0 | Not started | — |
+| 10. Voice Intake + Local Transcription | 1/2 | In Progress|  |
 | 11. Claude Code Agent Loop | 0/0 | Not started | — |
 | 12. Lifecycle, Hardening, Privacy | 0/0 | Not started | — |
 
