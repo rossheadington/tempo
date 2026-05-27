@@ -13,7 +13,9 @@ Modules:
 * :mod:`tempo.analysis.load`    -- per-activity load (rTSS / hrTSS) + method flag.
 * :mod:`tempo.analysis.fitness` -- CTL/ATL/TSB EWMA series, ACWR, ramp rate.
 * :mod:`tempo.analysis.race`    -- Riegel / VDOT race-time prediction.
-* :mod:`tempo.analysis.context` -- parse ``races.md`` / ``plan.md``.
+* :mod:`tempo.analysis.races`   -- parse ``races.md`` (the canonical home).
+* :mod:`tempo.analysis.context` -- transition shim re-exporting ``races`` +
+  the legacy ``plan.md`` parser (both deleted in Plan 05 of Phase 8).
 * :mod:`tempo.analysis.data`    -- read daily inputs + per-source freshness.
 * :mod:`tempo.analysis.report`  -- render dated markdown reports.
 * :mod:`tempo.analysis.runner`  -- orchestrate the analyses and write reports.
