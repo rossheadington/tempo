@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: weight-tracker
+milestone: v1.5
+milestone_name: nutrition-tracker
 status: shipped
-stopped_at: v1.4 (Phase 15) complete; weight tracker live in recovery report.
-last_updated: "2026-05-28T11:15:00.000Z"
-last_activity: 2026-05-28 — Phase 15 (Weight Tracker, v1.4) shipped end-to-end. New `tempo/analysis/weight.py` (lenient parser + kg/lb normalisation + 7d/28d windows + EWMA alpha=0.1 trend + unit_mixed flag); `Settings.weight_path` derived property; `RecoveryAssessment` gains `weight`/`weight_present` fields; `_render_weight_section` enforces the 3-state degradation rule (absent / stale >14d / current); `runner.generate_recovery` + `generate_all` thread `weight_path`; CLI passes `settings.weight_path` at both call sites. `weight.md.example` (14 mixed-unit entries) + `docs/WEIGHT.md` (199 lines) + README mention. 619 tests green (+26 from Phase 14), ruff clean. Verifier PASS 5/5.
+stopped_at: v1.5 (Phase 16) complete; nutrition tracker live in recovery report + standalone `tempo analyze nutrition`.
+last_updated: "2026-05-28T12:30:00.000Z"
+last_activity: 2026-05-28 — Phase 16 (Nutrition Tracker, v1.5) shipped end-to-end. New `tempo/analysis/nutrition.py` (5 frozen+slots dataclasses; lenient two-format parser — inline + block-per-meal — interchangeable in one file; latest-wins dedup; left-open-right-closed 7d/28d windows; optional `target_kcal` deficit/surplus); `Settings.food_path` derived property + `Settings.target_kcal_default` opt-in via `TEMPO_TARGET_KCAL`; new `tempo/analysis/nutrition_report.py` + `tempo analyze nutrition` CLI write `reports/<date>-nutrition.md`; `RecoveryAssessment` gains `nutrition`/`nutrition_present` fields with `_render_nutrition_section` enforcing the 3-state degradation rule (absent → omit / stale >3d → one-line nudge / current → 7d P/C/F/cal rollup + optional goal-delta) positioned AFTER `## Weight`; `runner.generate_recovery` + `generate_all` + `generate_nutrition` thread `food_path` + `target_kcal`; `cli.py` + `sync/daily.py` pass them at every analyze entry point. `food.md.example` (14 entries, 7 inline + 7 block, 0 malformed) + `docs/NUTRITION.md` (394 lines) + `.env.example` (TEMPO_TARGET_KCAL knob) + README mention. 655 tests green (+36 from Phase 15), ruff clean. Verifier PASS 3/3.
 progress:
   total_phases: 1
   completed_phases: 1
-  completed: [15]
-  total_plans: 3
-  completed_plans: 3
+  completed: [16]
+  total_plans: 4
+  completed_plans: 4
   percent: 100
 ---
 
@@ -22,14 +22,56 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** v1.4 complete (weight tracker). v1.1 + v1.2 + v1.3 already shipped. Pi port deferred. Nutrition tracker (v1.5 / Phase 16) is the next planned phase.
+**Current focus:** v1.5 complete (nutrition tracker). v1.1 + v1.2 + v1.3 + v1.4 already shipped. Pi port deferred.
 
 ## Current Position
 
-Phase: Phase 15 (Weight Tracker, v1.4) — COMPLETE
-Plans: 15-01 + 15-02 + 15-03 — all COMPLETE
-Status: v1.4 SHIPPED. New `weight.md` markdown tracker with a lenient parser (kg / lb / lbs accepted; latest-wins on duplicate dates; out-of-range guard catches typos), a 7d/28d rolling rollup with kg-normalisation and an EWMA trend (alpha=0.1, ~7-entry half-life), surfaced in the recovery report as a `## Weight` section with the same 3-state degradation rule (absent → omit / stale >14d → one-line nudge / current → full rollup line with Unicode-minus / plus-minus delta and an optional `_(mixed kg/lb in log — normalised to kg)_` caveat) that heat + strength already use. Plan 15-01 added the parser + rollup + `Settings.weight_path` + 19 unit tests. Plan 15-02 wired the rollup into `RecoveryAssessment` + `_render_weight_section` + `runner.generate_recovery`/`generate_all` + CLI; added 7 recovery-integration tests. Plan 15-03 shipped `weight.md.example` (14 mixed-unit entries, 4 with notes, 1 with embedded `|`), `docs/WEIGHT.md` (199 lines), and a README mention. 619 tests green (+26 from Phase 14), ruff clean. All 5 WEIGHT-* requirements satisfied. Verifier PASS 5/5.
-Last activity: 2026-05-28 — Phase 15 verified. v1.4 milestone closed. The recovery report now carries Heat → Strength → Weight as its non-running-context cluster.
+Phase: Phase 16 (Nutrition Tracker, v1.5) — COMPLETE
+Plans: 16-01 + 16-02 + 16-03 + 16-04 — all COMPLETE
+Status: v1.5 SHIPPED. New `food.md` markdown tracker accepts TWO interchangeable formats — inline single-line (`- YYYY-MM-DD <meal>: <food> | p:<g> c:<g> f:<g> cal:<n>`) AND block-per-meal (`## YYYY-MM-DD <meal>` header + nested `- <food>: <macros>` bullets) — parsed by one lenient regex pipeline (case-insensitive macro keys, unordered, unknown keys silently ignored, missing required keys → entry skipped + line recorded in `malformed_lines`, never raises). Daily P/C/F/cal rollup with macro-% split (kcal-share formula, zero-kcal degenerate → 0.0 not crash). 7d trailing rollup averaged across days WITH entries only (a partial log doesn't drag the average down); 28d scalar kcal mean; optional `target_kcal` deficit/surplus when `TEMPO_TARGET_KCAL` is set in `.env`. Plan 16-01 added the parser + rollup + `Settings.food_path` + `Settings.target_kcal_default` + 22 unit tests. Plan 16-02 added `tempo analyze nutrition` CLI + `nutrition_report.render_nutrition` with header banner + 5 sections (today's totals / per-meal breakdown / 7d rolling / 28d kcal / optional goal) + 6 report tests + aggregate `tempo analyze` integration. Plan 16-03 wired the rollup into `RecoveryAssessment` + `_render_nutrition_section` (3-state rule mirroring weight, threshold 3d not 14d since food is daily) + `runner.generate_recovery`/`generate_all` + CLI; added 7 recovery-integration tests; section placed after `## Weight` so the non-running-context cluster reads Heat → Strength → Weight → Nutrition. Plan 16-04 shipped `food.md.example` (14 entries, both formats side-by-side, 0 malformed), `docs/NUTRITION.md` (394 lines), `.env.example` (`TEMPO_TARGET_KCAL` opt-in knob), and a README mention. 655 tests green (+36 from Phase 15), ruff clean. NUTR-03 / NUTR-04 / NUTR-05 all satisfied; NUTR-01 / NUTR-02 explicitly reclassified to v2 (`NUTR-CSV-01` / `NUTR-CSV-02`) — CSV importer becomes a Layer-2 follow-up once the markdown surface proves itself. Verifier PASS 3/3.
+Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The recovery report now carries Heat → Strength → Weight → Nutrition as its non-running-context cluster, and `tempo run-daily` automatically renders a dated nutrition report alongside the other four.
+
+## What's Done (Phase 16: Nutrition Tracker — v1.5 milestone)
+
+- `tempo/analysis/nutrition.py` (558 LoC) — five `@dataclass(frozen=True, slots=True)` types (`FoodEntry`, `MealBlock`, `FoodContext`, `DailyNutrition`, `NutritionRollup`), three regex grammars (`_INLINE_RE` for Format A, `_BLOCK_HEADER_RE` + `_BLOCK_BULLET_RE` for Format B), the `_parse_macros` extractor (case-insensitive, unordered, `cal:` rounded via `int(round(float(...)))`, missing-required → `None`), and the public `parse_food(path)` / `daily_nutrition(entries, day)` / `nutrition_rollup(entries, today, *, target_kcal=None)` functions. Missing file → `present=False`. Both formats freely intermix in the same file. Latest-wins dedup on `(date, meal_name, food_label)`. Block with a malformed `##` header → whole block skipped (header + bullets all recorded as malformed). Never raises. Lenient throughout. (NUTR-03, NUTR-04)
+
+- `daily_nutrition` math: sums P/C/F/kcal across all entries with `entry.date == day`; macro percentages computed AFTER summation via the kcal-share formula `(protein_g * 4) / kcal * 100` etc.; zero-kcal degenerate → all three percentages = `0.0` (no `ZeroDivisionError`). `entry_count` exposes the per-day count for transparency. (NUTR-04)
+
+- `nutrition_rollup` math: windows are left-open right-closed `(today - N, today]` so a same-day log always counts; averages across DAYS with entries (a day without entries is NOT in the denominator) — `days_logged_7d` exposes the day-count; `avg_28d_kcal` is a single scalar int (deeper 28d trend lives in v2); `deficit_surplus_7d = avg_7d.kcal - target_kcal` when both are available, else `None`. Empty/all-future `entries` → all-None / zero-counts rollup. (NUTR-04)
+
+- `Settings.food_path` derived property in `tempo/config.py` (mirrors `weight_path` exactly): returns `content_root / "food.md"`. `Settings.target_kcal_default: int | None` with `validation_alias="TEMPO_TARGET_KCAL"`, default `None`, silently absent when unset. (NUTR-04)
+
+- `tempo/analysis/nutrition_report.py` (192 LoC) — `render_nutrition(today, rollup, today_breakdown, blocks_today, context)` builds the standalone-report markdown body: header `# Nutrition — YYYY-MM-DD` + `Data:` freshness line + 5 sections in fixed order: `## Today's totals` (P/C/F/cal + macro % or `_No entries logged for today yet._`), `## Per-meal breakdown` (subheaders per `(today, meal_name)`, omitted when today has zero entries), `## 7-day rolling average` (mean P/C/F/cal + `(D days logged of 7)` + macro-split second line, or `_No entries in the last 7 days._`), `## 28-day kcal mean` (scalar or `_Insufficient history._`), `## Goal` (only when `rollup.target_kcal is not None`; Unicode `+` / `−` (U+2212) / `±` (U+00B1) sign). Absent-file short-circuit emits a single-paragraph "Create food.md" body, no sections. (NUTR-05)
+
+- `tempo analyze nutrition` CLI (`tempo/cli.py:722-754`) — new typer command mirroring the existing per-report commands. Reads `food.md` via `settings.food_path`, threads `settings.target_kcal_default`, calls `runner.generate_nutrition`, writes `reports/<YYYY-MM-DD>-nutrition.md`. `runner.generate_all` accepts both new params and emits the nutrition report when `food_path is not None`. `cli.py` passes them at both the top-level `tempo analyze` and `tempo analyze recovery` call sites. `tempo/sync/daily.py:111-112` threads them into the daily launchd pipeline so `tempo run-daily` automatically renders nutrition. (NUTR-05)
+
+- `RecoveryAssessment` gains `nutrition: NutritionRollup | None = None` and `nutrition_present: bool = False` (defaults preserve back-compat). `assess_recovery_from_db` accepts `food_path: Path | None = None` and `target_kcal: int | None = None`, threads them through the same single-reconstruction pattern that carries heat + strength + weight. `_render_nutrition_section` enforces the 3-state rule: `nutrition_present is False` OR `nutrition is None` OR `latest_day is None` → omit; `days_since_last > 3` → `_Last food entry N days ago — log today's meals to keep the rollup live._`; current → `7d avg P:<g> · C:<g> · F:<g> · cal:<n> (D days logged of 7)`. When `target_kcal` is set AND `deficit_surplus_7d is not None`, a second line `Target N kcal/day · 7d Δ ±X kcal/day` is appended (Unicode minus / plus-minus / plain plus). Section is placed AFTER `_render_weight_section` so the non-running-context cluster reads Heat → Strength → Weight → Nutrition. (NUTR-05)
+
+- `food.md.example` (75 lines) — committed worked example. Both formats side-by-side: 7 inline entries + 2 Format-B blocks containing 7 nested-bullet entries = 14 total entries. Parses cleanly: `present=True`, 14 entries, 2 blocks, `malformed_lines=()`. Doubles as a parser regression fixture. (NUTR-05)
+
+- `docs/NUTRITION.md` (394 lines) — end-to-end format documentation. Sections: `## Two interchangeable formats` (Format A inline grammar + Format B block grammar + worked examples + equivalence guarantee), `## Lenient parsing` (missing-file → `present=False`, malformed lines captured by number, never logs entry contents, never raises), `## Rollup semantics` (left-open-right-closed windows, days-with-entries-only averaging, optional kcal-goal opt-in), `## Recovery report integration` (3-state rule, 3-day staleness threshold, section ordering), `## Agent-append guidance` (single-line inline appends are safe; corrections via append + latest-wins), `## Future MFP CSV importer relationship` (the inline format is the natural CSV output shape; `NUTR-CSV-01` Layer-2 follow-up). (NUTR-05)
+
+- `.env.example:131` — `# TEMPO_TARGET_KCAL=2200   # optional, enables goal tracking in nutrition + recovery reports` documented as a commented opt-in knob.
+
+- `README.md` (L424-431) — Tracker-files paragraph updated to include `food.md.example` / `food.md` alongside `races.md` / `heat.md` / `strength.md` / `weight.md` with a link to `docs/NUTRITION.md`.
+
+- `tests/test_nutrition.py` (22 tests) — covers all CONTEXT-listed cases: `parse_food_missing_file_returns_absent_context`, `parse_food_inline_format_happy_path`, `parse_food_block_format_happy_path`, `parse_food_both_formats_in_same_file`, `parse_food_inline_and_block_produce_equivalent_entries` (the equivalence guarantee), `parse_food_unordered_macro_keys`, `parse_food_case_insensitive_keys`, `parse_food_tolerates_rounding_on_kcal`, `parse_food_skips_entries_missing_required_macros`, `parse_food_unknown_keys_ignored`, `parse_food_latest_wins_on_same_date_meal_food`, `parse_food_block_with_malformed_header_skipped`, `parse_food_ignores_headers_blanks_and_comments`, `daily_nutrition_sums_entries`, `daily_nutrition_macro_percentages_kcal_share`, `daily_nutrition_zero_kcal_degenerate`, `nutrition_rollup_empty_returns_all_none_with_zero_days_logged`, `nutrition_rollup_7d_window_left_open`, `nutrition_rollup_averages_across_days_with_entries_only`, `nutrition_rollup_target_deficit_surplus_when_set`, `nutrition_rollup_target_none_when_unset`, + a `_parse_macros` direct unit test.
+
+- `tests/test_nutrition_report.py` (6 tests) — `writes_dated_file_to_reports_dir`, `today_no_entries_emits_placeholder`, `per_meal_breakdown_present_when_today_has_entries`, `omits_goal_section_when_target_unset`, `omits_all_sections_when_food_file_absent`, `included_in_generate_all_aggregate`.
+
+- `tests/test_recovery.py` — 7+ new tests under `# ---- Nutrition section ----` divider: `omits_nutrition_section_when_absent`, `omits_nutrition_when_present_but_empty`, `emits_stale_nudge_when_last_entry_over_3d`, `emits_7d_trailing_rollup_when_current`, `appends_goal_line_when_target_set` (covering both surplus and deficit signs), `nutrition_section_follows_weight`, plus an end-to-end fixture-driven render.
+
+- **Test totals:** 655 tests green (was 619 after Phase 15; +36 from this phase). `ruff check tempo/ tests/` clean. Zero `TODO` / `FIXME` / `XXX` / `TBD` / `HACK` / `PLACEHOLDER` markers in `tempo/analysis/nutrition.py` or `tempo/analysis/nutrition_report.py`. The one slow Whisper test stays deselected per project convention.
+
+- **Verifier outcome:** PASS 3/3 success criteria. See `.planning/phases/16-nutrition-tracker/16-VERIFICATION.md`.
+
+### Conventions established this phase
+
+- **A markdown tracker can accept multiple interchangeable formats parsed by one lenient pipeline.** Nutrition is the first tracker to ship with two equivalent grammars (inline + block) — the choice is purely ergonomic (inline for quick agent-append; block when logging a multi-item meal). Both formats produce identical `FoodEntry` records modulo `source_line` / `source_format`. The equivalence is asserted by a dedicated test. This pattern unlocks future trackers where the natural agent-typed form differs from the natural human-typed form.
+
+- **Optional opt-in knobs stay silent when unset.** `TEMPO_TARGET_KCAL` is the first user-facing env var that activates a per-report feature (goal-delta line). When unset, the rollup's `target_kcal` and `deficit_surplus_7d` are `None` and the renderer omits the goal section entirely with no warning. Pattern: silent absence > warning noise for optional features.
+
+- **Markdown-first, structured-table-later still applies.** Nutrition is the FIFTH tracker (races / heat / strength / weight / food) to ship as a lenient markdown-only Layer-1 surface. `NUTR-01` / `NUTR-02` (the original MFP-CSV-import requirements) are explicitly reclassified to v2 as `NUTR-CSV-01` / `NUTR-CSV-02` — the inline format was deliberately designed to be the natural output of a future CSV importer, so the Layer-2 work becomes mechanical once the markdown surface proves itself.
 
 ## What's Done (Phase 15: Weight Tracker — v1.4 milestone)
 
