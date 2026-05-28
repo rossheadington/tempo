@@ -109,11 +109,13 @@ _WEIGHTED_RE = re.compile(
 _TIMED_RE = re.compile(r"^\s*(\d+):(\d{2})\s*$")
 _BODYWEIGHT_RE = re.compile(r"^\s*(\d+)\s*$")
 
-# Session header: `## YYYY-MM-DD [HH:MM] [— Name | - Name]`
+# Session header: `## YYYY-MM-DD [HH:MM] [[— | -] Name]`
+# Separator (em-dash or hyphen) is optional — `## 2026-05-26 Lower body` is
+# accepted as date + name with no separator.
 _HEADER_RE = re.compile(
     r"^##\s+(\d{4}-\d{2}-\d{2})"
     r"(?:\s+(\d{1,2}:\d{2}))?"
-    r"(?:\s*(?:—|-)\s*(.+))?"
+    r"(?:\s+(?:(?:—|-)\s*)?(.+?))?"
     r"\s*$"
 )
 

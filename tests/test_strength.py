@@ -137,6 +137,36 @@ def test_parse_strength_header_with_time_and_name(tmp_path: Path) -> None:
     assert second.name == "Upper body"
 
 
+def test_parse_strength_header_name_without_separator(tmp_path: Path) -> None:
+    """A header like `## 2026-05-26 Lower body` (no em-dash / hyphen) is accepted.
+
+    Regression: the previous _HEADER_RE required a `—` or `-` separator before
+    the name, so any header that just put the name after the date silently
+    failed to match and dropped the entire session into skip mode. The
+    separator is now optional.
+    """
+    p = tmp_path / "strength.md"
+    p.write_text(
+        "## 2026-05-26 Lower body\n"
+        "- Squats: 60x5\n"
+        "\n"
+        "## 2026-05-27 18:00 Push day\n"
+        "- Bench Press: 60x5\n",
+        encoding="utf-8",
+    )
+    ctx = parse_strength(p)
+    assert len(ctx.sessions) == 2
+    first, second = ctx.sessions
+    assert first.date == date(2026, 5, 26)
+    assert first.start_local is None
+    assert first.name == "Lower body"
+    assert len(first.exercises) == 1
+    assert second.date == date(2026, 5, 27)
+    assert second.start_local == "18:00"
+    assert second.name == "Push day"
+    assert len(second.exercises) == 1
+
+
 def test_parse_strength_metadata_rest_and_notes(tmp_path: Path) -> None:
     p = tmp_path / "strength.md"
     p.write_text(
