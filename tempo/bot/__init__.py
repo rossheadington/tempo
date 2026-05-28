@@ -23,8 +23,9 @@ Modules:
   :func:`voice_handler` (owner-only voice-memo intake, post-Phase-11 routed
   through the agent loop), :func:`text_handler` (non-command text messages
   routed through the agent loop), :func:`clear_command_handler` (``/clear``
-  resets the per-chat Claude Code session), and the :data:`MAX_VOICE_BYTES`
-  20 MB pre-download guard constant.
+  resets the per-chat Claude Code session), :func:`sync_command_handler`
+  (``/sync`` runs Strava + isolated Garmin sync from the bot), and the
+  :data:`MAX_VOICE_BYTES` 20 MB pre-download guard constant.
 * :mod:`tempo.bot.sessions`   -- :func:`get_or_create_session` /
   :func:`save_session` / :func:`reset_session` plus the
   persistent session that only resets on ``/clear`` (VOICE-08; backs the
@@ -51,8 +52,11 @@ from tempo.bot.handlers import (
     GREETING,
     MAX_VOICE_BYTES,
     MISSING_CLI_REPLY,
+    SYNC_CONFIG_ERROR,
+    SYNC_REPLY_PREFIX,
     clear_command_handler,
     start_handler,
+    sync_command_handler,
     text_handler,
     voice_handler,
 )
@@ -67,22 +71,24 @@ __all__ = [
     "AgentInvocationError",
     "AgentTurn",
     "CLAUDE_CLI_MISSING_ERROR",
+    "CLEAR_SESSION_REPLY",
     "ERROR_REPLY",
     "GREETING",
     "MAX_VOICE_BYTES",
     "MISSING_CLI_REPLY",
-    "CLEAR_SESSION_REPLY",
-    
+    "SYNC_CONFIG_ERROR",
+    "SYNC_REPLY_PREFIX",
     "build_application",
+    "clear_command_handler",
     "format_for_telegram",
     "get_model",
     "get_or_create_session",
-    "clear_command_handler",
     "reset_session",
     "run",
     "run_turn",
     "save_session",
     "start_handler",
+    "sync_command_handler",
     "telegram_error_handler",
     "text_handler",
     "transcribe_file",
