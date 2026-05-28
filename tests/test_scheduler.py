@@ -202,3 +202,60 @@ def test_find_program_falls_back_to_python(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(scheduler.shutil, "which", lambda name: None)
     program, args = scheduler._find_program(tmp_path)
     assert args[-2:] == ["tempo.cli", "run-daily"] or args[-1] == "run-daily"
+
+
+# ---- Hourly sync LaunchAgent ---------------------------------------------
+
+
+def _sync_paths(tmp_path: Path) -> scheduler.SchedulerPaths:
+    return scheduler.resolve_hourly_sync_paths(
+        project_dir=tmp_path / "proj", data_dir=tmp_path / "data"
+    )
+
+
+def test_render_hourly_sync_plist_parses_and_uses_sync_subcommand(tmp_path: Path) -> None:
+    """Hourly plist runs `tempo sync --notify-on-failure`, not run-daily."""
+    parsed = plistlib.loads(scheduler.render_hourly_sync_plist(_sync_paths(tmp_path)).encode())
+    assert parsed["Label"] == scheduler.HOURLY_SYNC_LABEL
+    assert parsed["ProgramArguments"][-2:] == ["sync", "--notify-on-failure"]
+
+
+def test_render_hourly_sync_plist_uses_start_interval(tmp_path: Path) -> None:
+    """StartInterval, not StartCalendarInterval -- fires every N seconds."""
+    parsed = plistlib.loads(scheduler.render_hourly_sync_plist(_sync_paths(tmp_path)).encode())
+    assert parsed["StartInterval"] == 3600
+    assert "StartCalendarInterval" not in parsed
+
+
+def test_render_hourly_sync_plist_respects_interval_override(tmp_path: Path) -> None:
+    """Caller can override the interval (e.g. 900s = every 15 min)."""
+    parsed = plistlib.loads(
+        scheduler.render_hourly_sync_plist(_sync_paths(tmp_path), interval_s=900).encode()
+    )
+    assert parsed["StartInterval"] == 900
+
+
+def test_render_hourly_sync_plist_does_not_run_at_load(tmp_path: Path) -> None:
+    """Loading the agent must NOT immediately fire a sync (avoids thundering herd)."""
+    parsed = plistlib.loads(scheduler.render_hourly_sync_plist(_sync_paths(tmp_path)).encode())
+    assert parsed["RunAtLoad"] is False
+
+
+def test_render_hourly_sync_plist_uses_hourly_sync_log_paths(tmp_path: Path) -> None:
+    """Logs land under hourly-sync.{out,err}.log so they don't collide with daily.* ones."""
+    parsed = plistlib.loads(scheduler.render_hourly_sync_plist(_sync_paths(tmp_path)).encode())
+    assert parsed["StandardOutPath"].endswith("hourly-sync.out.log")
+    assert parsed["StandardErrorPath"].endswith("hourly-sync.err.log")
+
+
+def test_install_hourly_sync_writes_template_by_default(tmp_path: Path) -> None:
+    """Default install writes a template under data/launchd/; never runs launchctl."""
+    result = scheduler.install_hourly_sync_plist(
+        project_dir=tmp_path / "proj", data_dir=tmp_path / "data"
+    )
+    assert result.installed_to_launch_agents is False
+    assert result.plist_path.exists()
+    assert result.plist_path.name == scheduler.plist_filename(scheduler.HOURLY_SYNC_LABEL)
+    assert result.load_command.startswith("launchctl load")
+    assert result.unload_command.startswith("launchctl unload")
+    plistlib.loads(result.plist_path.read_text().encode())

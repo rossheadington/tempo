@@ -1053,6 +1053,70 @@ def install_scheduler_cmd(
     )
 
 
+@app.command("install-hourly-sync")
+def install_hourly_sync_cmd(
+    interval_s: int = typer.Option(
+        3600,
+        "--interval-s",
+        help="Interval in seconds between sync runs (default 3600 = 1 hour).",
+    ),
+    to_launch_agents: bool = typer.Option(
+        False,
+        "--to-launch-agents",
+        help="Write the plist into ~/Library/LaunchAgents (still does NOT launchctl load).",
+    ),
+) -> None:
+    """Install the hourly Strava+Garmin sync as a launchd LaunchAgent.
+
+    The plist runs ``tempo sync --notify-on-failure`` every ``--interval-s``
+    seconds (default 3600 = 1 hour). The notifier is silent on full success
+    and sends a single Telegram message when any source fails or the run
+    crashes -- safe to leave running indefinitely without spam.
+
+    No daily-report job. Reports are generated on-demand via Telegram by
+    asking the bot (e.g. "how am I doing for recovery?"). If you previously
+    installed the daily plist (``tempo install-scheduler``), the printed
+    bootout command below removes it cleanly.
+
+    Tempo never runs ``launchctl`` itself -- the exact bootstrap/bootout
+    commands are printed for you to paste.
+    """
+    from pathlib import Path
+
+    from tempo import scheduler
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    project_dir = Path.cwd()
+    result = scheduler.install_hourly_sync_plist(
+        project_dir=project_dir,
+        data_dir=settings.data_dir,
+        interval_s=interval_s,
+        to_launch_agents=to_launch_agents,
+    )
+
+    typer.secho("Hourly-sync LaunchAgent plist written:", fg="green")
+    typer.echo(f"  {result.plist_path}")
+    if not result.installed_to_launch_agents:
+        typer.echo(
+            "\nThis is a TEMPLATE. To enable the hourly sync, copy it into "
+            "~/Library/LaunchAgents/ then load it:"
+        )
+    else:
+        typer.echo(
+            "\nWritten into ~/Library/LaunchAgents/. To enable the hourly sync, load it:"
+        )
+    typer.secho(f"  {result.load_command}", fg=typer.colors.CYAN)
+    typer.echo("To disable later:")
+    typer.secho(f"  {result.unload_command}", fg=typer.colors.CYAN)
+    typer.echo(
+        "\nIf the old daily-run job is still installed, remove it with:"
+    )
+    daily_plist = Path.home() / "Library" / "LaunchAgents" / "com.tempo.daily.plist"
+    typer.secho(f"  launchctl unload -w {daily_plist}", fg=typer.colors.CYAN)
+    typer.secho(f"  rm {daily_plist}", fg=typer.colors.CYAN)
+
+
 # ---------------------------------------------------------------------------
 # First-run setup wizard (Phase 14 / SETUP-01..05)
 # ---------------------------------------------------------------------------

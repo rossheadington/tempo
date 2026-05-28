@@ -36,6 +36,17 @@ LABEL = "com.tempo.daily"
 # Phase 12: the long-running Telegram bot LaunchAgent label.
 TELEGRAM_BOT_LABEL = "com.tempo.telegram-bot"
 
+# Hourly Strava+Garmin sync LaunchAgent label. Runs `tempo sync
+# --notify-on-failure` every hour via StartInterval; the daily-report job
+# (`tempo run-daily`) is intentionally NOT scheduled in this simplified
+# operational model -- reports are generated on-demand via Telegram.
+HOURLY_SYNC_LABEL = "com.tempo.hourly-sync"
+
+# Hourly sync interval, in seconds. launchd re-fires a missed interval on
+# wake (same catch-up behaviour as StartCalendarInterval) so a sleeping Mac
+# never skips a sync indefinitely.
+HOURLY_SYNC_INTERVAL_S = 3600
+
 # Default time-of-day the daily job fires (local time). Late enough that the
 # overnight Garmin sync + Strava activities of the prior day are available.
 DEFAULT_HOUR = 5
@@ -54,21 +65,26 @@ class SchedulerPaths:
     data_dir: str
 
 
-def _find_program(project_dir: Path) -> tuple[str, list[str]]:
-    """Resolve how to invoke ``tempo run-daily`` with absolute paths (no PATH reliance).
+def _find_program(project_dir: Path, *subcommand: str) -> tuple[str, list[str]]:
+    """Resolve how to invoke ``tempo <subcommand>`` with absolute paths.
 
-    Prefers ``uv run tempo run-daily`` (matching how the project is run), falling
-    back to the installed ``tempo`` console script, then to ``python -m tempo.cli``.
-    All three are returned as absolute-path argv so launchd's stripped env works.
+    Prefers ``uv run tempo <subcommand>`` (matching how the project is run),
+    falling back to the installed ``tempo`` console script, then to
+    ``python -m tempo.cli <subcommand>``. All three are returned as
+    absolute-path argv so launchd's stripped env works.
+
+    Default subcommand is ``run-daily`` (preserves the original
+    install_plist behaviour for backwards compatibility).
     """
+    cmd = list(subcommand) if subcommand else ["run-daily"]
     uv = shutil.which("uv")
     if uv:
-        return uv, [uv, "run", "tempo", "run-daily"]
+        return uv, [uv, "run", "tempo", *cmd]
     tempo = shutil.which("tempo")
     if tempo:
-        return tempo, [tempo, "run-daily"]
+        return tempo, [tempo, *cmd]
     # Last resort: the current interpreter running the CLI module.
-    return sys.executable, [sys.executable, "-m", "tempo.cli", "run-daily"]
+    return sys.executable, [sys.executable, "-m", "tempo.cli", *cmd]
 
 
 def resolve_paths(*, project_dir: Path, data_dir: Path) -> SchedulerPaths:
@@ -200,6 +216,133 @@ def install_plist(
     """
     paths = resolve_paths(project_dir=project_dir, data_dir=data_dir)
     text = render_plist(paths, hour=hour, minute=minute, label=label)
+
+    if to_launch_agents:
+        dest = launch_agents_dir() / plist_filename(label)
+    else:
+        target_dir = out_dir or (data_dir / "launchd")
+        dest = target_dir / plist_filename(label)
+
+    write_plist(text, dest)
+
+    final = launch_agents_dir() / plist_filename(label)
+    return InstallResult(
+        plist_path=dest,
+        installed_to_launch_agents=to_launch_agents,
+        load_command=f"launchctl load -w {final}",
+        unload_command=f"launchctl unload -w {final}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Hourly sync LaunchAgent: `tempo sync --notify-on-failure` every 3600s
+# ---------------------------------------------------------------------------
+
+
+def resolve_hourly_sync_paths(
+    *, project_dir: Path, data_dir: Path
+) -> SchedulerPaths:
+    """Resolve absolute paths for the hourly-sync plist.
+
+    The argv is ``tempo sync --notify-on-failure`` so a Telegram message
+    fires only when a source fails -- the silent-on-success contract the
+    hourly schedule depends on.
+    """
+    program, args = _find_program(project_dir, "sync", "--notify-on-failure")
+    log_dir = data_dir / "logs"
+    return SchedulerPaths(
+        program=program,
+        args=args,
+        working_dir=str(project_dir),
+        stdout_log=str(log_dir / "hourly-sync.out.log"),
+        stderr_log=str(log_dir / "hourly-sync.err.log"),
+        data_dir=str(data_dir),
+    )
+
+
+def render_hourly_sync_plist(
+    paths: SchedulerPaths,
+    *,
+    interval_s: int = HOURLY_SYNC_INTERVAL_S,
+    label: str = HOURLY_SYNC_LABEL,
+) -> str:
+    """Render a LaunchAgent plist that runs the sync every ``interval_s`` seconds.
+
+    Uses ``StartInterval`` instead of ``StartCalendarInterval`` so the job
+    just fires every N seconds regardless of wall-clock alignment. launchd
+    fires a missed interval on wake, so a sleeping Mac doesn't skip
+    indefinitely. ``RunAtLoad`` is false so loading the agent doesn't
+    immediately fire a sync (avoids a thundering-herd on multi-load).
+    """
+    arg_items = "\n".join(f"        <string>{escape(a)}</string>" for a in paths.args)
+    path_env = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{escape(label)}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+{arg_items}
+    </array>
+
+    <!-- Every {interval_s}s. launchd re-fires a missed interval on wake;
+         cron would silently skip while the Mac slept (PITFALLS 7). -->
+    <key>StartInterval</key>
+    <integer>{interval_s}</integer>
+
+    <key>WorkingDirectory</key>
+    <string>{escape(paths.working_dir)}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>{escape(path_env)}</string>
+        <key>TEMPO_DATA_DIR</key>
+        <string>{escape(paths.data_dir)}</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>{escape(paths.stdout_log)}</string>
+    <key>StandardErrorPath</key>
+    <string>{escape(paths.stderr_log)}</string>
+
+    <!-- Don't fire a sync just because the agent was (re)loaded. -->
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
+"""
+
+
+def install_hourly_sync_plist(
+    *,
+    project_dir: Path,
+    data_dir: Path,
+    interval_s: int = HOURLY_SYNC_INTERVAL_S,
+    to_launch_agents: bool = False,
+    out_dir: Path | None = None,
+    label: str = HOURLY_SYNC_LABEL,
+) -> InstallResult:
+    """Render + write the hourly-sync LaunchAgent plist; never auto-loads it.
+
+    Mirrors :func:`install_plist` (the daily-run sibling) but renders the
+    sync plist with ``StartInterval=3600`` instead of a fixed daily time,
+    and points argv at ``tempo sync --notify-on-failure`` instead of
+    ``tempo run-daily``. Tempo never runs ``launchctl`` itself -- the exact
+    bootstrap/bootout commands are returned in :class:`InstallResult` for
+    the user to paste.
+
+    Default ``interval_s`` is 3600 (one hour). Pass a smaller value (e.g.
+    900 for 15min) only if you understand the rate-limit implications
+    (Strava 200/15min, 2000/day; tighter than Garmin's account-lockout
+    risk on 429).
+    """
+    paths = resolve_hourly_sync_paths(project_dir=project_dir, data_dir=data_dir)
+    text = render_hourly_sync_plist(paths, interval_s=interval_s, label=label)
 
     if to_launch_agents:
         dest = launch_agents_dir() / plist_filename(label)
