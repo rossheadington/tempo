@@ -115,6 +115,18 @@ Voice memos sent to a personal Telegram chat → local Whisper transcription →
 - [x] **VOICE-14**: Voice files are deleted from local cache after successful transcription (configurable retention window, default = delete immediately on success); transcripts are kept so the user can re-run analysis later
 - [x] **VOICE-15**: The agent session runs in the Tempo project directory so Claude Code has access to `tempo` CLI + GSD slash commands; no additional working-directory permissions are required and no read/write access is granted outside the project tree
 
+## v1.2 Requirements — Strength & Conditioning Tracker
+
+A modular S&C log alongside `races.md` / `heat.md`. Owner maintains `strength.md` by hand (or pastes Strong-app session output); Tempo's lenient parser turns it into structured `StrengthSession` rows surfaced in the recovery report. Layer 1 only — markdown tracker + parser + recovery-report surfacing. Structured tables, Strong CSV importer, and a separate tonnage-trend report are explicitly deferred (validate the markdown layer in real use before investing in more).
+
+### Strength & Conditioning (Phase 13)
+
+- [ ] **SC-01**: A new `strength.md` (in the content dir) captures S&C sessions as an append-only markdown log, parsed leniently into `StrengthSession` / `StrengthExercise` / `StrengthSet` dataclasses; missing file degrades to `present=False` and analyses still run
+- [ ] **SC-02**: The parser handles weighted sets (`WxR`, e.g. `55x8`), bodyweight-rep sets (bare integer, e.g. `15`), timed holds (`M:SS`, e.g. `1:00`), optional `(Equipment)` annotations after exercise names, superset group labels (`[A]`, `[B]`, ...), and optional `rest:` / `notes:` metadata lines per session; malformed lines/sets are skipped (never raise)
+- [ ] **SC-03**: Parsed strength sessions surface in the recovery report — at minimum a rolling-window count (last 7 / 14 / 28 days) + last-session age + total tonnage when computable (sum of weight×reps for weighted sets) appears so Claude knows current S&C status
+- [ ] **SC-04**: A `strength.md.example` template is committed in the repo root (mirroring `races.md.example` / `heat.md.example`); `docs/STRENGTH.md` documents the format end-to-end with the user's Strong-app paste example shown verbatim
+- [ ] **SC-05**: `Settings.strength_path` exposes the resolved path (defaults to `<content_root>/strength.md`); the analysis runner threads it through `assess_recovery_from_db` the same way `heat_path` is threaded; tests cover happy path + malformed input + missing file + the recovery-report integration
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -216,6 +228,11 @@ Explicitly excluded. Documented to prevent scope creep.
 | VOICE-12 | Phase 12 | Complete |
 | VOICE-14 | Phase 12 | Complete |
 | VOICE-15 | Phase 12 | Complete |
+| SC-01 | Phase 13 | Pending |
+| SC-02 | Phase 13 | Pending |
+| SC-03 | Phase 13 | Pending |
+| SC-04 | Phase 13 | Pending |
+| SC-05 | Phase 13 | Pending |
 
 **Coverage:**
 - v1 requirements: 39 total — Complete (100%)

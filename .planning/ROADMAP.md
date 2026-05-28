@@ -26,6 +26,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 10: Voice Intake + Local Transcription (v1.1)** - Voice download into gitignored cache, 20 MB guard, faster-whisper singleton (small.en int8 default), transcript echoed to chat
 - [x] **Phase 11: Claude Code Agent Loop (v1.1)** - claude-agent-sdk wiring, per-chat session-id store with 4hr resume window, HTML reply formatting with 4096-char split, `/new` reset, per-turn token logging
 - [x] **Phase 12: Lifecycle, Hardening, Privacy (v1.1)** - launchd LaunchAgent with KeepAlive, top-level error handler, voice-file retention policy, project-scoped working dir
+- [ ] **Phase 13: Strength & Conditioning Tracker (v1.2)** - New `strength.md` markdown tracker with lenient parser (WxR / bodyweight reps / timed holds / supersets / equipment / metadata), surfaced in recovery report alongside heat (rolling-window count + last-session age + tonnage)
 
 ## Phase Details
 
@@ -193,6 +194,19 @@ Plans:
 - [x] 12-02-PLAN.md — Top-level PTB error handler + docs/PRIVACY.md + TELEGRAM_BOT.md / README updates (VOICE-12)
 **UI hint**: yes
 
+### Phase 13: Strength & Conditioning Tracker (v1.2)
+**Goal**: A new owner-maintained `strength.md` (in the content dir) captures S&C sessions as an append-only markdown log, parsed leniently into structured `StrengthSession` / `StrengthExercise` / `StrengthSet` dataclasses and surfaced in the recovery report. Mirrors the established `heat.md` pattern exactly: lenient parser (missing file → `present=False`, malformed lines skipped, never raises), frozen+slots dataclasses, rolling-window rollup attached to `RecoveryAssessment`, renderer with 3-state degradation (absent / lapsed / active). Layer 1 only — structured DB tables, Strong-app CSV importer, and any separate tonnage-trend report are explicitly OUT OF SCOPE for this phase; the goal is to prove the markdown layer is useful before investing in more.
+**Mode:** mvp
+**Depends on**: Phase 12
+**Requirements**: SC-01, SC-02, SC-03, SC-04, SC-05
+**Success Criteria** (what must be TRUE):
+  1. `tempo/analysis/strength.py` defines frozen+slots `StrengthSet` / `StrengthExercise` / `StrengthSession` / `StrengthContext` / `StrengthRollup` dataclasses + a `parse_strength(path: Path) -> StrengthContext` function + a `strength_rollup(sessions, today) -> StrengthRollup` function — modelled directly on `tempo/analysis/heat.py`
+  2. The parser handles every wrinkle in the owner's documented format: per-session header `## YYYY-MM-DD [HH:MM] [— Name]`, optional `rest:` / `notes:` metadata lines, exercise bullets `- Exercise (Equipment): set, set, set [GROUP]`, weighted sets (`55x8` → weight_kg=55, reps=8), bodyweight-rep sets (bare `15` → reps=15, weight_kg=None), timed holds (`1:00` → duration_s=60, reps=None), `[A]`/`[B]` superset group labels; unknown keys / malformed sets / a missing file all degrade gracefully without raising
+  3. `Settings.strength_path` returns `<content_root>/strength.md` (mirrors `heat_path`); the analysis runner threads `strength_path` through `assess_recovery_from_db` exactly the way `heat_path` is threaded; the recovery report renders a `## Strength & conditioning` section using the same 3-state rule as heat (absent → omit / lapsed → one-line nudge / active → rollup line with counts, total tonnage, last-session age)
+  4. A committed `strength.md.example` (repo root, alongside `races.md.example` / `heat.md.example`) shows the exact format with the owner's Tuesday 2026-05-26 session as a fully-worked example; `docs/STRENGTH.md` documents the format end-to-end (keys, sets-grammar, superset labels, equipment annotation, lenient-parsing contract)
+  5. New pytest tests live under `tests/test_strength.py` (parser happy/malformed/missing-file paths + rollup window math) + `tests/test_recovery.py` is extended with the strength rollup integration; `uv run pytest tests/ -x --deselect tests/test_bot_transcribe.py::test_transcribe_file_real_fixture_returns_nonempty` is green; `uv run ruff check tempo/ tests/` is clean
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
@@ -212,6 +226,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. Voice Intake + Local Transcription | 1/2 | In Progress|  |
 | 11. Claude Code Agent Loop | 1/3 | In Progress|  |
 | 12. Lifecycle, Hardening, Privacy | 0/2 | Not started | — |
+| 13. Strength & Conditioning Tracker | 0/0 | Not started | — |
 
 **Milestone status:**
 - **v1.0 (Phases 1–8):** COMPLETE — all 45 v1 + Phase-8 v1.1 requirements shipped (2026-05-27).
