@@ -684,6 +684,8 @@ def analyze_recovery() -> None:
             heat_path=settings.heat_path,
             strength_path=settings.strength_path,
             weight_path=settings.weight_path,
+            food_path=settings.food_path,
+            target_kcal=settings.target_kcal_default,
             reports_dir=settings.reports_dir,
             generated_on=datetime.now(UTC).date(),
         )

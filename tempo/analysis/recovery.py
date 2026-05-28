@@ -36,6 +36,9 @@ from tempo.analysis.fitness import FitnessPoint, Guardrail
 from tempo.analysis.heat import HeatRollup
 from tempo.analysis.heat import heat_rollup as _heat_rollup
 from tempo.analysis.heat import parse_heat as _parse_heat
+from tempo.analysis.nutrition import NutritionRollup
+from tempo.analysis.nutrition import nutrition_rollup as _nutrition_rollup
+from tempo.analysis.nutrition import parse_food as _parse_food
 from tempo.analysis.strength import StrengthRollup
 from tempo.analysis.strength import parse_strength as _parse_strength
 from tempo.analysis.strength import strength_rollup as _strength_rollup
@@ -261,6 +264,8 @@ class RecoveryAssessment:
     strength_present: bool = False
     weight: WeightRollup | None = None
     weight_present: bool = False
+    nutrition: NutritionRollup | None = None
+    nutrition_present: bool = False
 
     @property
     def concern_signals(self) -> list[SignalAssessment]:
@@ -406,6 +411,8 @@ def assess_recovery_from_db(
     heat_path: Path | None = None,
     strength_path: Path | None = None,
     weight_path: Path | None = None,
+    food_path: Path | None = None,
+    target_kcal: int | None = None,
 ) -> RecoveryAssessment:
     """Read the latest wellness baselines from the DB and assess recovery.
 
@@ -431,6 +438,14 @@ def assess_recovery_from_db(
     (``weight`` + ``weight_present`` fields). The same alignment day reused for
     heat + strength applies here too. Omitted ``weight_path`` preserves
     back-compat.
+
+    If ``food_path`` is provided, the food log at that path is parsed and
+    rolled into 7d/28d nutrition windows + optional kcal-goal delta, then
+    attached to the assessment (``nutrition`` + ``nutrition_present`` fields).
+    ``target_kcal`` flows into the rollup so the recovery report can surface a
+    signed deficit/surplus alongside the 7d average. The same alignment day
+    used for heat + strength + weight applies here too. Omitted ``food_path``
+    preserves back-compat.
     """
     latest = baselines.latest_baselines(conn, window=window, min_points=min_points)
     day = points[-1].day if points else None
@@ -438,7 +453,12 @@ def assess_recovery_from_db(
         day=day, points=points, guardrail=guardrail, latest_baselines=latest
     )
 
-    if heat_path is None and strength_path is None and weight_path is None:
+    if (
+        heat_path is None
+        and strength_path is None
+        and weight_path is None
+        and food_path is None
+    ):
         return assessment
 
     # Align both tracker windows with the recovery report's "as of" day so the
@@ -472,7 +492,16 @@ def assess_recovery_from_db(
         weight_rollup_obj = _weight_rollup(weight_ctx.entries, today_for_tracker)
         weight_present = weight_ctx.present
 
-    # Replace the (frozen) assessment with one that carries all three tracker fields.
+    nutrition_rollup_obj: NutritionRollup | None = None
+    nutrition_present = False
+    if food_path is not None:
+        food_ctx = _parse_food(food_path)
+        nutrition_rollup_obj = _nutrition_rollup(
+            food_ctx.entries, today_for_tracker, target_kcal=target_kcal
+        )
+        nutrition_present = food_ctx.present
+
+    # Replace the (frozen) assessment with one that carries all four tracker fields.
     return RecoveryAssessment(
         day=assessment.day,
         status=assessment.status,
@@ -486,6 +515,8 @@ def assess_recovery_from_db(
         strength_present=strength_present,
         weight=weight_rollup_obj,
         weight_present=weight_present,
+        nutrition=nutrition_rollup_obj,
+        nutrition_present=nutrition_present,
     )
 
 
@@ -528,6 +559,21 @@ def _fmt_weight_delta(delta_kg: float) -> str:
     if delta_kg > 0:
         return f"+{delta_kg:.1f} kg"
     return f"−{abs(delta_kg):.1f} kg"
+
+
+def _fmt_kcal_delta(delta_kcal: int) -> str:
+    """Render a kcal/day delta with a sign glyph + no decimals.
+
+    Examples: ``110 -> "+110 kcal/day"``, ``-85 -> "−85 kcal/day"`` (Unicode
+    minus U+2212), ``0 -> "±0 kcal/day"`` (Unicode plus-minus U+00B1). Mirrors
+    :func:`_fmt_weight_delta` so the recovery report's tracker sections share
+    one signed-delta convention.
+    """
+    if delta_kcal == 0:
+        return "±0 kcal/day"
+    if delta_kcal > 0:
+        return f"+{delta_kcal} kcal/day"
+    return f"−{abs(delta_kcal)} kcal/day"
 
 
 def _render_heat_section(out: list[str], heat: HeatRollup | None, heat_present: bool) -> None:
@@ -688,6 +734,69 @@ def _render_weight_section(
     out.append("")
 
 
+def _render_nutrition_section(
+    out: list[str], nutrition: NutritionRollup | None, nutrition_present: bool
+) -> None:
+    """Append the nutrition section per the same 3-state degradation rule the
+    heat / strength / weight sections use.
+
+    The three states (mirroring :func:`_render_weight_section`):
+
+    * ``nutrition_present is False`` OR ``nutrition is None`` -- food.md is
+      absent (or the caller did not thread it through). Section omitted.
+    * food.md is present but parsed zero entries ever (``latest_day is None``)
+      -- section omitted.
+    * food.md is present and the latest entry is >3 days old
+      (``days_since_last > 3``) -- render the ``## Nutrition`` header plus a
+      one-line stale nudge. (3 days is tighter than weight's 14 because food
+      is logged daily; a 3-day gap makes the 7-day rollup unreliable.)
+    * food.md is present and the latest entry is within 3 days -- render the
+      active 7-day trailing rollup line: P/C/F grams + kcal + days-logged.
+      When ``target_kcal`` is set AND ``deficit_surplus_7d is not None``, a
+      second line appends the goal-delta.
+    """
+    if not nutrition_present or nutrition is None:
+        return
+    if nutrition.latest_day is None:
+        return
+
+    days_since = nutrition.days_since_last or 0
+    out.append("## Nutrition\n")
+    if days_since > 3:
+        out.append(
+            f"_Last food entry {days_since} days ago — log today's meals "
+            "to keep the rollup live._"
+        )
+        out.append("")
+        return
+
+    # Current state: full 7-day rollup line.
+    if nutrition.avg_7d is None:
+        # Defensive: shouldn't happen when days_since_last <= 3 (an entry on
+        # or after today-3 always lands inside the (today-7, today] window),
+        # but the rollup contract exposes Optional so substitute a one-liner.
+        out.append("_Insufficient 7-day history._")
+        out.append("")
+        return
+
+    avg = nutrition.avg_7d
+    line = (
+        f"7d avg P:{avg.protein_g:.0f}g · C:{avg.carbs_g:.0f}g · "
+        f"F:{avg.fat_g:.0f}g · cal:{avg.kcal} "
+        f"({nutrition.days_logged_7d} days logged of 7)"
+    )
+    out.append(line)
+
+    if nutrition.target_kcal is not None and nutrition.deficit_surplus_7d is not None:
+        goal_line = (
+            f"Target {nutrition.target_kcal} kcal/day · "
+            f"7d Δ {_fmt_kcal_delta(nutrition.deficit_surplus_7d)}"
+        )
+        out.append(goal_line)
+
+    out.append("")
+
+
 def render_recovery(
     *,
     generated_on: date,
@@ -739,6 +848,7 @@ def render_recovery(
     _render_heat_section(out, a.heat, a.heat_present)
     _render_strength_section(out, a.strength, a.strength_present)
     _render_weight_section(out, a.weight, a.weight_present)
+    _render_nutrition_section(out, a.nutrition, a.nutrition_present)
 
     if a.status == "insufficient":
         out.append(

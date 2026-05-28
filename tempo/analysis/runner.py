@@ -298,6 +298,8 @@ def generate_recovery(
     heat_path: Path,
     strength_path: Path | None = None,
     weight_path: Path | None = None,
+    food_path: Path | None = None,
+    target_kcal: int | None = None,
     reports_dir: Path,
     generated_on: date,
 ) -> Path:
@@ -316,6 +318,11 @@ def generate_recovery(
     If ``weight_path`` is provided, the parsed rollup is rendered into a
     ``## Weight`` section using the same 3-state degradation rule as heat and
     strength.
+
+    If ``food_path`` is provided, the parsed nutrition rollup is rendered into
+    a ``## Nutrition`` section using the same 3-state degradation rule as the
+    other trackers (staleness threshold tightens to >3 days because food is
+    logged daily). ``target_kcal`` enables the optional goal-delta line.
     """
     series = build_load_series(conn, cfg)
     guardrail = fitness.evaluate_guardrail(series.points)
@@ -326,6 +333,8 @@ def generate_recovery(
         heat_path=heat_path,
         strength_path=strength_path,
         weight_path=weight_path,
+        food_path=food_path,
+        target_kcal=target_kcal,
     )
     freshness = dataread.source_freshness(conn, as_of=generated_on)
     data_range = dataread.data_date_range(conn)
@@ -457,6 +466,8 @@ def generate_all(
             heat_path=heat_path,
             strength_path=strength_path,
             weight_path=weight_path,
+            food_path=food_path,
+            target_kcal=target_kcal,
             reports_dir=reports_dir,
             generated_on=generated_on,
         ),
