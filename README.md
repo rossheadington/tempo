@@ -25,6 +25,68 @@ Claude analyses on top of it.
 - **Scheduled analysis.** Claude skills run on a schedule (nightly pull, weekly
   training review).
 
+## Getting Started
+
+Single user. Local-first. Mac (for now). ~5 minutes from clone to a working
+daily-sync pipeline.
+
+### One command (recommended)
+
+```bash
+git clone https://github.com/rossheadington/tempo
+cd tempo
+uv sync
+uv run tempo setup
+```
+
+The interactive wizard walks you through DB init → Strava OAuth →
+optional Garmin login → optional Telegram bot → optional launchd jobs →
+smoke `tempo sync`. Idempotent: re-runs pick up where you left off, with
+already-done steps showing `[done]` and partial-state values showing
+`[set] keep / change / fresh`.
+
+See [`docs/SETUP.md`](docs/SETUP.md) for the full end-to-end walkthrough
+(every step, every prompt, every flag, recovery paths, manual uninstall).
+
+### Re-running a single step
+
+```bash
+uv run tempo setup --only=telegram          # add the bot to an existing install
+uv run tempo setup --only=strava            # rotate Strava creds
+uv run tempo setup --skip-garmin            # full run, no Garmin
+```
+
+### Manual setup (advanced)
+
+If you prefer to run each step by hand (or you're debugging a stuck
+install), the equivalent commands are:
+
+```bash
+# Edit .env with TEMPO_STRAVA_CLIENT_ID + TEMPO_STRAVA_CLIENT_SECRET first
+# (see .env.example for the full variable list).
+
+uv run tempo init                                   # DB schema
+uv run tempo strava auth                            # prints OAuth URL
+uv run tempo strava auth --code <CODE>              # completes handshake
+
+# Optional: Garmin
+uv run tempo garmin login
+
+# Optional: Telegram bot (see docs/TELEGRAM_BOT.md for the full walkthrough)
+uv run tempo bot run                                # foreground; launchd for background
+
+# Optional: launchd
+uv run tempo install-scheduler --to-launch-agents --hour 5 --minute 30
+uv run tempo bot install-scheduler --to-launch-agents
+
+# Smoke
+uv run tempo sync
+```
+
+Full details + per-step recovery: [`docs/SETUP.md`](docs/SETUP.md). The
+sections below give the deep dive on each data source for users who want
+to understand the moving parts.
+
 ## Strava setup (one-time)
 
 Tempo pulls your Strava data through the official OAuth2 API. You provide your
