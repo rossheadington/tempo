@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: strength-conditioning-tracker
+milestone: v1.3
+milestone_name: first-run-setup-wizard
 status: shipped
-stopped_at: v1.2 (Phase 13) complete; Phases 14/15/16 queued for execution.
-last_updated: "2026-05-28T03:00:00.000Z"
-last_activity: 2026-05-28 — Phase 13 (S&C tracker) shipped end-to-end. tempo/analysis/strength.py lenient parser (WxR + bare-reps + M:SS + supersets + equipment) + StrengthRollup + Settings.strength_path; recovery report gains 3-state ## Strength & conditioning section (absent / lapsed / active with tonnage); strength.md.example + docs/STRENGTH.md committed. 530 tests green (+32), ruff clean. Verifier PASS 5/5.
+stopped_at: v1.3 (Phase 14) complete; live `tempo setup` smoke test against real Strava/Garmin/Telegram pending.
+last_updated: "2026-05-28T10:30:00.000Z"
+last_activity: 2026-05-28 — Phase 14 (First-Run Setup Wizard) shipped end-to-end. New tempo/setup/ package (env_io.py atomic 0600 .env writes mirroring tokens.py + state.py read-only InstallState detection + prompts.py hidden-input wrappers + wizard.py 10-step orchestrator). New `tempo setup` typer command with --only/--skip-*/--non-interactive flags. docs/SETUP.md (all 10 steps with manual fallback + recover paths). README.md "Getting Started" rewritten to lead with `tempo setup`. 593 tests green (+63), ruff clean. Verifier PASS 5/5.
 progress:
   total_phases: 1
   completed_phases: 1
-  completed: [13]
+  completed: [14]
   total_plans: 3
   completed_plans: 3
   percent: 100
@@ -22,388 +22,129 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** v1.1 complete; Pi port (v1.2) deferred.
+**Current focus:** v1.3 complete (first-run setup wizard). v1.1 + v1.2 already shipped. Pi port deferred.
 
 ## Current Position
 
-Phase: Phase 12 (lifecycle / hardening / privacy) — COMPLETE
-Plan: 12-02 — COMPLETE
-Status: v1.1 SHIPPED. Plan 12-01 added the launchd `KeepAlive=true` plist + `tempo bot install-scheduler` + `VOICE_RETENTION_DAYS` startup sweep + per-handler immediate-delete + `tempo bot purge-voice` hatch + agent cwd / data_dir startup log lines. Plan 12-02 added the top-level `telegram_error_handler` (logs traceback, sends fixed "something went wrong" reply, never re-raises) and the user-facing `docs/PRIVACY.md` single-source privacy contract; README + `docs/TELEGRAM_BOT.md` updated with launchd lifecycle, voice retention, and error-handler-behaviour sections. 498 tests green. v1.1 milestone closed.
-Last activity: 2026-05-28 — Plan 12-02 complete: error_handler.py + docs/PRIVACY.md + Telegram bot docs updates + VOICE-11/12/14/15 marked complete. 60/60 v1.1 requirements satisfied.
+Phase: Phase 14 (First-Run Setup Wizard, v1.3) — COMPLETE
+Plans: 14-01 + 14-02 + 14-03 — all COMPLETE
+Status: v1.3 SHIPPED. The new `tempo setup` command walks a new user from a fresh clone (no DB, no `.env`, no tokens, no launchd plists) to a working `tempo run-daily` — 10 locked steps in order (welcome → db → content → strava → garmin → telegram → scheduler → bot-scheduler → smoke → finish), all credentialed steps delegating to the existing `tempo` CLI surface (no duplicated OAuth handshake, no duplicated plist render, no duplicated MFA prompt). Plan 14-01 added the atomic `.env` I/O (`tempo/setup/env_io.py`, mirrors `tempo/connectors/tokens.py`: mkstemp → fchmod 0o600 → fsync → `os.replace` → fsync parent → final chmod) and the read-only `InstallState` detector (`tempo/setup/state.py`). Plan 14-02 added the orchestrator (`tempo/setup/wizard.py`, ~670 LOC) plus the thin prompt wrappers (`tempo/setup/prompts.py`) and registered the `tempo setup` typer command in `tempo/cli.py`. Plan 14-03 added `docs/SETUP.md` (every step + manual fallback + recover path) and rewrote the README "Getting Started" section to lead with `tempo setup`. 593 tests green (+63 from Phase 13), ruff clean, no debt markers. All 5 SETUP-* requirements satisfied. Verifier PASS 5/5.
+Last activity: 2026-05-28 — Phase 14 verified. v1.3 milestone closed. Pending: a live `tempo setup` smoke test against real Strava + Garmin + Telegram (deliberately scoped out of this phase; documented as the only remaining check).
 
-## What's Done (Phase 1: Foundation)
+## What's Done (Phase 14: First-Run Setup Wizard — v1.3 milestone)
 
-- uv project scaffold: `pyproject.toml` (`[project.scripts] tempo = "tempo.cli:app"`),
-  `tempo/` package, `uv.lock` committed. Python 3.14. Runtime deps: typer,
-  pydantic-settings. Dev deps: pytest, ruff.
+- `tempo/setup/env_io.py` — `read_env(path) -> dict[str, str]` (lenient: missing → `{}`, blank/comment lines skipped, duplicate keys last-wins, surrounding double-quotes stripped) and `atomic_write_env(path, updates, delete_keys)`. The write template mirrors `tempo/connectors/tokens.py` exactly: `tempfile.mkstemp` in destination dir → `os.fchmod(fd, 0o600)` → write + `flush` + `fsync` → `os.replace(tmp, path)` → best-effort `fsync` on the parent dir → final `chmod 0o600`. Crash mid-write leaves either the prior complete `.env` or the new one, never a torn file. Comments + untouched key ordering preserved byte-identically; values with spaces / `$` / `#` / tab are double-quoted on write. Module never logs / echoes a value. (SETUP-03)
 
-- `tempo/config.py` — typed pydantic-settings reading a gitignored `.env`; runtime
-  data dir defaults to `~/.tempo/` (OUTSIDE the repo tree); derived db/tokens/reports
-  paths; 0700 dir perms. (FND-02, FND-04)
+- `tempo/setup/state.py` — `@dataclass(frozen=True, slots=True) class InstallState` with 7 bool fields (`db_initialised`, `content_dir_set`, `strava_configured`, `garmin_configured`, `telegram_configured`, `daily_scheduler_installed`, `bot_scheduler_installed`); `detect_install_state(settings)` is pure read-only over filesystem + a single read-only SQLite connection (closed in `finally`) for the schema-version check. No network, no `launchctl`. Plist presence at `~/Library/LaunchAgents/com.tempo.{daily,telegram-bot}.plist` is the contract. (SETUP-02)
 
-- `tempo/db.py` + `tempo/migrations/0001_init.sql` — raw `sqlite3` connection (WAL +
-  foreign keys), integer `user_version` migration runner; tables `raw_response`,
-  `date_spine`, `sync_state`. (FND-01)
+- `tempo/setup/prompts.py` — thin `typer.prompt` / `typer.confirm` / `typer.secho` wrappers with `[set]` / `[done]` / `[fresh]` / `[skip]` coloured indicators. `prompt_secret(label)` always passes `hide_input=True, confirmation_prompt=False`. Single mockable surface for tests. (SETUP-03)
 
-- `tempo/cli.py` — typer app; bare `tempo` / `tempo init` initialises the DB;
-  `sync`/`transform`/`rederive`/`analyze`/`journal[ add]` wired as "not yet
-  implemented" stubs. (FND-05)
+- `tempo/setup/wizard.py` (~670 LOC) — the 10-step orchestrator. `STEP_IDS = ("welcome", "db", "content", "strava", "garmin", "telegram", "scheduler", "bot-scheduler", "smoke", "finish")`. One function per step; each starts with a state check and returns `[done]`+skipped when the corresponding `InstallState` bool is True. `run_wizard(settings, *, only, skip_garmin, skip_telegram, skip_scheduler, skip_bot_scheduler, skip_smoke, non_interactive)` iterates the dispatch list, re-detects state after every step (cheap), and returns the exit code (0 = ok / 1 = a non-skipped step failed terminally / 2 = `typer.Abort` from Ctrl-C or `--non-interactive` hitting a required prompt). `--skip-telegram` implies `--skip-bot-scheduler`. The bot-scheduler step is only offered if Telegram is configured (either already-state or completed-this-run). Credentials are always written to `.env` BEFORE the downstream delegated call, so a partial failure leaves creds in place for retry. (SETUP-01, SETUP-02, SETUP-05)
 
-- `.githooks/pre-commit` — gitleaks scan of staged changes (`gitleaks git --staged`);
-  fails loudly if gitleaks absent. Enabled via `core.hooksPath=.githooks`. Also
-  `.pre-commit-config.yaml` for pre-commit-framework users. (FND-03)
+- **Delegation (SETUP-04, LOCKED)** — every credentialed step calls into the existing helper directly: DB → `tempo.cli._init`; Strava → `tempo.connectors.factory.build_strava_connector` + `connector.authorization_url` + `connector.exchange_code` (same triple `tempo strava auth` makes); Garmin → `tempo.connectors.factory.garmin_login(settings, prompt_mfa=…)`; daily scheduler → `tempo.scheduler.install_plist(...)`; bot scheduler → `tempo.scheduler.install_telegram_bot_plist(...)`; smoke → `tempo.sync.pipeline.run_full_sync(conn, settings)`. Zero subprocess calls; zero duplicated handshake / plist render / MFA prompt code.
 
-- `.env.example` committed; `.gitignore` hardened (`.tempo/`). (FND-02)
-- `docs/DATE_BUCKETING.md` — authoritative local-date attribution rule (Strava fake-Z,
-  Garmin calendarDate, edge cases). (FND-06)
+- `tempo/cli.py` — new `@app.command("setup")` (L943-1008): thin wrapper that parses `--only` / `--skip-*` / `--non-interactive`, validates `--only` against `STEP_IDS - {welcome, finish}` (unknown → `typer.Exit(2)`), calls `run_wizard(settings, …)`, raises `typer.Exit(exit_code)` on non-zero return.
 
-- `tests/` — 25 pytest tests, all green; `ruff check` + `ruff format` clean.
+- `docs/SETUP.md` (~19 KB) — end-to-end walkthrough. Two paths (one-command + manual). All 10 steps documented in the locked order with *What it does* / *Wizard prompts* / *Files written* / *Manual equivalent* / *Skip* / *Recover* subsections. Closes with operational notes (re-runs, changing creds, manual uninstall).
 
-All Phase-1 success criteria verified (incl. gitleaks blocking a deliberately-staged
-fake credential). Commits pushed to origin/main.
+- `README.md` — "Getting Started" rewritten to lead with the 4-line `git clone / cd / uv sync / uv run tempo setup` path. Links to `docs/SETUP.md` for the full walkthrough. Documents `--only=<step>` and `--skip-*` for power users. Manual fallback (raw `tempo init` / `tempo strava auth` / etc.) retained below.
 
-## What's Done (Phase 2: Strava Ingestion)
+- `tests/test_setup_env_io.py` — 30 tests covering: missing file → `{}`, basic key parsing, double-quote stripping, single-quote *non*-stripping, comment + blank skipping, last-value-wins, value-quoting on write, atomicity under `os.replace` failure, atomicity under fresh-file failure (no temp turd left), `fsync` is called, parent dir creation, byte-identical preservation of unchanged keys, comment preservation, line-ordering preservation, blank-line separator before appended keys, multi-key append, no leading blank in fresh file, delete-key, round-trip, 0600 final perms.
 
-- `tempo/connectors/base.py` — `Connector` Protocol (`backfill(raw)` / `sync(raw, since)`)
-  that Garmin will share in Phase 6, plus `RawWriter`: idempotent upsert into
-  `raw_response` keyed on `(source, endpoint, entity_key)`. Connectors write ONLY
-  here. (STRV-06)
+- `tests/test_setup_state.py` — 17 tests parametrised across DB-present / strava-token-present / both-plist-present / etc. combinations; explicit assertions that `InstallState` is frozen + has `__slots__`; corrupt-DB returns `False` rather than raising.
 
-- `tempo/connectors/tokens.py` — atomic rotating-token store: temp-write → fsync →
-  `os.replace`, mode 0600, dir fsync. A crash mid-write can never strand the user
-  back in the OAuth browser flow. (STRV-01/02; PITFALLS 4)
+- `tests/test_setup_wizard.py` — 14 tests: STEP_IDS ordering, full-fresh-install dispatch counts (every delegated mock fires exactly once), `--only=strava` runs only Strava (others zero-count), `--skip-garmin`, `--skip-telegram` implies `--skip-bot-scheduler`, idempotent skip when state already says "done", `.env` write ordering during Strava (creds before OAuth call), Strava OAuth failure → `StepResult(failed)` + exit 1, smoke per-source reporting, smoke terminal-Strava-failure → exit 1, Ctrl-C / `typer.Abort` → exit 2, `--non-interactive` aborts on a required prompt, bot-scheduler only offered if Telegram completed this run, CLI runner: unknown `--only=<step>` exits 2, `tempo setup --help` lists every flag.
 
-- `tempo/connectors/strava.py` — `StravaConnector`: OAuth handshake (authorize URL +
-  code exchange), refresh-only-near-expiry with atomic persistence of the rotated
-  refresh token, resumable all-time backfill via `backfill_cursor` (batch raw rows +
-  cursor committed together so an interrupt resumes without re-fetch), incremental
-  `sync` via the `last_entity_ts` watermark (Strava `after`), and lazy idempotent
-  `fetch_streams` / `fetch_detail`. Verbatim raw via `client.protocol.get` (no model
-  round-trip). tenacity backoff on 429, then checkpoint-and-exit (never hammer).
-  (STRV-01..06; PITFALLS 5)
+- **Test totals:** 593 tests green (was 530 after Phase 13; +63 from this phase). `ruff check tempo/ tests/` clean. Zero `TODO` / `FIXME` / `XXX` / `TBD` / `HACK` / `placeholder` markers in any `tempo/setup/*.py` or `tests/test_setup_*.py`. The one slow Whisper test stays deselected per project convention.
 
-- `tempo/sync/state.py` — `sync_state` read/write: watermark advances forward-only and
-  only on success; backfill cursor + complete flag. (ARCHITECTURE Anti-Pattern 3)
-
-- `tempo/connectors/factory.py` — wires config → token store → connector; clean
-  "credentials missing" error.
-
-- `tempo/cli.py` — `tempo strava auth|backfill|streams|sync`; top-level `tempo sync`
-  runs the Strava incremental sync. `transform`/`rederive`/`analyze`/`journal` remain
-  stubs.
-
-- `tempo/config.py` / `.env.example` — added `strava_redirect_uri`; documented setup.
-- README — "Strava setup (one-time)" section + accepted-API-terms note.
-- Deps: `stravalib` 2.4, `tenacity` 9.1; dev `responses`.
-- `tests/` — 73 pytest tests (was 25), all green; ruff check + format clean. Mocked
-  stravalib client + Strava-shaped JSON fixtures. Proven: token-rotation atomicity
-  (incl. simulated crash-during-rename leaving old file intact), backfill resume after
-  a simulated mid-run 429 without re-fetch, idempotent raw upsert, watermark-only
-  incremental sync, lazy streams skip-when-present, and raw-only writes.
-
-Criteria 1–4 proven via mocks; **live execution pending the user's real Strava API
-client ID/secret** (create app + `tempo strava auth`). Strava API Agreement conflict
-recorded as accepted (README + REQUIREMENTS Known Accepted Conflicts).
-
-## What's Done (Phase 3: Strava Transforms + Date Spine)
-
-- `tempo/transforms/bucketing.py` — the one local-date attribution rule, in one place
-  (DATE_BUCKETING invariant). `local_day_from_strava_local` takes `start_date_local[:10]`
-  (wall-clock; the trailing `Z` is FAKE, NOT UTC) and never re-projects to UTC, so
-  late-night / DST / timezone-travel runs all land on the correct local day.
-  `local_day_from_calendar_date` (Garmin parity, Phase 6) takes a `calendarDate` verbatim.
-  Defensive: rejects empty / malformed / impossible dates with `BucketingError`. (STORE-05)
-
-- `tempo/transforms/strava.py` — pure raw→structured projection. `transform_activity`
-  (payload → typed `ActivityRow`, deriving `avg_pace_s_km` from `average_speed`) and
-  `transform_streams` (key_by_type payload → one `StreamRow` per type). `rebuild_activities`
-  ensures each activity's spine day exists before insert (FK-safe), preferring the richer
-  `activity` detail over `activity_summary`; `rebuild_streams` skips orphans. (STORE-01)
-
-- `tempo/transforms/spine.py` — zero-fills `date_spine`: a CONTINUOUS run of days across
-  `[min data day, max data day]` (rest days + gap days included), optionally extended
-  forward to `fill_to` (today). Missing spine days would silently corrupt Phase-4 EWMA /
-  ACWR windows, so continuity is enforced. Spine metadata (dow/ISO-week/month/year)
-  recomputed deterministically. (STORE-03)
-
-- `tempo/transforms/coerce.py` — defensive optional-value coercion (absent/empty → None).
-- `tempo/transforms/runner.py` — orchestrates `run_transform` (incremental upsert) and
-  `run_rederive` (clear + full rebuild) as ONE atomic, ZERO-NETWORK transaction; ordering
-  respects the spine→activity→stream foreign keys. Both produce identical state for a
-  given raw layer. (STORE-02)
-
-- `tempo/migrations/0002_structured.sql` — `activity`, `activity_stream` tables (FK to
-  `date_spine`/`activity`) + `daily_summary` VIEW: a LEFT JOIN from `date_spine` rolling up
-  activities per day (n_activities, totals, max HR, sports), one row per calendar day, rest
-  days first-class — shaped for Phase-6 wellness and Phase-5 journal to LEFT JOIN in later.
-  (STORE-04). `db.SCHEMA_VERSION` bumped to 2; `STRUCTURED_TABLES` added.
-
-- `tempo/cli.py` — `tempo transform` and `tempo rederive` wired to the runner (spine filled
-  forward to today); report activity/stream/spine-day counts.
-
-- `tests/` — 113 pytest tests (was 73, +40), all green; ruff check + format clean. New:
-  `test_bucketing.py` (all four edge cases — 11pm, tz-travel, DST spring/fall, fake-Z — plus
-  Garmin calendarDate parity and defensive parsing), `test_transforms.py` (pure transform,
-  zero-filled spine incl. rest days, daily_summary one-row-per-day LEFT JOIN + rollup, edge
-  cases applied through the FULL transform), `test_rederive.py` (idempotency, purity =
-  function-of-raw, rebuild-after-drop, and a hard NO-NETWORK guard that blocks `socket`),
-  `test_transform_cli.py` (end-to-end CLI). `strava_fakes.make_activity_tz` added.
-
-All four Phase-3 success criteria verified, including a live CLI run on a seeded DB proving
-late-night→local-day, DST-night, and tz-travel bucketing and `daily_summary` rows == spine
-days. Re-derivation confirmed no-network (socket-blocked test + CLI rerun reproducing counts).
-
-## What's Done (Phase 4: Load Metrics + First Analysis — Strava end-to-end milestone)
-
-- `tempo/analysis/load.py` — per-activity load: **rTSS** (pace-based, primary) with an
-  **hrTSS** fallback (HR-reserve / Karvonen, anchored on threshold HR), and a per-day
-  **method flag** (`rTSS` / `hrTSS` / `insufficient` / `rest`). When neither pace nor HR
-  inputs exist, the activity is `insufficient` — load is never invented (LOAD-01; PITFALLS).
-  Numerically verified: 1 h at threshold pace/HR ⇒ 100. (LOAD-01)
-
-- `tempo/analysis/fitness.py` — **CTL/ATL/TSB** EWMA series (42 / 7 day, PMC `1/N`
-  recurrence; TSB uses yesterday's CTL−ATL), **ACWR** (coupled rolling avg; sweet spot
-  0.8–1.3, danger >1.5), **ramp rate** (CTL change/week; aggressive >8), and a
-  `evaluate_guardrail` verdict. All built on the zero-filled spine (rest days = 0).
-  Degrades to `insufficient` rather than fabricating. (LOAD-02/03)
-
-- `tempo/analysis/race.py` — **Riegel** (`T2=T1·(D2/D1)^1.06`) + **VDOT** (Daniels'
-  published vo2/pct formulas, inverted by fixed-point iteration) race prediction, with a
-  reliability flag when the distance ratio exceeds 4:1. Verified: VDOT(5k 19:57)=50.0.
-
-- `tempo/analysis/context.py` — lenient **races.md / plan.md** parsers; missing file →
-  empty result (analyses degrade). Race lines need a recognised field so prose/doc bullets
-  aren't mistaken for races. (PLAN-01/02)
-
-- `tempo/analysis/data.py` — read-only DB access: activities, the zero-filled spine days,
-  and **per-source `sync_state` freshness** (days-stale vs as-of) for the report header.
-
-- `tempo/analysis/report.py` — markdown renderers; every report opens with a **per-source
-  last-successful-sync + staleness freshness header** and the data date range (ANL-05).
-
-- `tempo/analysis/runner.py` — orchestrates raw inputs → load series (on the spine) →
-  PMC + guardrail + weekly rollups + race readiness → writes
-  `reports/YYYY-MM-DD-load-trend.md` and `…-race-readiness.md`. Zero network. (ANL-01/02; DELIV-01)
-
-- `tempo/config.py` / `.env.example` — `TEMPO_THRESHOLD_PACE_S_PER_KM`, `TEMPO_MAX_HR`,
-  `TEMPO_RESTING_HR`, `TEMPO_THRESHOLD_HR` settings; `races_path` / `plan_path` derived paths.
-
-- `tempo/cli.py` — `tempo analyze` (both reports) + `tempo analyze load-trend` /
-  `tempo analyze race-readiness`.
-
-- `races.md.example` / `plan.md.example` — committed templates documenting the format;
-  real files live in the gitignored data dir (also gitignored in repo root defensively).
-
-- `tests/` — 183 pytest tests (was 113, +70), all green; ruff check + format clean. New:
-  `test_load.py` (rTSS/hrTSS/method/insufficient, numeric), `test_fitness.py` (CTL/ATL/TSB
-  EWMA numeric, ACWR/ramp/guardrail thresholds), `test_race.py` (Riegel/VDOT numeric +
-  reliability), `test_context.py` (races/plan parsing incl. missing-file + prose-not-a-race),
-  `test_analysis_reports.py` + `test_analyze_cli.py` (end-to-end: seed temp DB → run analyses
-  → assert dated reports with freshness headers + insufficient-data degradation).
-  `strava_fakes.make_run` added.
-
-All five Phase-4 success criteria verified, including a live `tempo analyze` run against a
-seeded throwaway DB producing real markdown reports with freshness headers (and the STALE
-flag) — confirmed in a temp data dir so nothing real was touched. **This completes the Strava
-end-to-end milestone: pull → store → transform → analyze → report works end-to-end. The only
-remaining user step for live data is the one-time `tempo strava auth` + a backfill with the
-user's own Strava API app.**
-
-## What's Done (Phase 5: Journaling via Claude)
-
-- `tempo/migrations/0003_journal.sql` (SCHEMA_VERSION → 3) — `journal` table:
-  `id, day (FK date_spine), activity_id (FK activity, nullable), rpe (CHECK 1–10),
-  feel, notes, sport, duration_min, srpe, created_at` + indexes on day/activity. The
-  `daily_summary` VIEW is dropped+recreated to LEFT-JOIN a per-day journal rollup
-  (latest-entry rpe/feel, SUM(srpe), has_journal, has_notes) while preserving the
-  one-row-per-spine-day invariant (no day dropped). (JRNL-01/03; STORE-04)
-
-- `tempo/journal/service.py` — the **validated boundary** (`add_entry`): validates
-  RPE to an integer 1–10 (rejects 0/11/fractional/non-numeric/bool), validates an
-  optional positive `duration_min`, resolves the activity by **local date + sport**
-  (0 → unlinked rest-day reflection; 1 → auto-link; many → `MultipleActivitiesError`
-  unless an explicit `--activity-id` disambiguates; explicit id always wins), computes
-  **sRPE = RPE × duration_min** (explicit duration wins, else linked activity's
-  moving/elapsed time), and inserts via parameterised SQL in a transaction. Also
-  `resolve_activity`, `compute_srpe`, `list_entries`, and `ensure_days` of the spine
-  for rest-day entries. NO free-form-SQL path. (JRNL-01/02)
-
-- `tempo/analysis/load.py` — new `LoadMethod.SRPE` + `apply_srpe_fallback(day_load, srpe)`:
-  uses the day's sRPE as the load **only** when objective load is `insufficient` or it's a
-  `rest` day with a journaled (e.g. cross-training) session; rTSS/hrTSS always win when
-  present; flagged `method='sRPE'`. (JRNL-03)
-
-- `tempo/analysis/data.py` — `srpe_by_day()` (SUM of journal sRPE per day; empty/safe when
-  the journal table is absent), wired into `runner.build_load_series` so the daily load
-  series fills insufficient days from sRPE.
-
-- `tempo/cli.py` — `tempo journal add` (thin wrapper over `add_entry`; `--rpe` required,
-  `--feel/--notes/--day/--sport/--activity-id/--duration-min`; day defaults to today) and
-  `tempo journal list`. Validation failures exit 1 with the error.
-
-- `docs/JOURNALING.md` — the "Claude in the loop" contract: Claude captures entries ONLY by
-  calling `tempo journal add`, never SQL; documents the date+sport resolution rule, sRPE, and
-  that journal content stays in the gitignored `~/.tempo/` DB.
-
-- `tests/` — 235 pytest tests (was 183), all green; ruff check + format clean. New:
-  `test_journal_service.py` (RPE validation incl. 0/11/non-int/bool; resolution none/one/many
-
-  + disambiguation + case-insensitive sport; sRPE linked-vs-explicit; persistence; failed
-  validation writes nothing; rest-day spine creation), `test_journal_summary.py` (journal in
-  daily_summary, one-row-per-spine-day invariant, null journal cols, multi-entry rollup; sRPE
-  fallback unit + integration through `build_load_series`), `test_journal_cli.py` (end-to-end
-  CLI: link+sRPE, reject bad RPE, ambiguous-needs-id, cross-training, list).
-
-All three Phase-5 success criteria verified live against a seeded throwaway DB (temp data
-dir): `tempo journal add --rpe 7 --feel strong --day … --sport Run` created entry #1, linked
-to the day's activity, computed sRPE 420, and appeared in `daily_summary`; an out-of-range RPE
-was rejected (exit 1); and on an activity-with-no-pace/HR day the analysis load series flagged
-the day `method='sRPE'` with the sRPE value as the load.
+- **Verifier outcome:** PASS 5/5 success criteria. See `.planning/phases/14-setup-wizard/14-VERIFICATION.md`. Only out-of-scope item: a live `tempo setup` run against real Strava / Garmin / Telegram — deliberately deferred (the wizard is verified against mocked delegated symbols; a live smoke is a follow-up session task).
 
 ### Conventions established this phase
 
-- Subjective rows are written ONLY through the validated `tempo.journal.service.add_entry`
-  boundary (CLI is a thin wrapper); Claude never writes SQL (ARCHITECTURE Pattern 5 / Anti-
-  Pattern 4). Activity resolution by date+sport refuses to guess on ambiguity.
+- **Atomic `.env` writes go through a single helper** (`tempo/setup/env_io.atomic_write_env`) modelled on `tempo/connectors/tokens.py`. No raw `open(.env, "w")` anywhere in the wizard. Comments + untouched key ordering preserved verbatim. Mode 0o600 enforced regardless of `umask`.
 
-- sRPE is a **fallback** load track flagged `sRPE`; objective rTSS/hrTSS always wins when
-  available. Journal content is personal data — lives only in the gitignored `~/.tempo/` DB.
+- **Setup is orchestration only.** The wizard owns prompts, dispatch, state detection, `.env` I/O, and the smoke test reporting. Every credentialed step delegates IN-PROCESS to the existing helper (no subprocess). Future credentialed steps follow the same shape.
 
-### Conventions established earlier (Phase 4)
+- **State detection is pure read-only** and lives in one place (`tempo/setup/state.py::detect_install_state`). Steps consult it; they never duplicate detection logic. Plist *presence* is the contract — Tempo never runs `launchctl`.
 
-- Analysis layer (`tempo/analysis/`) is **read-only over the structured/gold layer + the
-  user's races.md/plan.md context**, pure-Python metric math (stdlib only — no pandas/polars),
-  and **never touches the network**. Reports are dated markdown into the gitignored reports
-  dir; every report states per-source data freshness; thin data degrades to "insufficient".
+- **Re-run safety**: a re-run picks up where the previous run left off. `[done]` short-circuits skip; `--only=<step>` re-arms a single step (with a `keep / change / fresh` confirm). The wizard never silently overwrites a non-empty `.env` key without an interactive confirm.
 
-- Threshold pace / HR are configurable pydantic settings (`TEMPO_*`), documented in `.env.example`.
+## What's Done (Phase 13: Strength & Conditioning Tracker — v1.2 milestone)
 
-### Conventions established earlier
+- `tempo/analysis/strength.py` — frozen+slots `StrengthSet` / `StrengthExercise` / `StrengthSession` / `StrengthContext` / `StrengthRollup` dataclasses + `parse_strength(path)` + `strength_rollup(sessions, today)`. Lenient parser modelled directly on `tempo/analysis/heat.py`: missing file → `present=False`, malformed lines skipped, unknown keys ignored, never raises. Handles weighted sets (`55x8`), bare-rep sets (`15`), timed holds (`1:00`), supersets (`[A]`/`[B]`), equipment / notes / rest metadata. (SC-01, SC-02)
 
-- Flat `tempo/` package layout (not `src/`).
-- No ORM / no Alembic: raw sqlite3 + hand-written SQL + integer `user_version`
-  migrations applied from `tempo/migrations/NNNN_*.sql`.
+- `tempo/config.py` — `Settings.strength_path` returns `<content_root>/strength.md` (mirrors `heat_path`). (SC-03)
 
-- All runtime data (DB, tokens, reports) lives under `~/.tempo/` by default,
-  configurable via `TEMPO_DATA_DIR`; never inside the repo tree.
+- `tempo/analysis/recovery.py` + `tempo/analysis/runner.py` + `tempo/analysis/report.py` — recovery report gains a `## Strength & conditioning` section with the same 3-state degradation as the heat section (absent → omit / lapsed → one-line nudge / active → rollup with session count, total tonnage, last-session age). (SC-04, SC-05)
 
-- Settings env prefix is `TEMPO_`.
-- (Phase 3) Transforms live in `tempo/transforms/`, are PURE functions of the raw layer
-  (no network), and bucket via the single rule in `tempo/transforms/bucketing.py`. The
-  `daily_summary` gold layer is a VIEW (always fresh) LEFT-JOINed from `date_spine`; future
-  sources join through `day`. `rederive` = clear + rebuild in one txn; `transform` = upsert.
+- `strength.md.example` + `docs/STRENGTH.md` — committed format reference + operational doc.
 
-## What's Done (Phase 6: Garmin Ingestion)
+- `tests/test_strength.py` + recovery-report integration tests — 32 new tests; 530 total tests green.
 
-- `tempo/migrations/0004_wellness.sql` (SCHEMA_VERSION → 4) — `wellness_day` table:
-  `day (PK, FK date_spine), resting_hr, hrv_last_night, hrv_status, sleep_score,
-  sleep_seconds, deep_s/rem_s/light_s/awake_s, body_battery_high/low, stress_avg,
-  steps, updated_at`. `daily_summary` VIEW dropped+recreated to LEFT-JOIN wellness
-  (one row per spine day preserved; `has_wellness` flag; wellness-only rest days kept).
-  (GRMN-04; STORE-04)
+## What's Done (Phase 12: lifecycle / hardening / privacy — v1.1 closing milestone)
 
-- `tempo/connectors/garmin.py` — `GarminConnector` implements the SAME `Connector`
-  protocol as Strava (`backfill`/`sync`). Behind a narrow `GarminClient` Protocol seam
-  (so the fragile library is decoupled + fakeable). Token-reuse only: `_authenticated_client`
-  builds a credential-less client and logs in via the token store — it CANNOT fall through
-  to an SSO credential login (GRMN-02). **No-retry-on-429**: a 429 (typed-name OR string
-  match) on login or any data call raises `GarminSyncError` immediately — never a backoff
-  loop (PITFALLS 2). Per-day verbatim fetch of `sleep`/`hrv`/`stats`, stored under
-  `(garmin, <endpoint>, <ISO date>)`; the whole pull + watermark advance is ONE transaction
-  so a 429 mid-pull rolls back cleanly and never advances the watermark (Anti-Pattern 3).
-  `GarminAuthError` (no tokens → run `tempo garmin login`) vs `GarminSyncError` (runtime).
-  (GRMN-01/02/03/04)
+- Plan 12-01: `tempo bot install-scheduler` + launchd `com.tempo.telegram-bot.plist` with `KeepAlive=true` so a crash / sleep / network blip auto-restarts the bot. `VOICE_RETENTION_DAYS` startup sweep + per-handler immediate-delete + `tempo bot purge-voice` manual hatch. Agent cwd + data_dir logged at startup.
 
-- `tempo/sync/pipeline.py` — the ISOLATION seam. `run_garmin_sync` wraps the connector in
-  try/except catching `GarminSyncError`/`GarminAuthError`/`Exception` → returns a
-  `SourceResult(ok=False)`, NEVER raising. `run_full_sync` runs Strava (authoritative,
-  not isolated) THEN attempts Garmin isolated, so a Garmin failure can't block Strava or
-  analysis (GRMN-01/03; Anti-Pattern 5). Per-source status reported honestly (no silent
-  partial-success).
+- Plan 12-02: top-level `telegram_error_handler` (logs traceback, sends a fixed "something went wrong" reply, never re-raises). `docs/PRIVACY.md` is the single-source user-facing privacy contract. README + `docs/TELEGRAM_BOT.md` updated with launchd lifecycle, voice retention, and error-handler sections.
 
-- `tempo/connectors/factory.py` — `build_garmin_connector` (token-only client, NEVER
-  credentials), `garmin_login` (the ONLY credential path: submits email/password + MFA
-  via `prompt_mfa`, library dumps DI tokens to `~/.tempo/tokens/garmin`), `garmin_token_dir`.
+- 498 tests green; v1.1 closed.
 
-- `tempo/transforms/wellness.py` — pure no-network `rebuild_wellness`: groups raw
-  sleep/hrv/stats by ISO key and collapses each day into ONE `wellness_day` row keyed by
-  Garmin's `calendarDate` (via shared `local_day_from_calendar_date`); tolerates missing
-  endpoints / corrupt payloads; idempotent upsert. Wired into `transform`/`rederive` runner
-  (rebuilds wellness, clears it on rederive). Spine `data_day_bounds` now unions wellness +
-  journal days so wellness-only days extend the spine. (GRMN-04; STORE-02)
+## What's Done (Phase 11: Claude Code agent via SDK)
 
-- `tempo/analysis/baselines.py` — personal rolling baselines (GRMN-05): trailing-window
-  mean + sample-SD z-score (exclusive of today) + EWMA per metric (HRV/resting HR/sleep)
-  over `wellness_day`; `<MIN_POINTS` priors or zero variance → `None` ("insufficient data",
-  honest). Read helpers skip NULL days. Exposed (`compute_baselines`/`latest_baselines`) for
-  Phase 7's recovery analysis.
+- `tempo/bot/agent.py` — wraps `claude-agent-sdk` (uses the user's Claude Code subscription, no `ANTHROPIC_API_KEY`). Per-chat `--resume` over a 4hr rolling window. Final assistant text → HTML reply, split at 4096 chars. Detects `AssistantMessage` by class name (the SDK 0.2.x message shapes have no `.role` / `.type` attrs). Empty assistant text → `"(agent finished without a reply)"` so Telegram doesn't reject an empty message.
 
-- `tempo/cli.py` — `tempo garmin login` (interactive, one-time, MFA prompt; warns NOT to
-  retry on 429), `tempo garmin backfill --days N`, `tempo garmin sync` (token reuse, reports
-  skip not crash), and `tempo sync` now runs Strava then isolated Garmin with per-source
-  status. transform/rederive echo wellness counts.
+- `tempo/bot/sessions.py` — per-chat session-id store with a 4-hour idle window; `/new` resets.
 
-- `tests/garmin_fakes.py` — fake garminconnect client (no network/credentials): realistic
-  sleep/hrv/stats payloads, a 429 exception named `GarminConnectTooManyRequestsError`,
-  token-reuse vs credential-login distinction (counts credential logins), and per-call
-  429/error/missing-token scripting.
+## What's Done (Phase 10: Telegram bot worker)
 
-- `tests/` — 288 pytest tests (was 235), all green; ruff check + format clean. New:
-  `test_garmin_connector.py` (interface conformance, verbatim raw keyed by date, watermark,
-  token-reuse no-credential-login, 429 no-retry + rollback, idempotency, backfill),
-  `test_wellness_transforms.py` (parse fns, collapse-to-one-day, calendarDate-not-key,
-  missing endpoints, rederive zero-network, corrupt-payload skip), `test_wellness_summary.py`
-  (daily_summary wellness columns + one-row-per-spine-day invariant + wellness-only/activity-
-  only days + spine extension), `test_baselines.py` (hand-checked mean/SD/z/EWMA, insufficient-
-  data None, window bounding, DB integration), `test_garmin_isolation.py` (429/auth/unexpected
-  all caught; full pipeline Strava survives Garmin 429; analysis runs after), `test_garmin_cli.py`
-  (login persists via credential client, sync reuses tokens 0-credential-logins, 429 reports
-  skip, `tempo sync` both-sources isolated), plus wellness schema tests in `test_db.py`.
+- `tempo/bot/app.py` — Telegram Application builder + handler registration + Whisper warmup + cwd log + voice sweep. Defensive `delete_webhook` in `post_init` to avoid 409 Conflicts.
 
-All five Phase-6 success criteria verified live against a throwaway temp data dir with the
-fake client: (1) `GarminConnector` is a `Connector` and a 429 was isolated; (2) a 40-day
-backfill made **0 credential logins** (token reuse); (3) an end-to-end `tempo sync` with a
-simulated Garmin 429 exited 0 with `strava: ok` and Garmin skipped, then `tempo transform`
-and `tempo analyze` both succeeded; (4) 120 raw rows → 40 `wellness_day` rows keyed by
-calendarDate, surfaced in `daily_summary`; (5) baselines produced real z-scores (HRV z≈-1.46
-vs a 39-day mean) and `None` where variance/history was insufficient.
+- `tempo/bot/handlers.py` — `start`, `voice`, `text`, `/new` handlers. Owner-chat-id allowlist; the bot ignores everything else silently.
 
-### Conventions established this phase
+- `tempo/bot/transcribe.py` — `faster-whisper` singleton on CPU (no Metal/GPU on Mac). `small.en` int8 default. Eager `list(segments)` because the iterator is lazy.
 
-- Garmin is an **isolated failure domain**: the connector raises, the `tempo.sync.pipeline`
-  catches — a Garmin failure NEVER blocks Strava or analysis (Anti-Pattern 5). Contrast
-  Strava, where tenacity backoff on a 429 is fine; a Garmin 429 gets NO retry (account-lockout
-  risk, PITFALLS 2).
+## What's Done (Phase 9: Telegram + Whisper foundations)
 
-- Garmin auth is login-once: only `tempo garmin login` touches credentials; sync/backfill
-  reuse persisted tokens and never log in. The fragile library sits behind a `GarminClient`
-  Protocol seam so it's swappable + fakeable.
+- `pyproject.toml` deps: `python-telegram-bot`, `faster-whisper`, `claude-agent-sdk`. `WHISPER_MODEL_NAME` / `WHISPER_COMPUTE_TYPE` / `WHISPER_DEVICE` / `VOICE_RETENTION_DAYS` settings (with `validation_alias` for bare-name env keys).
 
-- Wellness buckets on Garmin's `calendarDate` (local wake-up day) via the shared bucketing
-  rule; multiple raw endpoints collapse into one `wellness_day` row; rebuilt purely from raw
-  (zero network).
+- Voice cache under `<content_dir>/voice/`, gitignored. faster-whisper warmup on startup.
+
+## What's Done (Phase 8: Modular Trackers + Heat Adaptation)
+
+- `races.md` gains a `result:` field + auto-link from race → matching Strava activity (`tempo/analysis/race_link.py`).
+
+- New `heat.md` tracker — appendable session log; `tempo/analysis/heat.py` lenient parser + 3-state rollup surfaced in recovery report.
+
+- `plan.md` retired (training plan moved to whichever format the owner prefers; no more parser).
+
+- `tempo/analysis/context.py` deleted; per-tracker modules now own their own parse + render shape.
+
+## What's Done (Phases 1-7: v1.0 — Strava + Garmin → SQLite → analyses → daily launchd job)
+
+- See `.planning/phases/01-foundation/` through `.planning/phases/07-recovery-correlation/` for the full per-phase shipped list. Summary: Strava OAuth + paged resumable backfill → raw store; Garmin (isolated failure domain, no-retry-on-429) → raw store; pure-stdlib transforms → structured layer + `daily_summary` view; `tempo/analysis/{load,fitness,race,recovery,correlation,noteworthy}.py` produce dated markdown reports; `tempo run-daily` launchd job runs the lot at 05:30 local time. 235 → 288 → 339 → 497 tests across phases.
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 1
-- Average duration: — min
-- Total execution time: — hours
+- Total plans completed (this milestone): 3
+- Average duration: ~ unknown (parallel waves; not tracked per-plan in this phase)
+- Total execution time (this milestone): single-day session
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Foundation | 1 | — | — |
+| 14. First-Run Setup Wizard (v1.3) | 3 | — | — |
+| 13. Strength & Conditioning Tracker (v1.2) | 3 | — | — |
+| 12. Lifecycle / hardening / privacy (v1.1 closing) | 2 | — | — |
 
 **Recent Trend:**
 
-- Last 5 plans: —
-- Trend: —
+- Last 3 plans: 14-01 (env_io + state), 14-02 (wizard + prompts + CLI cmd), 14-03 (docs + README)
+- Trend: shipped same-day; 593 tests green; ruff clean.
 
 *Updated after each plan completion*
-| Phase 10 P01 | 339 | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -416,14 +157,16 @@ Recent decisions affecting current work:
 - Two-layer raw → structured storage: connectors write only to `raw_response`; transforms read raw and write structured, enabling `tempo rederive` with no network
 - Date spine in Phase 3 (not later): CTL/ATL EWMAs and ACWR windows are silently wrong without a zero-filled spine
 - Journaling early (Phase 5): correlation analysis is data-hungry, so paired subjective history must start accumulating before Garmin
+- **(Phase 14, 2026-05-28)** First-run setup is orchestration-only — every credentialed step delegates in-process to the existing helper. No subprocess; no duplicated OAuth handshake, MFA prompt, or plist render. `.env` writes go through a single atomic helper modelled on `tokens.py`.
 
 ### Roadmap Evolution
 
 - Phase 8 added: Modular Trackers + Heat Adaptation — split plan.md into focused tracker files (`races.md` w/ result + auto-link, new `heat.md`); retire `plan.md`. (2026-05-27)
+- Phase 14 added + shipped: First-Run Setup Wizard (v1.3) — `tempo setup` reduces clone-to-working-daily-sync from a multi-step README walkthrough to a single idempotent command. (2026-05-28)
 
 ### Pending Todos
 
-None yet.
+- **Live `tempo setup` smoke** against real Strava + Garmin + Telegram (the wizard is verified against mocked delegated symbols; this is a follow-up session task).
 
 ### Blockers/Concerns
 
@@ -439,26 +182,32 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| Setup | `tempo doctor` (diagnose-only health check; separable from setup) | Deferred to follow-up phase | 2026-05-28 (Phase 14 CONTEXT) |
+| Setup | `tempo setup --uninstall` reverse path (3-line manual `rm` documented in `docs/SETUP.md`) | Deferred; manual is fine | 2026-05-28 (Phase 14 CONTEXT) |
+| Setup | Pi / Linux systemd-equivalent of the launchd steps | Deferred until Pi-port milestone | 2026-05-28 (Phase 14 CONTEXT) |
+| Setup | Auto-detect optimal Whisper model / threshold pace / max HR / resting HR | Deferred (cross-cuts Phase 4) | 2026-05-28 (Phase 14 CONTEXT) |
 
 ## Session Continuity
 
-Last session: 2026-05-28T00:00:00.000Z
-Stopped at: v1.1 SHIPPED. Phase 12 plan 12-02 closes the milestone: top-level
-Telegram error handler (VOICE-12) ensures a single bad message never crashes
-the worker; `docs/PRIVACY.md` is the single-source user-facing privacy
-contract; README + `docs/TELEGRAM_BOT.md` now document the launchd lifecycle,
-voice retention policy, and error-handler behaviour. All four VOICE-11/12/14/15
-requirements complete; 60/60 v1.1 requirements satisfied; 498 tests green.
-Pi port (v1.2) is the next milestone -- deferred.
+Last session: 2026-05-28T10:30:00.000Z
+Stopped at: v1.3 SHIPPED. Phase 14 (First-Run Setup Wizard) verified PASS 5/5. New
+`tempo setup` command walks 10 locked steps in order (welcome → db → content →
+strava → garmin → telegram → scheduler → bot-scheduler → smoke → finish); every
+credentialed step delegates in-process to the existing `tempo` helper (no
+subprocess, no duplicated OAuth handshake, no duplicated MFA prompt, no
+duplicated plist render). Atomic `.env` writes at 0600 perms mirror
+`tempo/connectors/tokens.py`. `docs/SETUP.md` covers all 10 steps with manual
+fallback + recover paths; README "Getting Started" leads with `tempo setup`.
+593 tests green (+63), ruff clean. All 5 SETUP-* requirements satisfied.
+Pending: live `tempo setup` smoke against real Strava / Garmin / Telegram
+(deferred follow-up session).
 
-Previous session: 2026-05-27T22:00:40.947Z. Stopped at: Phase 5 (Journaling via Claude) complete. Validated `tempo journal add` entrypoint
-(`tempo/journal/service.py`) records structured subjective entries (RPE 1–10, feel, notes),
-resolves the activity by date+sport (none/one/many handled), computes an sRPE (RPE × duration)
-load track, and inserts via parameterised SQL — Claude never writes SQL. Migration 0003 adds
-the `journal` table and rebuilds `daily_summary` to LEFT-JOIN journal fields per day (one row
-per spine day preserved). sRPE fills the daily load on otherwise-insufficient days, flagged
-`method='sRPE'`; objective load still wins. `docs/JOURNALING.md` documents the Claude capture
-contract. 235 tests green, ruff clean, shipped and pushed; all three success criteria verified
-live against a seeded throwaway DB. Next: plan Phase 6 (Garmin Ingestion).
+Previous session: 2026-05-28T03:00:00.000Z. Stopped at: v1.2 SHIPPED. Phase 13
+(Strength & Conditioning Tracker) verified PASS 5/5. `tempo/analysis/strength.py`
+lenient parser (WxR + bare-reps + M:SS + supersets + equipment) +
+`StrengthRollup` + `Settings.strength_path`; recovery report gains 3-state
+`## Strength & conditioning` section (absent / lapsed / active with tonnage);
+`strength.md.example` + `docs/STRENGTH.md` committed. 530 tests green (+32),
+ruff clean.
+
 Resume file: None
