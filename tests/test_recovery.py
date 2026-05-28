@@ -289,9 +289,11 @@ def _ok_assessment(
     strength_present: bool = False,
     weight: object = None,
     weight_present: bool = False,
+    nutrition: object = None,
+    nutrition_present: bool = False,
 ) -> recovery.RecoveryAssessment:
     """Hand-built RecoveryAssessment with neutral signals so we exercise ONLY
-    the heat / strength / weight path."""
+    the heat / strength / weight / nutrition path."""
     signals = [
         recovery.SignalAssessment(
             metric="hrv",
@@ -337,6 +339,8 @@ def _ok_assessment(
         strength_present=strength_present,
         weight=weight,  # type: ignore[arg-type]
         weight_present=weight_present,
+        nutrition=nutrition,  # type: ignore[arg-type]
+        nutrition_present=nutrition_present,
     )
 
 
@@ -720,3 +724,211 @@ def test_fmt_weight_delta_signs() -> None:
     assert recovery._fmt_weight_delta(0.0) == "±0.0 kg"  # Unicode plus-minus U+00B1
     # Python's banker's rounding: 1.25 -> "1.2" (round-half-to-even).
     assert recovery._fmt_weight_delta(1.25) == "+1.2 kg"
+
+
+# ---- Nutrition section ----
+
+
+def _avg_day(
+    *,
+    protein_g: float = 122.0,
+    carbs_g: float = 312.0,
+    fat_g: float = 64.0,
+    kcal: int = 2310,
+    entry_count: int = 21,
+) -> object:
+    """Helper: build a DailyNutrition for use as latest_day / avg_7d."""
+    from tempo.analysis.nutrition import DailyNutrition
+
+    return DailyNutrition(
+        date=date(2026, 4, 1),
+        protein_g=protein_g,
+        carbs_g=carbs_g,
+        fat_g=fat_g,
+        kcal=kcal,
+        macro_pct_protein=21.1,
+        macro_pct_carbs=54.0,
+        macro_pct_fat=24.9,
+        entry_count=entry_count,
+    )
+
+
+def _nutrition_current(
+    *,
+    days_since_last: int = 1,
+    target_kcal: int | None = None,
+    deficit_surplus_7d: int | None = None,
+) -> object:
+    """Helper: build a 'current' NutritionRollup (latest entry within 3 days)."""
+    from tempo.analysis.nutrition import NutritionRollup
+
+    avg = _avg_day()
+    return NutritionRollup(
+        today=date(2026, 4, 1),
+        latest_day=avg,
+        days_since_last=days_since_last,
+        avg_7d=avg,
+        days_logged_7d=7,
+        avg_28d_kcal=2280,
+        target_kcal=target_kcal,
+        deficit_surplus_7d=deficit_surplus_7d,
+    )
+
+
+def test_recovery_renderer_omits_nutrition_section_when_absent() -> None:
+    """food.md missing -> the section is omitted entirely (no header)."""
+    a = _ok_assessment(nutrition=None, nutrition_present=False)
+    text = _render(a)
+    assert "## Nutrition" not in text
+
+
+def test_recovery_renderer_omits_nutrition_when_present_but_empty() -> None:
+    """food.md present but no entries parsed -> section omitted (no header)."""
+    from tempo.analysis.nutrition import NutritionRollup
+
+    empty = NutritionRollup(
+        today=date(2026, 4, 1),
+        latest_day=None,
+        days_since_last=None,
+        avg_7d=None,
+        days_logged_7d=0,
+        avg_28d_kcal=None,
+        target_kcal=None,
+        deficit_surplus_7d=None,
+    )
+    a = _ok_assessment(nutrition=empty, nutrition_present=True)
+    text = _render(a)
+    assert "## Nutrition" not in text
+
+
+def test_recovery_renderer_emits_stale_nudge_when_last_entry_over_3d() -> None:
+    """Latest entry >3d old -> one-line stale nudge (no active rollup line)."""
+    stale = _nutrition_current(days_since_last=5)
+    a = _ok_assessment(nutrition=stale, nutrition_present=True)
+    text = _render(a)
+    assert "## Nutrition" in text
+    assert "Last food entry 5 days ago" in text
+    assert "log today's meals" in text
+    # The stale nudge is the ONLY nutrition line — active-rollup markers absent.
+    assert "7d avg" not in text
+    assert "days logged of 7" not in text
+
+
+def test_recovery_renderer_emits_7d_trailing_rollup_when_current() -> None:
+    """Latest entry within 3d -> full active 7-day rollup line."""
+    a = _ok_assessment(nutrition=_nutrition_current(), nutrition_present=True)
+    text = _render(a)
+    assert "## Nutrition" in text
+    assert "7d avg" in text
+    assert "P:122g" in text
+    assert "C:312g" in text
+    assert "F:64g" in text
+    assert "cal:2310" in text
+    assert "7 days logged of 7" in text
+    # No goal line when target_kcal is None.
+    assert "Target" not in text
+    assert "7d Δ" not in text
+
+
+def test_recovery_renderer_appends_goal_line_when_target_set() -> None:
+    """`target_kcal` + `deficit_surplus_7d` -> goal-delta line appended."""
+    surplus = _nutrition_current(target_kcal=2200, deficit_surplus_7d=110)
+    a = _ok_assessment(nutrition=surplus, nutrition_present=True)
+    text = _render(a)
+    assert "## Nutrition" in text
+    assert "Target 2200 kcal/day" in text
+    assert "7d Δ" in text
+    assert "+110 kcal/day" in text
+
+    # Deficit case: Unicode minus.
+    deficit = _nutrition_current(target_kcal=2200, deficit_surplus_7d=-85)
+    a2 = _ok_assessment(nutrition=deficit, nutrition_present=True)
+    text2 = _render(a2)
+    assert "−85 kcal/day" in text2  # Unicode minus U+2212
+
+
+def test_recovery_renderer_nutrition_section_follows_weight() -> None:
+    """When all four trackers are active, order is Heat → Strength → Weight → Nutrition."""
+    from tempo.analysis.heat import HeatRollup
+    from tempo.analysis.strength import StrengthRollup
+
+    heat_rollup = HeatRollup(
+        today=date(2026, 4, 1),
+        last_7d_count=3,
+        last_7d_minutes=78.0,
+        last_14d_count=6,
+        last_14d_minutes=154.0,
+        last_28d_count=10,
+        last_28d_minutes=260.0,
+        last_session_date=date(2026, 3, 30),
+        last_session_days_ago=2,
+    )
+    strength_rollup = StrengthRollup(
+        today=date(2026, 4, 1),
+        last_7d_count=2,
+        last_7d_tonnage_kg=9835.0,
+        last_14d_count=2,
+        last_14d_tonnage_kg=9835.0,
+        last_28d_count=3,
+        last_28d_tonnage_kg=14200.0,
+        last_session_date=date(2026, 3, 31),
+        last_session_days_ago=1,
+        last_session_name="Lower body",
+    )
+    a = _ok_assessment(
+        heat=heat_rollup,
+        heat_present=True,
+        strength=strength_rollup,
+        strength_present=True,
+        weight=_weight_rollup_current(),
+        weight_present=True,
+        nutrition=_nutrition_current(),
+        nutrition_present=True,
+    )
+    text = _render(a)
+    assert "## Heat adaptation" in text
+    assert "## Strength & conditioning" in text
+    assert "## Weight" in text
+    assert "## Nutrition" in text
+    # Full ordering: Heat → Strength → Weight → Nutrition.
+    assert (
+        text.index("## Heat adaptation")
+        < text.index("## Strength & conditioning")
+        < text.index("## Weight")
+        < text.index("## Nutrition")
+    )
+
+
+def test_recovery_renderer_handles_mixed_format_food_input(tmp_path) -> None:
+    """Mixed inline + block entries on the same day produce a correct rollup
+    that surfaces in the recovery section."""
+    from tempo.analysis.nutrition import nutrition_rollup, parse_food
+
+    food_path = tmp_path / "food.md"
+    food_path.write_text(
+        "- 2026-03-31 breakfast: oats | p:13 c:54 f:6 cal:300\n"
+        "\n"
+        "## 2026-03-31 lunch\n"
+        "- chicken bowl: p:38 c:22 f:18 cal:404\n"
+        "- apple: p:0 c:25 f:0 cal:100\n",
+        encoding="utf-8",
+    )
+    ctx_food = parse_food(food_path)
+    rollup = nutrition_rollup(ctx_food.entries, date(2026, 4, 1))
+    # Combined daily kcal = 300 + 404 + 100 = 804 (one day logged in 7d window).
+    assert rollup.avg_7d is not None
+    assert rollup.avg_7d.kcal == 804
+    assert rollup.days_logged_7d == 1
+
+    a = _ok_assessment(nutrition=rollup, nutrition_present=True)
+    text = _render(a)
+    assert "## Nutrition" in text
+    assert "cal:804" in text
+    assert "1 days logged of 7" in text
+
+
+def test_fmt_kcal_delta_signs() -> None:
+    """`_fmt_kcal_delta` renders +N / −N / ±0 with Unicode glyphs + no decimals."""
+    assert recovery._fmt_kcal_delta(110) == "+110 kcal/day"
+    assert recovery._fmt_kcal_delta(-85) == "−85 kcal/day"  # Unicode minus U+2212
+    assert recovery._fmt_kcal_delta(0) == "±0 kcal/day"  # Unicode plus-minus U+00B1
