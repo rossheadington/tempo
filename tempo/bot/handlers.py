@@ -304,56 +304,61 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     voice_cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     target_path: Path = voice_cache_dir / f"{update.message.message_id}-{voice.file_unique_id}.ogg"
 
-    tg_file = await voice.get_file()
-    await tg_file.download_to_drive(custom_path=target_path)
+    # Wrap the entire post-target-path flow in a single try/finally so the
+    # voice cache file is cleaned up under VOICE_RETENTION_DAYS=0 even if
+    # download_to_drive or transcribe_file raises mid-write. Previously the
+    # cleanup only ran inside the agent-turn finally, so a download failure
+    # (or transcription crash) leaked a partial .ogg on disk -- violating
+    # the privacy-safe default. _cleanup_voice_file is missing_ok=True so a
+    # never-written target_path is fine.
+    try:
+        tg_file = await voice.get_file()
+        await tg_file.download_to_drive(custom_path=target_path)
 
-    # VOICE-06: transcribe via the WARMED singleton. ``asyncio.to_thread``
-    # keeps the event loop responsive -- ``faster_whisper.WhisperModel.transcribe``
-    # holds the GIL and runs for seconds even on small.en.
-    start = time.monotonic()
-    transcript = await asyncio.to_thread(transcribe_file, target_path)
-    wall_s = time.monotonic() - start
+        # VOICE-06: transcribe via the WARMED singleton. ``asyncio.to_thread``
+        # keeps the event loop responsive -- ``faster_whisper.WhisperModel.transcribe``
+        # holds the GIL and runs for seconds even on small.en.
+        start = time.monotonic()
+        transcript = await asyncio.to_thread(transcribe_file, target_path)
+        wall_s = time.monotonic() - start
 
-    logger.info(
-        "transcribed %s -- audio_s=%s wall_s=%.2f model=%s",
-        target_path.name,
-        voice.duration if voice.duration is not None else "?",
-        wall_s,
-        settings.whisper_model_name,
-    )
+        logger.info(
+            "transcribed %s -- audio_s=%s wall_s=%.2f model=%s",
+            target_path.name,
+            voice.duration if voice.duration is not None else "?",
+            wall_s,
+            settings.whisper_model_name,
+        )
 
-    # Empty / whitespace-only transcript: skip the agent and tell the user
-    # the pipeline ran but found nothing. Don't burn an agent turn on it.
-    # Phase 12: still apply the retention policy -- empty transcripts produced
-    # the same .ogg on disk as a normal flow, so honour VOICE_RETENTION_DAYS=0.
-    if not transcript or not transcript.strip():
+        # Empty / whitespace-only transcript: skip the agent and tell the user
+        # the pipeline ran but found nothing. Don't burn an agent turn on it.
+        if not transcript or not transcript.strip():
+            await update.message.reply_text(
+                EMPTY_TRANSCRIPT_REPLY,
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        # Log the raw transcript at INFO so the developer can still see what
+        # Whisper produced.
+        logger.info("voice transcript (chat=%d): %s", update.effective_chat.id, transcript)
+
+        # Echo the transcript back to the user FIRST (before the agent turn,
+        # which can take 10-30s) so they can confirm Whisper heard them right
+        # -- and have a written record without scrolling up past the agent's
+        # reply. Italics keep it visually distinct from agent text.
         await update.message.reply_text(
-            EMPTY_TRANSCRIPT_REPLY,
+            f"<i>📝 Heard: {html.escape(transcript, quote=False)}</i>",
             parse_mode=ParseMode.HTML,
         )
-        _cleanup_voice_file(target_path, settings.voice_retention_days)
-        return
 
-    # Log the raw transcript at INFO so the developer can still see what
-    # Whisper produced.
-    logger.info("voice transcript (chat=%d): %s", update.effective_chat.id, transcript)
-
-    # Echo the transcript back to the user FIRST (before the agent turn,
-    # which can take 10-30s) so they can confirm Whisper heard them right
-    # -- and have a written record without scrolling up past the agent's
-    # reply. Italics keep it visually distinct from agent text.
-    await update.message.reply_text(
-        f"<i>📝 Heard: {html.escape(transcript, quote=False)}</i>",
-        parse_mode=ParseMode.HTML,
-    )
-
-    chat_id = update.effective_chat.id
-    try:
+        chat_id = update.effective_chat.id
         await _run_agent_turn(update, context, transcript, chat_id)
     finally:
         # Phase 12 voice-retention policy: delete immediately when
-        # VOICE_RETENTION_DAYS=0 (the privacy-safe default). The finally
-        # block ensures cleanup happens even if the agent turn raises.
+        # VOICE_RETENTION_DAYS=0 (the privacy-safe default). Single point of
+        # cleanup covering every exit path -- success, empty-transcript,
+        # download failure, transcription crash, agent turn failure.
         _cleanup_voice_file(target_path, settings.voice_retention_days)
 
 
