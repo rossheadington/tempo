@@ -609,6 +609,7 @@ def analyze_main(ctx: typer.Context) -> None:
             cfg=cfg,
             races_path=settings.races_path,
             heat_path=settings.heat_path,
+            strength_path=settings.strength_path,
             reports_dir=settings.reports_dir,
             generated_on=today,
         )
@@ -678,6 +679,7 @@ def analyze_recovery() -> None:
             conn,
             cfg=cfg,
             heat_path=settings.heat_path,
+            strength_path=settings.strength_path,
             reports_dir=settings.reports_dir,
             generated_on=datetime.now(UTC).date(),
         )
