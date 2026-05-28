@@ -935,5 +935,78 @@ def install_scheduler_cmd(
     )
 
 
+# ---------------------------------------------------------------------------
+# First-run setup wizard (Phase 14 / SETUP-01..05)
+# ---------------------------------------------------------------------------
+
+
+@app.command("setup")
+def setup_cmd(
+    only: list[str] = typer.Option(  # noqa: B008 - typer Option must be in default position
+        None,
+        "--only",
+        help=(
+            "Run only the named step. Stackable. Valid: "
+            "db, content, strava, garmin, telegram, scheduler, bot-scheduler, smoke."
+        ),
+    ),
+    skip_garmin: bool = typer.Option(False, "--skip-garmin", help="Skip the Garmin login step."),
+    skip_telegram: bool = typer.Option(
+        False,
+        "--skip-telegram",
+        help="Skip Telegram bot setup. Implies --skip-bot-scheduler.",
+    ),
+    skip_scheduler: bool = typer.Option(
+        False, "--skip-scheduler", help="Skip daily launchd install."
+    ),
+    skip_bot_scheduler: bool = typer.Option(
+        False, "--skip-bot-scheduler", help="Skip bot launchd install."
+    ),
+    skip_smoke: bool = typer.Option(
+        False, "--skip-smoke", help="Skip the final `tempo sync` smoke test."
+    ),
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Fail fast on any prompt (testing-only; not for end-user use).",
+    ),
+) -> None:
+    """First-run setup wizard: DB init -> Strava -> optional Garmin/Telegram -> launchd -> smoke.
+
+    Idempotent: a re-run picks up where the last run left off. Use --only=<step>
+    to re-run a single step (e.g. to add the Telegram bot to an existing install).
+    See docs/SETUP.md for the full manual walkthrough.
+    """
+    from tempo.setup.wizard import STEP_IDS, run_wizard
+
+    settings = get_settings()
+    settings.ensure_dirs()
+
+    only_set = frozenset(only or [])
+    valid_steps = frozenset(STEP_IDS) - {"welcome", "finish"}
+    unknown = only_set - valid_steps
+    if unknown:
+        typer.secho(
+            f"Unknown --only step(s): {', '.join(sorted(unknown))}. "
+            f"Valid: {', '.join(sorted(valid_steps))}.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    exit_code = run_wizard(
+        settings,
+        only=only_set,
+        skip_garmin=skip_garmin,
+        skip_telegram=skip_telegram,
+        skip_scheduler=skip_scheduler,
+        skip_bot_scheduler=skip_bot_scheduler,
+        skip_smoke=skip_smoke,
+        non_interactive=non_interactive,
+    )
+    if exit_code != 0:
+        raise typer.Exit(code=exit_code)
+
+
 if __name__ == "__main__":
     app()
