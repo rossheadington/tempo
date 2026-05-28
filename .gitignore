@@ -71,3 +71,8 @@ htmlcov/
 .idea/
 .vscode/
 *.swp
+
+# ---- Claude Code / GSD worktrees (throwaway agent worktrees) ----
+# Commit .claude/skills/ (the project skills) but never the GSD worktree dumps
+# which are ephemeral per-agent checkouts.
+.claude/worktrees/
