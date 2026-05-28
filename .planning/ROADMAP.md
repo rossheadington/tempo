@@ -27,7 +27,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 11: Claude Code Agent Loop (v1.1)** - claude-agent-sdk wiring, per-chat session-id store with 4hr resume window, HTML reply formatting with 4096-char split, `/new` reset, per-turn token logging
 - [x] **Phase 12: Lifecycle, Hardening, Privacy (v1.1)** - launchd LaunchAgent with KeepAlive, top-level error handler, voice-file retention policy, project-scoped working dir
 - [x] **Phase 13: Strength & Conditioning Tracker (v1.2)** - New `strength.md` markdown tracker with lenient parser (WxR / bodyweight reps / timed holds / supersets / equipment / metadata), surfaced in recovery report alongside heat (rolling-window count + last-session age + tonnage)
-- [ ] **Phase 14: First-Run Setup Wizard (v1.3)** - `tempo setup` interactive command walks zero → working daily sync (DB init, content dir, Strava OAuth, optional Garmin / Telegram bot, optional launchd installs, smoke test); idempotent; stdlib-only; atomic `.env` writes with 0600 perms
+- [x] **Phase 14: First-Run Setup Wizard (v1.3)** - `tempo setup` interactive command walks zero → working daily sync (DB init, content dir, Strava OAuth, optional Garmin / Telegram bot, optional launchd installs, smoke test); idempotent; stdlib-only; atomic `.env` writes with 0600 perms
+- [ ] **Phase 15: Weight Tracker (v1.4)** - New `weight.md` markdown tracker with lenient parser (latest-wins on duplicate dates, kg/lb accepted, kg-normalised rollup); surfaced in recovery report (latest, 7d avg, 28d avg, EWMA trend, delta-vs-baseline, days-since-last) with the same 3-state degradation rule (absent / stale / current) heat & strength use
+- [ ] **Phase 16: Nutrition Tracker (v1.5)** - New `food.md` markdown tracker with lenient parser accepting two interchangeable formats (inline single-line and block-per-meal); daily P/C/F/cal rollup with macro % split; new `tempo analyze nutrition` standalone report; recovery report gains 7-day-trailing nutrition mini-section. Reclassifies NUTR-01/02 from v2 → v1.5
 
 ## Phase Details
 

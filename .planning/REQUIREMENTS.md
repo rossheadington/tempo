@@ -133,20 +133,44 @@ A single interactive command `tempo setup` that walks a new user from zero (fres
 
 ### First-Run Setup (Phase 14)
 
-- [ ] **SETUP-01**: A `tempo setup` typer subcommand walks the user through every step required to reach a working daily sync (DB init → content dir → Strava creds + OAuth → optional Garmin login → optional Telegram bot creds → optional daily/bot launchd installs → smoke `tempo sync`), in order, with a clear welcome banner and a final summary of what was configured
-- [ ] **SETUP-02**: The wizard detects existing state (DB present, `.env` keys filled, token files written, launchd plists installed) and presents each step as `[done]` / `[keep / change / skip]` / `[fresh]` so a re-run never blindly clobbers a working config; the user can re-run safely to fill in one missing piece
-- [ ] **SETUP-03**: The wizard reads and writes `.env` atomically with 0600 perms (temp-write → fsync → rename, mirroring `tempo/connectors/tokens.py`), preserves keys it does not own, and never echoes secret values back to the terminal once entered (`getpass` for Strava client secret, Garmin password, Telegram bot token)
-- [ ] **SETUP-04**: Every credentialed step delegates to the EXISTING flows rather than reimplementing them — Strava OAuth goes through `tempo strava auth`, Garmin login goes through `tempo garmin login`, launchd installs go through `tempo install-scheduler` / `tempo bot install-scheduler`. The wizard is orchestration only; no duplicated auth/install logic
-- [ ] **SETUP-05**: Each step is independently skippable (`--skip-garmin`, `--skip-telegram`, `--skip-scheduler` flags, plus per-step Y/N prompts); a `--only=<step>` flag runs a single named step (e.g. `tempo setup --only=telegram` to add the bot to an existing install); the final smoke test invokes `tempo sync` and reports per-source success/failure so the user knows the creds actually work before exiting
+- [x] **SETUP-01**: A `tempo setup` typer subcommand walks the user through every step required to reach a working daily sync (DB init → content dir → Strava creds + OAuth → optional Garmin login → optional Telegram bot creds → optional daily/bot launchd installs → smoke `tempo sync`), in order, with a clear welcome banner and a final summary of what was configured
+- [x] **SETUP-02**: The wizard detects existing state (DB present, `.env` keys filled, token files written, launchd plists installed) and presents each step as `[done]` / `[keep / change / skip]` / `[fresh]` so a re-run never blindly clobbers a working config; the user can re-run safely to fill in one missing piece
+- [x] **SETUP-03**: The wizard reads and writes `.env` atomically with 0600 perms (temp-write → fsync → rename, mirroring `tempo/connectors/tokens.py`), preserves keys it does not own, and never echoes secret values back to the terminal once entered (`getpass` for Strava client secret, Garmin password, Telegram bot token)
+- [x] **SETUP-04**: Every credentialed step delegates to the EXISTING flows rather than reimplementing them — Strava OAuth goes through `tempo strava auth`, Garmin login goes through `tempo garmin login`, launchd installs go through `tempo install-scheduler` / `tempo bot install-scheduler`. The wizard is orchestration only; no duplicated auth/install logic
+- [x] **SETUP-05**: Each step is independently skippable (`--skip-garmin`, `--skip-telegram`, `--skip-scheduler` flags, plus per-step Y/N prompts); a `--only=<step>` flag runs a single named step (e.g. `tempo setup --only=telegram` to add the bot to an existing install); the final smoke test invokes `tempo sync` and reports per-source success/failure so the user knows the creds actually work before exiting
+
+## v1.4 Requirements — Weight Tracker
+
+A new `weight.md` markdown tracker in the content dir. Lenient parser (skip-malformed-never-raise), latest-wins on duplicate dates, accepts kg or lb (normalised to kg for rollup arithmetic). Surfaces in the recovery report as a `## Weight` section with the same 3-state degradation rule heat/strength already use (absent / stale / current). Agent-append-friendly format — single-line bullet per day.
+
+### Weight tracking (Phase 15)
+
+- [ ] **WEIGHT-01**: A `weight.md` file in the content dir, lenient single-line-per-day format `- YYYY-MM-DD: <weight> [kg|lb] [| notes: <free text>]`, latest-wins on duplicate dates; missing file is not an error
+- [ ] **WEIGHT-02**: `parse_weight(path)` produces a `WeightContext` (frozen+slots dataclass) of deduplicated, date-sorted entries plus a list of malformed-line numbers; never raises on malformed input
+- [ ] **WEIGHT-03**: `weight_rollup(entries, today)` produces a `WeightRollup` with latest reading, 7-day avg, 28-day avg, EWMA trend (alpha=0.1), delta vs 28-day baseline, days-since-last-weigh-in, all kg-normalised, plus a `unit_mixed` flag when kg and lb co-occur in the log
+- [ ] **WEIGHT-04**: The recovery report renders a `## Weight` section with the 3-state degradation rule: absent (file missing or empty) → section omitted; stale (last weigh-in >14 days ago) → one-line nudge; current → full rollup line
+- [ ] **WEIGHT-05**: `weight.md.example` is committed in the repo root; `docs/WEIGHT.md` documents the format, EWMA semantics, and agent-append guidance end-to-end
+
+## v1.5 Requirements — Nutrition Tracker
+
+A new `food.md` markdown tracker in the content dir. Two interchangeable formats accepted by a single lenient parser: inline single-line per meal entry, and block-per-meal (header + nested bullets). Daily rollup of total P/C/F/cal and macro percentage split. Standalone `tempo analyze nutrition` report. Recovery report gains a 7-day-trailing nutrition mini-section. **Reclassifies NUTR-01 / NUTR-02 from v2 → v1.5** (CSV import becomes a Layer-2 follow-up; the markdown tracker proves the surface first).
+
+### Nutrition tracking (Phase 16)
+
+- [ ] **NUTR-01**: ~~Ingest MyFitnessPal food/nutrition data via CSV-drop (no official API)~~ **Reclassified to v2** — a `tempo food import <csv>` connector is Layer 2; the markdown tracker proves the surface first
+- [ ] **NUTR-02**: ~~Join daily nutrition (calories, macros) onto the daily summary~~ **Reclassified to v2** — superseded by the markdown rollup; structured-table join is a Layer-2 follow-up
+- [ ] **NUTR-03**: A `food.md` file in the content dir accepting two interchangeable formats — inline (`- YYYY-MM-DD <meal>: <food> | p:<g> c:<g> f:<g> cal:<n>`) AND block-per-meal (`## YYYY-MM-DD <meal>` header followed by ` - <food>: p:<g> c:<g> f:<g> cal:<n>` bullets) — both parsed by one lenient parser, malformed lines skipped not raised
+- [ ] **NUTR-04**: `parse_food(path)` produces a `FoodContext` of `FoodEntry` / `MealBlock` records; `daily_nutrition(entries, day)` produces a `DailyNutrition` (total P/C/F/cal, macro % split); `nutrition_rollup(entries, today)` produces a 7-day rolling `NutritionRollup` (mean daily macros + optional target-deficit/surplus)
+- [ ] **NUTR-05**: A `tempo analyze nutrition` CLI command writes `reports/<date>-nutrition.md` with the daily breakdown + 7-day rollup; the recovery report gains a `## Nutrition` mini-section showing the 7-day P/C/F/cal trailing average with the same 3-state degradation rule (absent / stale / current)
 
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
 
-### Nutrition
+### Nutrition (deferred from v1.5)
 
-- **NUTR-01**: Ingest MyFitnessPal food/nutrition data via CSV-drop (no official API)
-- **NUTR-02**: Join daily nutrition (calories, macros) onto the daily summary
+- **NUTR-CSV-01**: Ingest MyFitnessPal food/nutrition data via CSV-drop (Layer 2 — derived structured table from markdown source or CSV)
+- **NUTR-CSV-02**: Join daily nutrition (calories, macros) onto the `daily_summary` SQL view (requires NUTR-CSV-01)
 
 ### Advanced Analysis
 
@@ -245,11 +269,19 @@ Explicitly excluded. Documented to prevent scope creep.
 | SC-03 | Phase 13 | Complete |
 | SC-04 | Phase 13 | Complete |
 | SC-05 | Phase 13 | Complete |
-| SETUP-01 | Phase 14 | Pending |
-| SETUP-02 | Phase 14 | Pending |
-| SETUP-03 | Phase 14 | Pending |
-| SETUP-04 | Phase 14 | Pending |
-| SETUP-05 | Phase 14 | Pending |
+| SETUP-01 | Phase 14 | Complete |
+| SETUP-02 | Phase 14 | Complete |
+| SETUP-03 | Phase 14 | Complete |
+| SETUP-04 | Phase 14 | Complete |
+| SETUP-05 | Phase 14 | Complete |
+| WEIGHT-01 | Phase 15 | Pending |
+| WEIGHT-02 | Phase 15 | Pending |
+| WEIGHT-03 | Phase 15 | Pending |
+| WEIGHT-04 | Phase 15 | Pending |
+| WEIGHT-05 | Phase 15 | Pending |
+| NUTR-03 | Phase 16 | Pending |
+| NUTR-04 | Phase 16 | Pending |
+| NUTR-05 | Phase 16 | Pending |
 
 **Coverage:**
 - v1 requirements: 39 total — Complete (100%)
