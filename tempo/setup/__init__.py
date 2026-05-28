@@ -1,19 +1,12 @@
 """First-run setup wizard package.
 
-Owns orchestration, ``.env`` I/O, state detection, and step dispatch for the
-``tempo setup`` command. The wizard itself lives in ``wizard.py`` (added in
-Plan 14-02); this package only exposes pure helpers that the wizard composes.
-
-Submodules:
-
-- :mod:`tempo.setup.env_io` — atomic ``.env`` read/write mirroring the
-  rotating-token atomic-write template in :mod:`tempo.connectors.tokens`.
-- :mod:`tempo.setup.state` — pure read-only install-state detection.
-
-No side-effect imports here: callers import the submodules directly so this
-package marker stays cheap and import-safe.
+Public entrypoint: ``from tempo.setup import run_wizard``. Submodules
+(``env_io``, ``state``, ``prompts``, ``wizard``) are imported directly by
+callers that need them — only :func:`run_wizard` is re-exported here.
 """
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from tempo.setup.wizard import run_wizard
+
+__all__ = ["run_wizard"]
