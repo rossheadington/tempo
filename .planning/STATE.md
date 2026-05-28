@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: nutrition-tracker
 status: shipped
-stopped_at: v1.5 (Phase 16) complete; nutrition tracker live in recovery report + standalone `tempo analyze nutrition`.
-last_updated: "2026-05-28T12:30:00.000Z"
+stopped_at: v1.5 (Phase 16) complete + post-v1.5 operational hardening on `main`; no active milestone. Ready for `/gsd-new-milestone` when next iteration starts.
+last_updated: "2026-05-28T18:00:00.000Z"
 last_activity: 2026-05-28 — Phase 16 (Nutrition Tracker, v1.5) shipped end-to-end. New `tempo/analysis/nutrition.py` (5 frozen+slots dataclasses; lenient two-format parser — inline + block-per-meal — interchangeable in one file; latest-wins dedup; left-open-right-closed 7d/28d windows; optional `target_kcal` deficit/surplus); `Settings.food_path` derived property + `Settings.target_kcal_default` opt-in via `TEMPO_TARGET_KCAL`; new `tempo/analysis/nutrition_report.py` + `tempo analyze nutrition` CLI write `reports/<date>-nutrition.md`; `RecoveryAssessment` gains `nutrition`/`nutrition_present` fields with `_render_nutrition_section` enforcing the 3-state degradation rule (absent → omit / stale >3d → one-line nudge / current → 7d P/C/F/cal rollup + optional goal-delta) positioned AFTER `## Weight`; `runner.generate_recovery` + `generate_all` + `generate_nutrition` thread `food_path` + `target_kcal`; `cli.py` + `sync/daily.py` pass them at every analyze entry point. `food.md.example` (14 entries, 7 inline + 7 block, 0 malformed) + `docs/NUTRITION.md` (394 lines) + `.env.example` (TEMPO_TARGET_KCAL knob) + README mention. 655 tests green (+36 from Phase 15), ruff clean. Verifier PASS 3/3.
 progress:
   total_phases: 1
@@ -22,11 +22,32 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** Turn scattered training and health data into trustworthy, structured signal that tells the user when to push, when to back off, and whether they're on track — combining objective data (Strava/Garmin) with their own plan and reflections.
-**Current focus:** v1.5 complete (nutrition tracker). v1.1 + v1.2 + v1.3 + v1.4 already shipped. Pi port deferred.
+**Current focus:** Between milestones. v1.0 + v1.1 + v1.2 + v1.3 + v1.4 + v1.5 all shipped. Significant post-v1.5 ad-hoc operational hardening done on `main` (see § Post-v1.5 hardening below). Next big iteration awaits `/gsd-new-milestone`.
+
+## Post-v1.5 hardening (2026-05-28, ad-hoc — not a tracked phase)
+
+These changes ship on `main` but have NO `phases/` folder. Captured here so a fresh future session knows what's in the code beyond Phase 16.
+
+- **Stash integration of the long-parked bot WIP.** Eight discrete improvements landed in one commit: SDK 0.2.x message-shape robustness (`AssistantMessage` class-name check, `TextBlock.text` fallback); SQLite cross-thread fix in `bot/app.py::_post_init`; empty-reply guard in `_run_agent_turn`; `/new` → `/clear` rename; indefinite session lifetime (no 4hr window); new `/sync` command in the bot; `setMyCommands` menu publish; voice transcript echoed back as `<i>📝 Heard: …</i>`; Markdown-tables → `<pre>` block rendering in `agent.py`.
+- **Orphan-journal-link auto-hook.** `tempo/journal/service.py::link_orphan_entries` + post-transform hook in `transforms/runner.py` + `tempo journal link-orphans` CLI. Journal entries captured before Strava sync now auto-link once the activity arrives.
+- **Code-review simplify pass.** 15 HIGH-severity findings actioned across the codebase: strength header bug (`## YYYY-MM-DD Name` without separator no longer drops the session); voice cleanup leak (single try/finally guarantees `_cleanup_voice_file` runs even on download failure); 5 Py2-style `except` clauses parenthesised; Garmin commands catch `ValueError` (missing creds → red remediation, not traceback); symmetric pipeline isolation (Strava now wrapped like Garmin); nutrition `blocks` ↔ `entries` dedup mismatch fixed; setup wizard `--only` + `--skip` precedence validated.
+- **Operational model simplification.**
+  - Dropped the daily-report schedule. `tempo run-daily` is kept as a manual command but the launchd plist is gone.
+  - New hourly `tempo sync --notify-on-failure --with-recent-streams` via `com.tempo.hourly-sync.plist` (launchd `StartInterval=3600`). Silent on success, Telegram message on any source failure or crash.
+  - New `tempo install-hourly-sync` CLI command renders the plist and prints bootout commands for the old daily plist.
+  - Reports are now generated on-demand via the bot (`generate-report` skill) or directly via `tempo analyze <type>`.
+- **HR stream backfill targeting.** `tempo strava streams --prefer-with-hr --limit N` filters the lazy-fetch queue to activities with `avg_hr > 0`, most-recent first. Plus `--with-recent-streams` opportunistically pulls HR streams for activities in the last 24h as part of every hourly sync (1-3 extra Strava requests, well under rate limit).
+- **Documentation split: `CLAUDE.md` = coach, `ENGINEERING.md` = engineering reference.** The bot's Claude Code session loads CLAUDE.md by default (coach persona, available skills, how to talk to Ross). When the session recognises an engineering task, it reads ENGINEERING.md (the technical content that previously lived in CLAUDE.md plus the simplify-pass updates).
+- **Eight `.claude/skills/*` SKILL.md files** backing the coach persona: `log-run-journal`, `log-strength-session`, `log-heat-session`, `log-weight`, `log-food`, `update-race-result`, `generate-report`, `coach-readout`. Each has trigger phrases, exact CLI/file operations, edge cases, and example replies in the coaching voice.
+- **`tempo/sync/notify.py`** — stdlib-only Telegram notifier (urllib, no python-telegram-bot dependency) for unattended jobs.
+
+**Total test count after hardening:** 686 passing, 1 deselected (the slow Whisper integration test), ruff clean.
+
+**Commits since v1.5 verification commit (`f9fe9bf`):** ~25 commits, all on `main`, pushed to origin.
 
 ## Current Position
 
-Phase: Phase 16 (Nutrition Tracker, v1.5) — COMPLETE
+Phase: Phase 16 (Nutrition Tracker, v1.5) — COMPLETE; post-v1.5 hardening also on `main`
 Plans: 16-01 + 16-02 + 16-03 + 16-04 — all COMPLETE
 Status: v1.5 SHIPPED. New `food.md` markdown tracker accepts TWO interchangeable formats — inline single-line (`- YYYY-MM-DD <meal>: <food> | p:<g> c:<g> f:<g> cal:<n>`) AND block-per-meal (`## YYYY-MM-DD <meal>` header + nested `- <food>: <macros>` bullets) — parsed by one lenient regex pipeline (case-insensitive macro keys, unordered, unknown keys silently ignored, missing required keys → entry skipped + line recorded in `malformed_lines`, never raises). Daily P/C/F/cal rollup with macro-% split (kcal-share formula, zero-kcal degenerate → 0.0 not crash). 7d trailing rollup averaged across days WITH entries only (a partial log doesn't drag the average down); 28d scalar kcal mean; optional `target_kcal` deficit/surplus when `TEMPO_TARGET_KCAL` is set in `.env`. Plan 16-01 added the parser + rollup + `Settings.food_path` + `Settings.target_kcal_default` + 22 unit tests. Plan 16-02 added `tempo analyze nutrition` CLI + `nutrition_report.render_nutrition` with header banner + 5 sections (today's totals / per-meal breakdown / 7d rolling / 28d kcal / optional goal) + 6 report tests + aggregate `tempo analyze` integration. Plan 16-03 wired the rollup into `RecoveryAssessment` + `_render_nutrition_section` (3-state rule mirroring weight, threshold 3d not 14d since food is daily) + `runner.generate_recovery`/`generate_all` + CLI; added 7 recovery-integration tests; section placed after `## Weight` so the non-running-context cluster reads Heat → Strength → Weight → Nutrition. Plan 16-04 shipped `food.md.example` (14 entries, both formats side-by-side, 0 malformed), `docs/NUTRITION.md` (394 lines), `.env.example` (`TEMPO_TARGET_KCAL` opt-in knob), and a README mention. 655 tests green (+36 from Phase 15), ruff clean. NUTR-03 / NUTR-04 / NUTR-05 all satisfied; NUTR-01 / NUTR-02 explicitly reclassified to v2 (`NUTR-CSV-01` / `NUTR-CSV-02`) — CSV importer becomes a Layer-2 follow-up once the markdown surface proves itself. Verifier PASS 3/3.
 Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The recovery report now carries Heat → Strength → Weight → Nutrition as its non-running-context cluster, and `tempo run-daily` automatically renders a dated nutrition report alongside the other four.

@@ -16,24 +16,37 @@ tells the user when to push, when to back off, and whether they're on track for
 their goals — combining objective data (Strava/Garmin) with their own plan and
 reflections.
 
-## Current Milestone: v1.1 Telegram Voice Coach (Mac)
+## Current milestone: between milestones — ready for next iteration
 
-**Goal:** Voice memos sent to a personal Telegram chat become structured journal / heat / race entries — transcribed locally on the user's Mac, fed to a Claude Code session running on the laptop (driven via the Claude Agent SDK using the user's Claude subscription), replies delivered back via Telegram.
+**Shipped (in order):**
 
-**Target features:**
-- Telegram bot intake (`python-telegram-bot`, long-polling, single-chat allowlist)
-- Local voice transcription via `faster-whisper` (default `small.en` int8 — CPU-only on Apple Silicon; configurable to bigger models if latency budget allows; `large-v3-turbo` rejected because faster-whisper has no Metal acceleration and turbo runs ~3-5× realtime on Mac CPU)
-- **Brain = Claude Code itself, driven via the Claude Agent SDK** — spawns the `claude` CLI as a subprocess so the user's existing Claude subscription is the auth + billing path (no separate Anthropic API key, no per-token cost beyond their subscription). Claude Code's built-in tools (Bash, Read, Write, Edit, plus all of the project's GSD slash commands and the `tempo` CLI it can call via Bash) are all available — no hand-rolled tool definitions needed.
-- **4-hour rolling conversation window** via Claude Code's native session resume (`--resume <session-id>`) per chat. New session after 4hrs of silence or on explicit "new session" command.
-- Reply routing — Claude Code stdout (final assistant message) flows back as a Telegram message, formatted as HTML (NOT MarkdownV2 — too many escape gotchas; HTML needs only `& < >` escaped).
-- Runs as a launchd background process on the user's Mac; KeepAlive=true, restart-on-crash.
+- **v1.0** (Phases 1-7): Strava + Garmin sync → SQLite → load/fitness/recovery/correlation analyses → daily launchd job.
+- **v1.1** (Phases 8-12): Modular trackers (races + heat); Telegram bot intake → faster-whisper transcription → Claude Code agent loop → launchd KeepAlive + privacy contract.
+- **v1.2** (Phase 13): Strength & conditioning tracker (`strength.md`) surfaced in recovery report.
+- **v1.3** (Phase 14): First-run setup wizard (`tempo setup`).
+- **v1.4** (Phase 15): Weight tracker (`weight.md`) with EWMA trend, kg/lb normalisation.
+- **v1.5** (Phase 16): Nutrition tracker (`food.md`) with two-format parser, standalone `tempo analyze nutrition` report.
 
-**Privacy stance:** Voice files NEVER leave the local machine — `faster-whisper` runs entirely on CPU on the laptop. Transcribed text + Claude Code's tool calls + replies flow through the user's existing Claude subscription (which already has access to chat history, code, etc. via Claude Code today — this is not a new disclosure). Telegram carries the voice memo and the reply text. No additional cloud surface vs. what the user already accepts by using Claude Code.
+**Operational hardening (post-v1.5, ad-hoc, no phase folder):**
 
-**Out of scope** (deferred to a later milestone — "v1.2 Pi port"):
-- Raspberry Pi deployment + systemd unit
-- ARM-specific `curl_cffi` / `garminconnect` wheel work
-- Remote / public-URL / TLS considerations
+- Stash integration of the long-parked bot WIP (SDK 0.2.x shape fixes, SQLite cross-thread fix, empty-reply guard, `/clear` rename, indefinite session lifetime, `/sync` command, voice transcript echo, Markdown-tables→`<pre>` rendering).
+- Code-review simplify pass — 15 HIGH-severity findings actioned across the codebase (strength header bug, voice cleanup leak, Py2-style except, Garmin ValueError gap, symmetric pipeline isolation, nutrition blocks dedup, setup `--only`/`--skip` precedence, etc.).
+- Operational model simplification: dropped the daily-report schedule; introduced hourly `tempo sync --notify-on-failure --with-recent-streams` via launchd `StartInterval`; daily reports now on-demand via the bot.
+- `--prefer-with-hr` flag on `tempo strava streams` for targeted HR-stream backfills.
+- Documentation split: `CLAUDE.md` is now the coach persona; `ENGINEERING.md` is the engineering reference loaded only when a code task is recognised.
+- Eight `.claude/skills/*` SKILL.md files backing the coach (log-run-journal, log-strength-session, log-heat-session, log-weight, log-food, update-race-result, generate-report, coach-readout).
+
+**No active milestone.** When ready to start the next, run `/gsd-new-milestone` from the project root — that picks up from this clean state.
+
+**Top-of-mind candidates for the next milestone** (not committed):
+- **Pi port** — long-standing v1.2 deferral. systemd timer + service for the hourly sync, ARM `curl_cffi` wheel work, `tempo install-hourly-sync --systemd` variant. `docs/RASPBERRY_PI.md` already captures the host details.
+- **Time-in-zone analysis** — now that the hourly sync pulls recent HR streams automatically, this is unblocked. Adds a new analysis module + report.
+- **Tracker cascade refactor** — collapse the four `_render_<X>_section` functions in `recovery.py` into a registry, simplify the `<X>_path` kwarg cascade through 5 layers. Worth doing if/when a 5th tracker arrives.
+- **Backup story** — nightly encrypted dump of `~/.tempo/tempo.db` + `training/*.md` to a cloud target. Only the journal/heat/strength/weight/food data is irreplaceable; Strava+Garmin can be re-pulled within their retention windows.
+
+**Out of scope (no current plans):**
+- Web/mobile UI, multi-user, hosted DB.
+- Remote/public-URL/TLS for the bot.
 
 ## Requirements
 
