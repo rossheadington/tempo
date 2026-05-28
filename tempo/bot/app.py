@@ -8,7 +8,7 @@ in :func:`run`; the CLI wrapper in plan 09-02 just calls ``run()``.
 Phase 11 plan 11-03 extends :func:`build_application`:
 
 * registers the new :func:`text_handler` (non-command text -> agent loop) and
-  :func:`clear_command_handler` (``/new`` resets the per-chat session);
+  :func:`clear_command_handler` (``/clear`` resets the per-chat session);
 * stashes ``settings.db_path`` in ``bot_data`` so handlers can open
   short-lived sqlite connections without re-importing :mod:`tempo.config`;
 * runs :func:`tempo.db.init_db` in the ``post_init`` hook so migration 0005

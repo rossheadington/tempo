@@ -1,19 +1,26 @@
-"""The ``tempo`` command-line interface.
+"""The ``tempo`` command-line interface — Typer entrypoint for every subcommand.
 
-Phase 1 wired the command surface and DB initialisation. Phase 2 fills in the
-Strava ingestion path:
+Subcommand groups:
 
-* ``tempo strava auth``     -- the one-time OAuth handshake (STRV-01/02).
-* ``tempo strava backfill`` -- resumable all-time history pull (STRV-03).
-* ``tempo strava streams``  -- lazy fetch of activity streams (STRV-04).
-* ``tempo strava sync`` / ``tempo sync`` -- daily incremental sync (STRV-05).
+* ``tempo setup``                       -- first-run setup wizard (Phase 14).
+* ``tempo strava ...``                  -- OAuth + backfill + streams + sync.
+* ``tempo garmin ...``                  -- login + backfill + sync (isolated).
+* ``tempo journal ...``                 -- validated subjective entries +
+                                           orphan-link sweep.
+* ``tempo bot ...``                     -- Telegram bot run + scheduler +
+                                           voice-cache purge.
+* ``tempo sync`` / ``transform`` /
+  ``rederive`` / ``analyze`` /
+  ``run-daily``                         -- the core daily pipeline.
+* ``tempo install-scheduler``           -- launchd plist for the daily run.
 
-Connectors write only to the raw store (STRV-06). ``transform``/``analyze``/
-``journal`` remain stubs for later phases.
+Connectors write only to the raw store (STRV-06); pure transforms read raw
+and write structured tables; analyses are pure stdlib over the structured
+layer + user markdown trackers (races, heat, strength, weight, food).
 
-Running bare ``tempo`` (the ``init`` command, also the default) creates the
-runtime data dir, opens/creates the SQLite DB in WAL mode, and applies
-migrations so the foundation tables exist.
+Running bare ``tempo`` (also ``tempo init``) creates the runtime data dir,
+opens/creates the SQLite DB in WAL mode, and applies migrations so every
+table exists for the schema version recorded in ``tempo.db.SCHEMA_VERSION``.
 """
 
 from __future__ import annotations
