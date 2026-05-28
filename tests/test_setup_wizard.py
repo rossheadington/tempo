@@ -78,6 +78,17 @@ def patched_get_settings(monkeypatch: pytest.MonkeyPatch, fresh_settings: Settin
     return calls
 
 
+@pytest.fixture(autouse=True)
+def _no_real_browser_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent the Strava step from launching the real browser during tests.
+
+    Why: stubbed `authorization_url` returns `https://example/auth`; without
+    this, `webbrowser.open` would actually open it in the user's default
+    browser on each test run.
+    """
+    monkeypatch.setattr("tempo.setup.wizard._can_open_browser", lambda: False)
+
+
 @pytest.fixture
 def all_delegated_mocks(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Replace every delegated helper with a recording mock.
