@@ -1,0 +1,89 @@
+# Strength sessions -- EXAMPLE / TEMPLATE
+
+Copy this file to your Tempo content dir as `strength.md` (default
+`<content_root>/strength.md`, redirect with `TEMPO_CONTENT_DIR`) and edit it.
+Tempo reads it for S&C context in the recovery report (SC-03); it is never
+committed (the content dir lives outside the repo tree).
+
+## Format
+
+One session per `## `-header block. The header carries the date (required),
+optional start time, and optional name. Metadata lines and exercise bullets
+sit beneath it. Parsing is lenient: unknown keys are silently ignored,
+malformed lines are skipped, and a missing file degrades to `present=False`
+so analyses still run. Append new sessions to the bottom -- the file is
+treated as append-only by convention (Tempo never edits it).
+
+**Header** -- `## YYYY-MM-DD [HH:MM] [— Name]`
+
+- ISO date `YYYY-MM-DD` is required. Sessions with an unparseable date are
+  dropped at parse time.
+- Optional `HH:MM` (24-hour wall-clock start) immediately after the date.
+- Optional ` — Name` (free-form session name). Either an em-dash `—` or a
+  hyphen ` - ` separator is accepted.
+
+**Metadata** (between header and the first exercise bullet, any order)
+
+- `rest: M:SS` -- rest between sets, converted to seconds (`1:30` → 90).
+  Malformed → `None`.
+- `notes: <free text>` -- stored verbatim.
+- Any other `key: value` line is silently ignored.
+
+**Exercise bullets** -- `- <Name> [(Equipment)] [[GROUP]]: <set>, <set>, ...`
+
+- `(Equipment)` -- optional annotation (`Barbell`, `Machine`, `Cable`,
+  `Dumbbell`, `Leg Press`, ...). Stored verbatim. Bodyweight movements
+  typically omit it.
+- `[GROUP]` -- optional superset label (`[A]`, `[B]`, `[C1]`, ...). Two
+  exercises in the same session sharing the same label are understood to
+  be supersetted. Stored verbatim; the parser does not enforce pairing.
+- `<set>` comes in three flavours:
+  - **Weighted** `WxR` -- e.g. `55x8` → 55 kg × 8 reps. Lowercase `x`,
+    uppercase `X`, and unicode `×` all accepted. Whitespace around the
+    separator is fine (`55 x 8`).
+  - **Timed hold** `M:SS` -- e.g. `1:00` → 60-second hold.
+  - **Bodyweight reps** bare integer -- e.g. `15` → 15 reps unloaded.
+- Anything that doesn't match those three is silently skipped.
+
+## Sessions
+
+## 2026-05-26 18:19 — Lower body
+rest: 1:30
+notes: pogos + SLGB supersetted
+
+- Romanian Deadlift (Barbell): 40x8, 50x8, 55x7, 55x8
+- Hip Thrust (Barbell): 50x10, 55x10, 55x10, 55x10
+- Seated Leg Curl (Machine): 25x12, 30x12, 30x12
+- Calf Press (Leg Press): 80x16, 80x16, 80x16, 80x16
+- Pogos [A]: 15, 15, 15
+- Single Leg Glute Bridge [A]: 8, 8, 8
+- Plank: 1:00, 1:00, 1:00, 0:30
+
+## 2026-05-23 — Upper body
+rest: 2:00
+notes: shoulders still tender from Wednesday
+
+- Bench Press (Barbell): 50x6, 55x5, 55x5, 55x5
+- Pull-up: 6, 6, 5, 4
+- Seated Row (Cable): 35x10, 40x10, 40x10
+- Face Pull (Cable): 20x15, 20x15, 20x15
+
+## 2026-05-21
+notes: short conditioning day -- no weights
+
+- Pogos: 20, 20, 20
+- Single Leg Glute Bridge: 10, 10, 10
+- Side Plank: 0:45, 0:45, 0:45, 0:45
+- Dead Bug: 12, 12, 12
+
+## 2026-05-19 07:45 — Posterior chain (Dumbbell focus)
+rest: 1:30
+
+- Single Leg RDL (Dumbbell): 16x10, 16x10, 16x10
+- Walking Lunge (Dumbbell): 12x10, 12x10, 12x10
+- Hamstring Curl (Machine): 25x12, 30x12, 30x12
+- Plank: 1:00, 1:00, 0:45
+
+_The parser is lenient: unknown keys are silently ignored; malformed lines
+are skipped; a missing file degrades to `present=False` and analyses still
+run._

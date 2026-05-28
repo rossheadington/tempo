@@ -434,3 +434,40 @@ def test_strength_rollup_counts_session_with_zero_weighted_sets() -> None:
     roll = strength_rollup(sessions, TODAY)
     assert roll.last_7d_count == 1
     assert roll.last_7d_tonnage_kg == 0.0
+
+
+def test_example_file_parses_cleanly() -> None:
+    """The committed strength.md.example must parse cleanly through
+    parse_strength -- it's both the documentation of the format AND a parser
+    fixture that guards against drift between the template and the parser.
+
+    Asserts: ≥ 3 sessions parse; the owner's Tuesday 2026-05-26 session is
+    present with the expected shape (7 exercises, the [A] superset pair on
+    Pogos + Single Leg Glute Bridge, plank durations [60,60,60,30], rest_s=90).
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    example_path = repo_root / "strength.md.example"
+    assert example_path.exists(), example_path
+
+    ctx = parse_strength(example_path)
+    assert ctx.present
+    assert len(ctx.sessions) >= 3, [s.date for s in ctx.sessions]
+
+    tuesday = next(
+        (s for s in ctx.sessions if s.date == date(2026, 5, 26)), None
+    )
+    assert tuesday is not None, [s.date for s in ctx.sessions]
+    assert tuesday.start_local == "18:19"
+    assert tuesday.name == "Lower body"
+    assert tuesday.rest_s == 90
+    assert tuesday.notes == "pogos + SLGB supersetted"
+    assert len(tuesday.exercises) == 7, [e.name for e in tuesday.exercises]
+
+    supersets = [e for e in tuesday.exercises if e.superset_group == "A"]
+    assert len(supersets) == 2
+    superset_names = {e.name for e in supersets}
+    assert superset_names == {"Pogos", "Single Leg Glute Bridge"}, superset_names
+
+    plank = next(e for e in tuesday.exercises if e.name == "Plank")
+    durations = [st.duration_s for st in plank.sets]
+    assert durations == [60, 60, 60, 30], durations
