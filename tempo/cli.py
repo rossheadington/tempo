@@ -314,16 +314,21 @@ def garmin_backfill_cmd(
 
     settings, conn = _connected_db()
     try:
-        connector = build_garmin_connector(settings, backfill_days=days)
+        try:
+            connector = build_garmin_connector(settings, backfill_days=days)
+        except ValueError as exc:
+            typer.secho(f"Garmin backfill skipped: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
         raw = RawWriter(conn, GARMIN_SOURCE)
-        connector.backfill(raw)
+        try:
+            connector.backfill(raw)
+        except (GarminAuthError, GarminSyncError) as exc:
+            typer.secho(f"Garmin backfill skipped: {exc}", fg=typer.colors.YELLOW, err=True)
+            raise typer.Exit(code=1) from exc
         count = conn.execute(
             "SELECT COUNT(*) FROM raw_response WHERE source=?", (GARMIN_SOURCE,)
         ).fetchone()[0]
         typer.secho(f"Garmin backfill complete. {count} raw wellness rows stored.", fg="green")
-    except (GarminAuthError, GarminSyncError) as exc:
-        typer.secho(f"Garmin backfill skipped: {exc}", fg=typer.colors.YELLOW, err=True)
-        raise typer.Exit(code=1) from exc
     finally:
         conn.close()
 
@@ -340,7 +345,11 @@ def garmin_sync_cmd() -> None:
 
     settings, conn = _connected_db()
     try:
-        connector = build_garmin_connector(settings)
+        try:
+            connector = build_garmin_connector(settings)
+        except ValueError as exc:
+            typer.secho(f"Garmin sync skipped -- {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
         result = pipeline.run_garmin_sync(conn, connector)
     finally:
         conn.close()
