@@ -421,13 +421,18 @@ rTSS) and optionally `TEMPO_MAX_HR` / `TEMPO_RESTING_HR` / `TEMPO_THRESHOLD_HR`
 (the hrTSS fallback). See `.env.example`.
 
 **Tracker files**: copy `races.md.example`, `heat.md.example`,
-`strength.md.example`, and `weight.md.example` into your content dir as
-`races.md` / `heat.md` / `strength.md` / `weight.md` (default `~/.tempo/`)
-and edit them. Tempo reads `races.md` for race-readiness context, `heat.md`
-for heat-adaptation context, `strength.md` for S&C context (see
-[`docs/STRENGTH.md`](docs/STRENGTH.md)), and `weight.md` for body-weight
-context with a 7d/28d/EWMA rollup (see [`docs/WEIGHT.md`](docs/WEIGHT.md))
-in the recovery report; none are ever committed.
+`strength.md.example`, `weight.md.example`, and `food.md.example` into
+your content dir as `races.md` / `heat.md` / `strength.md` / `weight.md`
+/ `food.md` (default `~/.tempo/`) and edit them. Tempo reads `races.md`
+for race-readiness context, `heat.md` for heat-adaptation context,
+`strength.md` for S&C context (see
+[`docs/STRENGTH.md`](docs/STRENGTH.md)), `weight.md` for body-weight
+context with a 7d/28d/EWMA rollup (see
+[`docs/WEIGHT.md`](docs/WEIGHT.md)), and `food.md` for daily nutrition
+with a 7d-trailing rollup (lenient parser accepts both inline and
+block-per-meal formats; see [`docs/NUTRITION.md`](docs/NUTRITION.md)) in
+the recovery report and the standalone `tempo analyze nutrition` report;
+none are ever committed.
 
 ## Status
 

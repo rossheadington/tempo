@@ -1,0 +1,75 @@
+# Food log -- EXAMPLE / TEMPLATE
+
+Copy this file to your Tempo content dir as `food.md` (default
+`<content_root>/food.md`, redirect with `TEMPO_CONTENT_DIR`) and edit it.
+Tempo reads it for the standalone `tempo analyze nutrition` report (NUTR-05)
+AND the recovery report's `## Nutrition` section. The file is never committed
+(the content dir lives outside the repo tree). The numbers below are
+synthetic. Set `TEMPO_TARGET_KCAL` in `.env` to enable goal-tracking; see
+`docs/NUTRITION.md` for details.
+
+# Format overview
+
+Two interchangeable formats may be mixed freely in the same file:
+
+  * **Format A (inline)** -- one entry per `-` bullet:
+    `- YYYY-MM-DD <meal>: <food> | p:<g> c:<g> f:<g> cal:<n>`.
+    Best for quick single-item logging (one shell `cat >> food.md` per
+    entry).
+
+  * **Format B (block-per-meal)** -- a `## YYYY-MM-DD <meal>` header
+    followed by nested `- <food>: p:<g> c:<g> f:<g> cal:<n>` bullets. Best
+    for multi-item meals (chicken + rice + greens + dressing as separate
+    macro-attributed components).
+
+See `docs/NUTRITION.md` for the full grammar + equivalence guarantee (a
+meal expressed inline parses to the same `FoodEntry` as the same meal
+expressed as a block, modulo `source_format` / `source_line`).
+
+# Inline entries (Format A)
+
+- 2026-05-28 breakfast: 80g rolled oats with milk | p:13 c:54 f:6 cal:303
+- 2026-05-28 snack: 1 banana | p:1.3 c:27 f:0.4 cal:105
+- 2026-05-28 lunch: chicken salad bowl | cal:404 p:38 c:22 f:18
+- 2026-05-28 dinner: salmon + rice + greens | p:42 c:60 f:14 cal:558
+- 2026-05-27 breakfast: 2 eggs on toast | p:18 c:28 f:14 cal:310
+- 2026-05-27 lunch: turkey sandwich + apple | p:32 c:55 f:12 cal:450
+- 2026-05-26 snack: handful of almonds | with raisins | p:6 c:11 f:14 cal:180
+
+The `cal:404 p:38 c:22 f:18` line above shows that macro key order is FREE
+-- `cal:` first parses identically to the `p:` / `c:` / `f:` / `cal:` order
+elsewhere. The almonds line shows the **first-`|` split**: the food label
+becomes `handful of almonds` and the trailing `| with raisins` segment is
+ignored when the macro keys are found by the lenient macro scanner.
+
+# Block entries (Format B)
+
+## 2026-05-25 lunch
+- chicken breast (200g): p:38 c:0 f:8 cal:230
+- mixed greens (150g): p:3 c:8 f:0.5 cal:45
+- vinaigrette (1 tbsp): p:0 c:1 f:9 cal:84
+- rice (100g cooked): p:2.4 c:28 f:0.3 cal:130
+
+## 2026-05-24 dinner
+- grilled salmon (180g): p:36 c:0 f:14 cal:280
+- sweet potato (200g): p:3 c:42 f:0.2 cal:185
+- steamed broccoli (150g): p:4 c:11 f:0.6 cal:55
+
+# What NOT to do
+
+Examples of malformed lines (shown with a leading `~` so they are NOT
+parsed as entries). In the real file each of these would be skipped and its
+1-indexed line number would land in `FoodContext.malformed_lines`:
+
+  * `~ 2026-13-40 lunch: chicken | p:38 c:22 f:18 cal:404` -- bad date.
+  * `~ 2026-05-23 snack: 1 apple | p:0.5 c:25 cal:95` -- missing `f:` macro.
+  * `~ 2026-05-23 dinner: pasta | p:twenty c:80 f:10 cal:520` -- `p:` not a float.
+  * `~ ## 2026-13-40 breakfast` -- block header with a bad date: the whole
+    block (header + every nested bullet up to the next valid
+    `## YYYY-MM-DD`) is skipped.
+
+_Tempo's parser is lenient: missing file degrades to `present=False`,
+malformed lines are skipped (their line numbers land in
+`FoodContext.malformed_lines`), and the parser NEVER raises. Both formats
+are semantically equivalent -- see `docs/NUTRITION.md` for the equivalence
+guarantee + the full grammar._
