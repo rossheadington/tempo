@@ -70,7 +70,7 @@ def _opt_real(value: Any) -> float | None:
         return None
     try:
         return float(value)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None
 
 
@@ -236,8 +236,12 @@ def _raw_by_day(conn: sqlite3.Connection, endpoint: str) -> dict[str, dict[str, 
     for r in rows:
         try:
             payload = json.loads(r["payload"])
-        except TypeError, ValueError, json.JSONDecodeError:
-            logger.warning("garmin transform: bad %s payload for %s; skipping", endpoint, r[0])
+        except json.JSONDecodeError:
+            logger.warning(
+                "garmin transform: bad %s payload for %s; skipping",
+                endpoint,
+                r["entity_key"],
+            )
             continue
         if isinstance(payload, dict):
             out[str(r["entity_key"])] = payload

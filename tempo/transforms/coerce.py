@@ -17,7 +17,7 @@ def _opt_float(value: Any) -> float | None:
         return None
     try:
         return float(value)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None
 
 
@@ -27,7 +27,7 @@ def _opt_int(value: Any) -> int | None:
         return None
     try:
         return int(float(value))
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None
 
 
