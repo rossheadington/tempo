@@ -27,6 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 11: Claude Code Agent Loop (v1.1)** - claude-agent-sdk wiring, per-chat session-id store with 4hr resume window, HTML reply formatting with 4096-char split, `/new` reset, per-turn token logging
 - [x] **Phase 12: Lifecycle, Hardening, Privacy (v1.1)** - launchd LaunchAgent with KeepAlive, top-level error handler, voice-file retention policy, project-scoped working dir
 - [ ] **Phase 13: Strength & Conditioning Tracker (v1.2)** - New `strength.md` markdown tracker with lenient parser (WxR / bodyweight reps / timed holds / supersets / equipment / metadata), surfaced in recovery report alongside heat (rolling-window count + last-session age + tonnage)
+- [ ] **Phase 14: First-Run Setup Wizard (v1.3)** - `tempo setup` interactive command walks zero → working daily sync (DB init, content dir, Strava OAuth, optional Garmin / Telegram bot, optional launchd installs, smoke test); idempotent; stdlib-only; atomic `.env` writes with 0600 perms
 
 ## Phase Details
 
@@ -194,6 +195,19 @@ Plans:
 - [x] 12-02-PLAN.md — Top-level PTB error handler + docs/PRIVACY.md + TELEGRAM_BOT.md / README updates (VOICE-12)
 **UI hint**: yes
 
+### Phase 14: First-Run Setup Wizard (v1.3)
+**Goal**: A single interactive `tempo setup` command walks a new user from zero (fresh clone, no DB, no `.env`, no tokens) to a fully working daily-sync pipeline (and optionally a running Telegram bot). Replaces the multi-step manual setup currently spread across the README with one orchestrated, idempotent flow. The wizard is pure orchestration — every credentialed step delegates to the existing CLI surface (`tempo strava auth`, `tempo garmin login`, `tempo install-scheduler`, `tempo bot install-scheduler`). Stdlib-only prompts (`input`, `getpass`); no new deps. Atomic `.env` writes with 0600 perms (mirroring `tempo/connectors/tokens.py`). Each step is skippable; `--only=<step>` lets the user re-run a single step (e.g. to add the bot to an existing install).
+**Mode:** mvp
+**Depends on**: Phase 13
+**Requirements**: SETUP-01, SETUP-02, SETUP-03, SETUP-04, SETUP-05
+**Success Criteria** (what must be TRUE):
+  1. `tempo setup` walks the user through, in order: welcome banner + tooling check (Python ≥ 3.14, `uv` present) → DB init → content-dir picker → Strava creds (with strava.com/settings/api instructions) + OAuth flow → optional Garmin login → optional Telegram bot creds (with @BotFather / @userinfobot instructions) → optional daily launchd install → optional bot launchd install (only if Telegram configured) → smoke `tempo sync` → success summary with "what's installed and what's not"
+  2. The wizard detects existing state and never blindly clobbers it: a present `.env` key is shown as `[set]` with a `keep / change / skip` choice; a present DB / token file / launchd plist is shown as `[done]` and the corresponding step defaults to skip-with-confirm; a user can re-run `tempo setup` after a partial install and have it pick up where they left off
+  3. All `.env` writes go through a `_atomic_env_write(env_path, updates: dict[str, str])` helper modelled on `tempo/connectors/tokens.py` (temp-write → fsync → `os.replace`, mode 0600, dir fsync); existing keys not in `updates` are preserved verbatim (including comments and ordering where reasonable); secret values entered via `getpass` are never echoed back to the terminal after entry
+  4. The Strava / Garmin / Telegram / launchd steps invoke the EXISTING `tempo` CLI flows via `typer.testing.CliRunner` or direct function calls — there is NO duplicated auth handshake, no duplicated launchd plist render, no duplicated MFA prompt code. The wizard owns only: prompts, `.env` I/O, state detection, dispatch, and the final smoke test
+  5. CLI flags work: `--skip-garmin`, `--skip-telegram`, `--skip-scheduler`, `--only=<step>` (`db` / `content` / `strava` / `garmin` / `telegram` / `scheduler` / `bot-scheduler` / `smoke`); the final smoke test runs `tempo sync` and reports per-source status (Strava: ok / rate-limited / auth-error / etc.; Garmin same); a non-zero exit code is returned ONLY if a step the user did NOT skip failed terminally
+**Plans**: TBD
+
 ### Phase 13: Strength & Conditioning Tracker (v1.2)
 **Goal**: A new owner-maintained `strength.md` (in the content dir) captures S&C sessions as an append-only markdown log, parsed leniently into structured `StrengthSession` / `StrengthExercise` / `StrengthSet` dataclasses and surfaced in the recovery report. Mirrors the established `heat.md` pattern exactly: lenient parser (missing file → `present=False`, malformed lines skipped, never raises), frozen+slots dataclasses, rolling-window rollup attached to `RecoveryAssessment`, renderer with 3-state degradation (absent / lapsed / active). Layer 1 only — structured DB tables, Strong-app CSV importer, and any separate tonnage-trend report are explicitly OUT OF SCOPE for this phase; the goal is to prove the markdown layer is useful before investing in more.
 **Mode:** mvp
@@ -227,6 +241,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 11. Claude Code Agent Loop | 1/3 | In Progress|  |
 | 12. Lifecycle, Hardening, Privacy | 0/2 | Not started | — |
 | 13. Strength & Conditioning Tracker | 0/0 | Not started | — |
+| 14. First-Run Setup Wizard | 0/0 | Not started | — |
 
 **Milestone status:**
 - **v1.0 (Phases 1–8):** COMPLETE — all 45 v1 + Phase-8 v1.1 requirements shipped (2026-05-27).

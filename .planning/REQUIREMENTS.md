@@ -127,6 +127,18 @@ A modular S&C log alongside `races.md` / `heat.md`. Owner maintains `strength.md
 - [ ] **SC-04**: A `strength.md.example` template is committed in the repo root (mirroring `races.md.example` / `heat.md.example`); `docs/STRENGTH.md` documents the format end-to-end with the user's Strong-app paste example shown verbatim
 - [ ] **SC-05**: `Settings.strength_path` exposes the resolved path (defaults to `<content_root>/strength.md`); the analysis runner threads it through `assess_recovery_from_db` the same way `heat_path` is threaded; tests cover happy path + malformed input + missing file + the recovery-report integration
 
+## v1.3 Requirements — First-Run Setup Wizard
+
+A single interactive command `tempo setup` that walks a new user from zero (fresh clone, no DB, no `.env`, no tokens) to a fully working daily-sync pipeline (and optionally a running Telegram bot). Removes the multi-step manual setup currently spread across the README. Idempotent — re-runnable to fix one stuck step, add the bot later, etc. Stdlib-only (no new deps).
+
+### First-Run Setup (Phase 14)
+
+- [ ] **SETUP-01**: A `tempo setup` typer subcommand walks the user through every step required to reach a working daily sync (DB init → content dir → Strava creds + OAuth → optional Garmin login → optional Telegram bot creds → optional daily/bot launchd installs → smoke `tempo sync`), in order, with a clear welcome banner and a final summary of what was configured
+- [ ] **SETUP-02**: The wizard detects existing state (DB present, `.env` keys filled, token files written, launchd plists installed) and presents each step as `[done]` / `[keep / change / skip]` / `[fresh]` so a re-run never blindly clobbers a working config; the user can re-run safely to fill in one missing piece
+- [ ] **SETUP-03**: The wizard reads and writes `.env` atomically with 0600 perms (temp-write → fsync → rename, mirroring `tempo/connectors/tokens.py`), preserves keys it does not own, and never echoes secret values back to the terminal once entered (`getpass` for Strava client secret, Garmin password, Telegram bot token)
+- [ ] **SETUP-04**: Every credentialed step delegates to the EXISTING flows rather than reimplementing them — Strava OAuth goes through `tempo strava auth`, Garmin login goes through `tempo garmin login`, launchd installs go through `tempo install-scheduler` / `tempo bot install-scheduler`. The wizard is orchestration only; no duplicated auth/install logic
+- [ ] **SETUP-05**: Each step is independently skippable (`--skip-garmin`, `--skip-telegram`, `--skip-scheduler` flags, plus per-step Y/N prompts); a `--only=<step>` flag runs a single named step (e.g. `tempo setup --only=telegram` to add the bot to an existing install); the final smoke test invokes `tempo sync` and reports per-source success/failure so the user knows the creds actually work before exiting
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -233,6 +245,11 @@ Explicitly excluded. Documented to prevent scope creep.
 | SC-03 | Phase 13 | Pending |
 | SC-04 | Phase 13 | Pending |
 | SC-05 | Phase 13 | Pending |
+| SETUP-01 | Phase 14 | Pending |
+| SETUP-02 | Phase 14 | Pending |
+| SETUP-03 | Phase 14 | Pending |
+| SETUP-04 | Phase 14 | Pending |
+| SETUP-05 | Phase 14 | Pending |
 
 **Coverage:**
 - v1 requirements: 39 total — Complete (100%)
