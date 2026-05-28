@@ -43,21 +43,6 @@ def _now(now: datetime | None) -> datetime:
     return now
 
 
-def _load_session(conn: sqlite3.Connection, chat_id: int) -> tuple[str, datetime] | None:
-    """Return ``(session_id, last_message_at)`` for ``chat_id`` or ``None``.
-
-    Internal helper: the on-disk timestamp is parsed back to a tz-aware
-    :class:`datetime` so callers compare apples-to-apples against ``now``.
-    """
-    row = conn.execute(
-        "SELECT session_id, last_message_at FROM bot_session WHERE chat_id = ?",
-        (chat_id,),
-    ).fetchone()
-    if row is None:
-        return None
-    return str(row["session_id"]), datetime.fromisoformat(str(row["last_message_at"]))
-
-
 def get_or_create_session(
     conn: sqlite3.Connection,
     chat_id: int,
@@ -69,11 +54,11 @@ def get_or_create_session(
     command (see :func:`reset_session`). There is no time-based expiry --
     the conversation stays alive across days / weeks / restarts.
     """
-    loaded = _load_session(conn, chat_id)
-    if loaded is None:
-        return None
-    session_id, _last_at = loaded
-    return session_id
+    row = conn.execute(
+        "SELECT session_id FROM bot_session WHERE chat_id = ?",
+        (chat_id,),
+    ).fetchone()
+    return str(row["session_id"]) if row is not None else None
 
 
 def save_session(
