@@ -9,11 +9,11 @@
 
 **What this phase delivers (Layer 1 only):**
 
-- A new `weight.md` tracker file in the content dir (default `<content_root>/weight.md`, redirectable via `TEMPO_CONTENT_DIR` — the owner's working dir is `~/Projects/tempo/training/`).
-- A new module `tempo/analysis/weight.py` defining frozen+slots `WeightEntry` / `WeightContext` / `WeightRollup` dataclasses plus a lenient `parse_weight(path)` and a `weight_rollup(entries, today)` function. Mirrors `tempo/analysis/strength.py` and `tempo/analysis/heat.py` exactly in shape.
-- `Settings.weight_path` derived property in `tempo/config.py` (mirrors `strength_path` / `heat_path`).
-- The recovery analysis (`tempo/analysis/recovery.py`) gains a weight rollup attached to `RecoveryAssessment` (`weight: WeightRollup | None`, `weight_present: bool`) and the renderer gains a `## Weight` section that follows the same 3-state degradation rule heat/strength use (absent → omit / lapsed-but-history-exists → one-line nudge / current → full rollup line).
-- `assess_recovery_from_db` accepts an optional `weight_path: Path | None` argument; the analysis runner (`tempo/analysis/runner.py`) threads it through; the CLI (`tempo/cli.py`) passes `settings.weight_path` exactly the way it passes `settings.strength_path` / `settings.heat_path`.
+- A new `weight.md` tracker file in the content dir (default `<content_root>/weight.md`, redirectable via `RUNOS_CONTENT_DIR` — the owner's working dir is `~/Projects/RunOS/training/`).
+- A new module `runos/analysis/weight.py` defining frozen+slots `WeightEntry` / `WeightContext` / `WeightRollup` dataclasses plus a lenient `parse_weight(path)` and a `weight_rollup(entries, today)` function. Mirrors `runos/analysis/strength.py` and `runos/analysis/heat.py` exactly in shape.
+- `Settings.weight_path` derived property in `runos/config.py` (mirrors `strength_path` / `heat_path`).
+- The recovery analysis (`runos/analysis/recovery.py`) gains a weight rollup attached to `RecoveryAssessment` (`weight: WeightRollup | None`, `weight_present: bool`) and the renderer gains a `## Weight` section that follows the same 3-state degradation rule heat/strength use (absent → omit / lapsed-but-history-exists → one-line nudge / current → full rollup line).
+- `assess_recovery_from_db` accepts an optional `weight_path: Path | None` argument; the analysis runner (`runos/analysis/runner.py`) threads it through; the CLI (`runos/cli.py`) passes `settings.weight_path` exactly the way it passes `settings.strength_path` / `settings.heat_path`.
 - A committed `weight.md.example` template in the repo root showing 2+ weeks of entries as a worked example.
 - A new `docs/WEIGHT.md` documenting the format end-to-end (keys, lenient-parsing contract, agent-append guidance, the 7d/28d/EWMA rollup semantics).
 - New tests `tests/test_weight.py` (parser happy/malformed/missing-file paths + rollup window math) + extended `tests/test_recovery.py` covering the recovery-report integration.
@@ -23,9 +23,9 @@
 - Structured DB tables for weight entries. The markdown layer must prove useful in real use first.
 - Body-fat % / lean-mass / body-composition tracking. Single weight metric only.
 - Unit conversion. Weight is stored verbatim with unit annotation (default `kg`); parser accepts `kg` or `lb` but does NOT cross-convert. Rollup arithmetic uses the most recent unit seen and refuses to mix units in the same window (logs a warning + returns `None` for the rollup if mixed).
-- A `tempo weight add` CLI command (mirror of `tempo journal add`). Manual markdown edit only; the agent appends directly when asked.
+- A `runos weight add` CLI command (mirror of `runos journal add`). Manual markdown edit only; the agent appends directly when asked.
 - Auto-import from Withings / Fitbit / Garmin Connect weight scales. Phase 6 Garmin connector does NOT pull body-composition; if it did, that would be a separate phase that derives weight rows into a structured table.
-- A weight-trend report (`tempo analyze weight`). The recovery-report section is enough surface; a dedicated report is Layer 2.
+- A weight-trend report (`runos analyze weight`). The recovery-report section is enough surface; a dedicated report is Layer 2.
 - Goal tracking (target weight, weekly delta vs goal). Out of scope. The rollup surfaces the delta vs 28-day baseline; goal-driven analysis is deferred.
 
 </domain>
@@ -38,7 +38,7 @@
 - All tracker files live in the user's content dir, resolved via `config.content_dir` (or `data_dir` fallback). Same pattern as `races_path` / `heat_path` / `strength_path`.
 - New derived path: `weight_path` on `Settings` (`content_root / "weight.md"`).
 - Committed `.md.example` template in the repo root (`weight.md.example`), mirroring `strength.md.example`.
-- The owner's content dir resolves to `~/Projects/tempo/training/` per their `.env`. The phase MUST NOT hard-code this path; it MUST go through `settings.weight_path`. The real file at `training/weight.md` is gitignored by the existing `training/` rule (already covered).
+- The owner's content dir resolves to `~/Projects/RunOS/training/` per their `.env`. The phase MUST NOT hard-code this path; it MUST go through `settings.weight_path`. The real file at `training/weight.md` is gitignored by the existing `training/` rule (already covered).
 
 ### `weight.md` format (LOCKED)
 
@@ -71,7 +71,7 @@ One entry per ` - ` bullet line. Lenient throughout: malformed lines are skipped
 
 ### Dataclasses (LOCKED)
 
-All `@dataclass(frozen=True, slots=True)`, in `tempo/analysis/weight.py`:
+All `@dataclass(frozen=True, slots=True)`, in `runos/analysis/weight.py`:
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -164,10 +164,10 @@ class WeightRollup:
 
 ### Code organisation conventions
 
-- New module: `tempo/analysis/weight.py`. Mirror `tempo/analysis/strength.py` and `tempo/analysis/heat.py` structure.
+- New module: `runos/analysis/weight.py`. Mirror `runos/analysis/strength.py` and `runos/analysis/heat.py` structure.
 - Tests: `tests/test_weight.py` (parser + rollup). Recovery integration tests go in `tests/test_recovery.py` (extend, don't duplicate).
-- `Settings.weight_path` in `tempo/config.py` next to `strength_path`.
-- `WeightRollup` import in `tempo/analysis/recovery.py` next to `StrengthRollup`.
+- `Settings.weight_path` in `runos/config.py` next to `strength_path`.
+- `WeightRollup` import in `runos/analysis/recovery.py` next to `StrengthRollup`.
 
 </decisions>
 
@@ -178,26 +178,26 @@ class WeightRollup:
 
 ### Direct-mirror references (Phase 13 shipped the exact pattern)
 
-- `tempo/analysis/strength.py` — full template for `weight.py`. Parser shape, dataclass shape, rollup shape, lenient-parsing contract — all mirror this.
-- `tempo/analysis/heat.py` — second template. Same lenient contract; older, slightly different rollup.
-- `tempo/config.py::Settings.strength_path` — exact pattern for `weight_path` derived property.
-- `tempo/analysis/recovery.py` — find the strength integration (added in Phase 13-02). The weight integration goes immediately after, structurally identical.
-- `tempo/analysis/runner.py::generate_recovery` + `generate_all` — find the `strength_path` parameter. Add `weight_path` next to it with the same threading.
-- `tempo/cli.py` — find the two `analyze recovery` / `analyze all` call sites that pass `settings.strength_path`. Add `settings.weight_path` next to them.
+- `runos/analysis/strength.py` — full template for `weight.py`. Parser shape, dataclass shape, rollup shape, lenient-parsing contract — all mirror this.
+- `runos/analysis/heat.py` — second template. Same lenient contract; older, slightly different rollup.
+- `runos/config.py::Settings.strength_path` — exact pattern for `weight_path` derived property.
+- `runos/analysis/recovery.py` — find the strength integration (added in Phase 13-02). The weight integration goes immediately after, structurally identical.
+- `runos/analysis/runner.py::generate_recovery` + `generate_all` — find the `strength_path` parameter. Add `weight_path` next to it with the same threading.
+- `runos/cli.py` — find the two `analyze recovery` / `analyze all` call sites that pass `settings.strength_path`. Add `settings.weight_path` next to them.
 - `tests/test_strength.py` + `tests/test_recovery.py` (the Phase 13-02 additions) — the exact test pattern. Mirror it.
 - `strength.md.example` — the template shape. `weight.md.example` follows the same conventions.
 - `docs/STRENGTH.md` — the doc shape. `docs/WEIGHT.md` mirrors it (shorter; the format is simpler).
 
 ### Settings / config
 
-- `tempo/config.py:1-227` — `Settings` class. `weight_path` joins `strength_path`, `heat_path`, `races_path` as derived properties off `content_root`.
+- `runos/config.py:1-227` — `Settings` class. `weight_path` joins `strength_path`, `heat_path`, `races_path` as derived properties off `content_root`.
 
 </canonical_refs>
 
 <specifics>
 ## Specific Ideas
 
-- The owner's working dir is `~/Projects/tempo/training/`. The wizard's content-dir step (Phase 14) writes `TEMPO_CONTENT_DIR` to `.env`; this phase relies on that already being set.
+- The owner's working dir is `~/Projects/RunOS/training/`. The wizard's content-dir step (Phase 14) writes `RUNOS_CONTENT_DIR` to `.env`; this phase relies on that already being set.
 - EWMA alpha=0.1 chosen to match the "slow trend" expectation in the user's spec; the half-life is ~7 entries (so ~7 days if logged daily, ~14 if every other day). Documented in `docs/WEIGHT.md`.
 - The unit-mixed caveat in the recovery report is intentionally subtle: a user who logs lb on a hotel scale during travel and kg at home shouldn't see a broken rollup; they should see the normalised number with a "mixed" footnote.
 - The `out-of-range` sanity check (20 kg < w < 500 kg) catches typos like `7.24 kg` (decimal slip) and `724 kg` (unit slip). Tight enough to catch real mistakes, wide enough to handle every realistic human weight.
@@ -207,8 +207,8 @@ class WeightRollup:
 <deferred>
 ## Deferred Ideas
 
-- `tempo weight add --kg 72.4` CLI — symmetric with `tempo journal add`. Useful if the agent or the user wants a non-markdown path. Layer 2.
-- A `tempo analyze weight` standalone report (trend chart, weekly delta, projected weight at goal date). Layer 2.
+- `runos weight add --kg 72.4` CLI — symmetric with `runos journal add`. Useful if the agent or the user wants a non-markdown path. Layer 2.
+- A `runos analyze weight` standalone report (trend chart, weekly delta, projected weight at goal date). Layer 2.
 - Body-composition (body-fat %, lean mass, hydration) — additive columns on `WeightEntry`. Out of scope until needed.
 - Withings / Fitbit / Garmin auto-import. Separate phase. Would derive into a structured `weight_entry` table; the markdown rollup would then read from the table instead of the file.
 - Goal tracking — target weight + ETA from trend. Useful for cut/recomp planning; deferred until the rollup proves itself.

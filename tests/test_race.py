@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from tempo.analysis.race import (
+from runos.analysis.race import (
     RIEGEL_RELIABLE_RATIO,
     format_hms,
     format_pace,

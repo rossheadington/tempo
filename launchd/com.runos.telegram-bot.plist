@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  RunOS Telegram-bot LaunchAgent TEMPLATE (Phase 12).
+
+  This is a committed template; it contains NO secrets and NO personal paths.
+  Replace the {{PLACEHOLDER}} values, copy to ~/Library/LaunchAgents/, then load:
+
+      cp launchd/com.runos.telegram-bot.plist ~/Library/LaunchAgents/
+      launchctl load -w ~/Library/LaunchAgents/com.runos.telegram-bot.plist
+      launchctl start com.runos.telegram-bot
+
+  To disable:
+
+      launchctl unload -w ~/Library/LaunchAgents/com.runos.telegram-bot.plist
+
+  Prefer generating this with `runos bot install-scheduler`, which fills in
+  the absolute paths for you ({{UV_BIN}}, {{PROJECT_ROOT}}, {{TZ}}) and runs
+  `plutil -lint` against the rendered plist before writing it.
+
+  Why launchd (vs. cron / nohup / tmux):
+    * KeepAlive=true means launchd restarts the bot if it crashes or the
+      machine wakes from sleep:you do not need to re-run `runos bot run`
+      manually after a reboot or the Mac sleeping.
+    * ThrottleInterval=10 caps the restart loop so a fast-crashing bot does
+      not consume 100% CPU spinning launchctl up.
+    * RunAtLoad=true starts the bot the moment you `launchctl load` it.
+    * stdout/stderr are captured to <project>/logs/telegram-bot.{out,err}.log
+      so a failure is diagnosable after the fact.
+    * RunOS NEVER runs launchctl for you (system-level side effect requires
+      an explicit, informed human step).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.runos.telegram-bot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Absolute path to uv (run `which uv`), then `run runos bot run`. -->
+        <string>{{UV_BIN}}</string>
+        <string>run</string>
+        <string>runos</string>
+        <string>bot</string>
+        <string>run</string>
+    </array>
+
+    <!-- Long-running process: launchd restarts the bot if it exits for any
+         reason (crash, machine wake, etc). Combine with ThrottleInterval so
+         a fast-crashing bot does not hammer launchd. -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Absolute path to your checked-out RunOS project directory. The agent
+         loop opens Claude Code with this as cwd so its file-IO scope is the
+         project, not whatever directory launchd happened to chdir into. -->
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_ROOT}}</string>
+
+    <!-- Explicit PATH + TZ so the stripped launchd env runs the bot exactly
+         like the interactive shell does. OMP_NUM_THREADS=4 caps faster-whisper
+         / CTranslate2 thread oversubscription on M-series CPUs. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>TZ</key>
+        <string>{{TZ}}</string>
+        <key>OMP_NUM_THREADS</key>
+        <string>4</string>
+    </dict>
+
+    <!-- Logs under <project>/logs/ (gitignored). Directory must exist before
+         launchd starts the job; `runos bot install-scheduler` creates it. -->
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_ROOT}}/logs/telegram-bot.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_ROOT}}/logs/telegram-bot.stderr.log</string>
+</dict>
+</plist>

@@ -1,7 +1,7 @@
 # Preferences -- EXAMPLE / TEMPLATE
 
-Copy this file to your Tempo content dir as `preferences.md` (default
-`<content_root>/preferences.md`, redirect with `TEMPO_CONTENT_DIR`) and edit
+Copy this file to your RunOS content dir as `preferences.md` (default
+`<content_root>/preferences.md`, redirect with `RUNOS_CONTENT_DIR`) and edit
 it. UNLIKE the other trackers (food.md, weight.md, races.md, etc.) which are
 append-only logs, this file is an **edit-in-place profile**: hand-edit the
 typed sections when your numbers change, hand-edit the prose sections any

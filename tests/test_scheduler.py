@@ -15,7 +15,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from tempo import scheduler
+from runos import scheduler
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -46,7 +46,7 @@ def test_plist_uses_absolute_paths_and_explicit_env(tmp_path: Path) -> None:
     assert Path(program).is_absolute()
     env = parsed["EnvironmentVariables"]
     assert "PATH" in env and ":" in env["PATH"]
-    assert env["TEMPO_DATA_DIR"].endswith("data")
+    assert env["RUNOS_DATA_DIR"].endswith("data")
 
 
 def test_plist_captures_logs_and_does_not_run_at_load(tmp_path: Path) -> None:
@@ -89,11 +89,11 @@ def test_install_to_out_dir(tmp_path: Path) -> None:
 
 
 def test_committed_template_is_valid_plist() -> None:
-    """The committed launchd/com.tempo.daily.plist template parses + lints."""
-    template = PROJECT_ROOT / "launchd" / "com.tempo.daily.plist"
+    """The committed launchd/com.runos.daily.plist template parses + lints."""
+    template = PROJECT_ROOT / "launchd" / "com.runos.daily.plist"
     assert template.exists()
     parsed = plistlib.loads(template.read_text().encode())
-    assert parsed["Label"] == "com.tempo.daily"
+    assert parsed["Label"] == "com.runos.daily"
     assert parsed["ProgramArguments"][-1] == "run-daily"
     assert parsed["RunAtLoad"] is False
     assert "StartCalendarInterval" in parsed
@@ -111,15 +111,15 @@ def test_telegram_bot_template_committed_lints() -> None:
     """The COMMITTED telegram-bot template parses as plist + lints (placeholders
     are inside string elements, so the unrendered template must still be valid).
     """
-    template = PROJECT_ROOT / "launchd" / "com.tempo.telegram-bot.plist"
+    template = PROJECT_ROOT / "launchd" / "com.runos.telegram-bot.plist"
     assert template.exists()
     parsed = plistlib.loads(template.read_text().encode())
-    assert parsed["Label"] == "com.tempo.telegram-bot"
+    assert parsed["Label"] == "com.runos.telegram-bot"
     assert parsed["KeepAlive"] is True
     assert parsed["ThrottleInterval"] == 10
     assert parsed["RunAtLoad"] is True
-    # ProgramArguments terminate with `tempo bot run`.
-    assert parsed["ProgramArguments"][-3:] == ["tempo", "bot", "run"]
+    # ProgramArguments terminate with `runos bot run`.
+    assert parsed["ProgramArguments"][-3:] == ["runos", "bot", "run"]
     env = parsed["EnvironmentVariables"]
     assert env["OMP_NUM_THREADS"] == "4"
     if shutil.which("plutil") is not None:
@@ -167,11 +167,11 @@ def test_install_telegram_bot_plist_writes_template_and_creates_logs(tmp_path: P
     assert result.logs_dir == project_root / "logs"
     assert result.logs_dir.is_dir()
     assert result.load_command.startswith("launchctl load")
-    assert result.start_command == "launchctl start com.tempo.telegram-bot"
+    assert result.start_command == "launchctl start com.runos.telegram-bot"
     assert result.unload_command.startswith("launchctl unload")
     # Rendered plist parses.
     parsed = plistlib.loads(result.plist_path.read_text().encode())
-    assert parsed["Label"] == "com.tempo.telegram-bot"
+    assert parsed["Label"] == "com.runos.telegram-bot"
     assert parsed["KeepAlive"] is True
 
 
@@ -195,13 +195,13 @@ def test_find_program_prefers_uv(tmp_path: Path, monkeypatch) -> None:
     )
     program, args = scheduler._find_program(tmp_path)
     assert program == "/fake/uv"
-    assert args == ["/fake/uv", "run", "tempo", "run-daily"]
+    assert args == ["/fake/uv", "run", "runos", "run-daily"]
 
 
 def test_find_program_falls_back_to_python(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(scheduler.shutil, "which", lambda name: None)
     program, args = scheduler._find_program(tmp_path)
-    assert args[-2:] == ["tempo.cli", "run-daily"] or args[-1] == "run-daily"
+    assert args[-2:] == ["runos.cli", "run-daily"] or args[-1] == "run-daily"
 
 
 # ---- Hourly sync LaunchAgent ---------------------------------------------
@@ -214,7 +214,7 @@ def _sync_paths(tmp_path: Path) -> scheduler.SchedulerPaths:
 
 
 def test_render_hourly_sync_plist_parses_and_uses_sync_subcommand(tmp_path: Path) -> None:
-    """Hourly plist runs `tempo sync --notify-on-failure --with-recent-streams`."""
+    """Hourly plist runs `runos sync --notify-on-failure --with-recent-streams`."""
     parsed = plistlib.loads(scheduler.render_hourly_sync_plist(_sync_paths(tmp_path)).encode())
     assert parsed["Label"] == scheduler.HOURLY_SYNC_LABEL
     # Hourly job: sync with both the notify flag (silent-on-success contract)

@@ -4,7 +4,7 @@
 
 ## Files created
 
-- `tempo/analysis/preferences.py` -- new module. Exposes:
+- `runos/analysis/preferences.py` -- new module. Exposes:
   - `Physiology`, `Units`, `Nutrition`, `PreferencesContext`
     `@dataclass(frozen=True, slots=True)` dataclasses (shapes per CONTEXT.md
     § Dataclasses).
@@ -81,7 +81,7 @@ section-boundary slop out of the captured body).
 $ uv run pytest tests/test_preferences.py -x
 17 passed in 0.72s
 
-$ uv run ruff check tempo/analysis/preferences.py tests/test_preferences.py
+$ uv run ruff check runos/analysis/preferences.py tests/test_preferences.py
 All checks passed!
 ```
 
@@ -122,7 +122,7 @@ all consistent with the lenient-parsing contract:
 ## Anything weird
 
 Nothing weird. The race-prose-section concept noted in the prompt
-(`tempo/analysis/races.py` as a tertiary mirror) didn't end up shaping
+(`runos/analysis/races.py` as a tertiary mirror) didn't end up shaping
 much -- the closer model was a state machine over H2 headers, with typed
 sections going through a small key-value dispatch and everything else
 buffered into `prose_sections`. The implementation is straightforward and
@@ -136,8 +136,8 @@ noting if a future change needs the same shape.
 
 ## Out of scope (correctly not touched)
 
-- `tempo/config.py` -- Settings changes deferred to Plan 17-03.
-- `tempo/analysis/runner.py`, `cli.py`, `sync/daily.py`, `report.py`,
+- `runos/config.py` -- Settings changes deferred to Plan 17-03.
+- `runos/analysis/runner.py`, `cli.py`, `sync/daily.py`, `report.py`,
   `recovery.py`, `load.py` -- wire-up deferred to Plan 17-03.
 - `.env.example` -- migration comment deferred to Plan 17-03.
 - `tempo/units.py` and `tests/test_units.py` -- Plan 17-02 (runs in

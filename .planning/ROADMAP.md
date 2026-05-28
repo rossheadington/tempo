@@ -1,8 +1,8 @@
-# Roadmap: Tempo
+# Roadmap: RunOS
 
 ## Overview
 
-Tempo is built bottom-up along a strict data dependency chain: a secure, gitignored foundation (DB schema, secrets, CLI shell, date-bucketing rule) comes first, then the clean Strava source proves the full pull → store → transform → analyse → report pipeline end-to-end (the first shippable milestone). Journaling is added early so subjective history accumulates for later correlation. The fragile Garmin connector is isolated last among the ingestion sources, after the architecture is validated. The journey closes with recovery and correlation analysis plus a launchd scheduler that runs the whole loop daily and surfaces output only when noteworthy. Strava end-to-end (through Phase 4) ships before any Garmin work; the date spine and raw → structured layering are correctness prerequisites that land before any analysis.
+RunOS is built bottom-up along a strict data dependency chain: a secure, gitignored foundation (DB schema, secrets, CLI shell, date-bucketing rule) comes first, then the clean Strava source proves the full pull → store → transform → analyse → report pipeline end-to-end (the first shippable milestone). Journaling is added early so subjective history accumulates for later correlation. The fragile Garmin connector is isolated last among the ingestion sources, after the architecture is validated. The journey closes with recovery and correlation analysis plus a launchd scheduler that runs the whole loop daily and surfaces output only when noteworthy. Strava end-to-end (through Phase 4) ships before any Garmin work; the date spine and raw → structured layering are correctness prerequisites that land before any analysis.
 
 **v1.1 — Telegram Voice Coach (Mac)** extends the system with a new interaction shell. The same vertical-slice principle applies: each phase must produce a real, user-observable moment. Phase 9 = a bot exists and answers a `/start` from the owner only. Phase 10 = speak into Telegram, see the transcript come back — proves the local-Whisper pipeline before any agent wiring. Phase 11 = the agent loop, where transcripts become Claude Code sessions that reply via Telegram and remember the last 4 hours. Phase 12 = lifecycle + privacy hardening so the bot survives sleep/wake/crash, never leaks voice files, and never crashes the worker on a single bad message.
 
@@ -18,19 +18,19 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Strava Ingestion** - OAuth, atomic rotating-token persistence, resumable rate-limited backfill + incremental sync, raw-only writes
 - [x] **Phase 3: Strava Transforms + Date Spine** - Pure rederivable transforms, zero-filled date spine, daily_summary view, tested timezone bucketing
 - [x] **Phase 4: Load Metrics + First Analysis (Strava end-to-end milestone)** - rTSS/hrTSS, CTL/ATL/TSB, ACWR, load+trend and race-readiness reports with freshness headers
-- [x] **Phase 5: Journaling via Claude** - Validated `tempo journal add` entrypoint, activity resolution, sRPE load track
+- [x] **Phase 5: Journaling via Claude** - Validated `runos journal add` entrypoint, activity resolution, sRPE load track
 - [x] **Phase 6: Garmin Ingestion** - Isolated fragile connector, login-once token persistence, no-retry-on-429, calendarDate wellness, baselines
 - [x] **Phase 7: Recovery + Correlation + Scheduler** - Multi-signal recovery, honest correlation, launchd daily loop with catch-up and noteworthy-only surfacing
 - [x] **Phase 8: Modular Trackers + Heat Adaptation** - races.md result + auto-link, heat.md tracker surfaced in recovery report, plan.md retired
-- [x] **Phase 9: Telegram Bot Foundation (v1.1)** - python-telegram-bot scaffold, owner-only allowlist, `.env` secrets, `tempo bot run` subcommand
+- [x] **Phase 9: Telegram Bot Foundation (v1.1)** - python-telegram-bot scaffold, owner-only allowlist, `.env` secrets, `runos bot run` subcommand
 - [x] **Phase 10: Voice Intake + Local Transcription (v1.1)** - Voice download into gitignored cache, 20 MB guard, faster-whisper singleton (small.en int8 default), transcript echoed to chat
 - [x] **Phase 11: Claude Code Agent Loop (v1.1)** - claude-agent-sdk wiring, per-chat session-id store with 4hr resume window, HTML reply formatting with 4096-char split, `/new` reset, per-turn token logging
 - [x] **Phase 12: Lifecycle, Hardening, Privacy (v1.1)** - launchd LaunchAgent with KeepAlive, top-level error handler, voice-file retention policy, project-scoped working dir
 - [x] **Phase 13: Strength & Conditioning Tracker (v1.2)** - New `strength.md` markdown tracker with lenient parser (WxR / bodyweight reps / timed holds / supersets / equipment / metadata), surfaced in recovery report alongside heat (rolling-window count + last-session age + tonnage)
-- [x] **Phase 14: First-Run Setup Wizard (v1.3)** - `tempo setup` interactive command walks zero → working daily sync (DB init, content dir, Strava OAuth, optional Garmin / Telegram bot, optional launchd installs, smoke test); idempotent; stdlib-only; atomic `.env` writes with 0600 perms
+- [x] **Phase 14: First-Run Setup Wizard (v1.3)** - `runos setup` interactive command walks zero → working daily sync (DB init, content dir, Strava OAuth, optional Garmin / Telegram bot, optional launchd installs, smoke test); idempotent; stdlib-only; atomic `.env` writes with 0600 perms
 - [x] **Phase 15: Weight Tracker (v1.4)** - New `weight.md` markdown tracker with lenient parser (latest-wins on duplicate dates, kg/lb accepted, kg-normalised rollup); surfaced in recovery report (latest, 7d avg, 28d avg, EWMA trend, delta-vs-baseline, days-since-last) with the same 3-state degradation rule (absent / stale / current) heat & strength use
-- [x] **Phase 16: Nutrition Tracker (v1.5)** - New `food.md` markdown tracker with lenient parser accepting two interchangeable formats (inline single-line and block-per-meal); daily P/C/F/cal rollup with macro % split; new `tempo analyze nutrition` standalone report; recovery report gains 7-day-trailing nutrition mini-section. Reclassifies NUTR-01/02 from v2 → v1.5
-- **Post-v1.5 operational hardening** (no phase folder, ad-hoc on `main` 2026-05-28): stash integration of long-parked bot WIP; code-review simplify pass (15 HIGH findings actioned); operational model simplification (dropped daily-report schedule; hourly `tempo sync --notify-on-failure --with-recent-streams` via launchd `StartInterval`); `--prefer-with-hr` flag on `tempo strava streams`; documentation split (`CLAUDE.md` = coach persona; `ENGINEERING.md` = engineering reference); eight `.claude/skills/*` SKILL.md files backing the coach.
+- [x] **Phase 16: Nutrition Tracker (v1.5)** - New `food.md` markdown tracker with lenient parser accepting two interchangeable formats (inline single-line and block-per-meal); daily P/C/F/cal rollup with macro % split; new `runos analyze nutrition` standalone report; recovery report gains 7-day-trailing nutrition mini-section. Reclassifies NUTR-01/02 from v2 → v1.5
+- **Post-v1.5 operational hardening** (no phase folder, ad-hoc on `main` 2026-05-28): stash integration of long-parked bot WIP; code-review simplify pass (15 HIGH findings actioned); operational model simplification (dropped daily-report schedule; hourly `runos sync --notify-on-failure --with-recent-streams` via launchd `StartInterval`); `--prefer-with-hr` flag on `runos strava streams`; documentation split (`CLAUDE.md` = coach persona; `ENGINEERING.md` = engineering reference); eight `.claude/skills/*` SKILL.md files backing the coach.
 
 ## Phase Details
 
@@ -40,10 +40,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Depends on**: Nothing (first phase)
 **Requirements**: FND-01, FND-02, FND-03, FND-04, FND-05, FND-06
 **Success Criteria** (what must be TRUE):
-  1. Running `tempo` initialises a SQLite DB (WAL mode on) containing `raw_response`, `date_spine`, and `sync_state` tables
+  1. Running `runos` initialises a SQLite DB (WAL mode on) containing `raw_response`, `date_spine`, and `sync_state` tables
   2. The DB, tokens, `.env`, and `reports/` live outside the committed tree (or are gitignored) so no secret or health data can reach the public repo, and a committed `.env.example` documents required config
   3. A pre-commit `gitleaks` scan blocks a deliberately-staged fake credential from being committed
-  4. The `tempo` CLI exposes wired subcommands (`sync`, `transform`/`rederive`, `analyze`, `journal`) that run without error
+  4. The `runos` CLI exposes wired subcommands (`sync`, `transform`/`rederive`, `analyze`, `journal`) that run without error
   5. A documented local-date attribution (date-bucketing) rule is written down in the repo before any connector runs
 **Plans**: TBD
 
@@ -67,7 +67,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Requirements**: STORE-01, STORE-02, STORE-03, STORE-04, STORE-05
 **Success Criteria** (what must be TRUE):
   1. Pure transforms derive structured `activity` and `activity_stream` rows from stored raw responses
-  2. `tempo rederive` rebuilds all structured tables from raw data with zero network calls
+  2. `runos rederive` rebuilds all structured tables from raw data with zero network calls
   3. A zero-filled `date_spine` gives every calendar day a row (rest days included), and a `daily_summary` view left-joins activities (and later wellness/journal) onto the spine at one row per day
   4. Local-date bucketing is correct and covered by tests for edge cases: late-night (11pm) activity, timezone travel, DST, and Strava's fake-`Z` `start_date_local`
 **Plans**: TBD
@@ -80,18 +80,18 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Success Criteria** (what must be TRUE):
   1. Per-activity load is computed as rTSS (pace-based, configurable threshold) with an hrTSS fallback, and each day's value flags which method produced it
   2. CTL / ATL / TSB daily series and an ACWR / ramp-rate guardrail are computed from the daily load series, flagging spikes outside the safe range
-  3. Tempo reads user-maintained `races.md` and `plan.md` for analysis context
+  3. RunOS reads user-maintained `races.md` and `plan.md` for analysis context
   4. A dated training-load & trend report and a race-readiness analysis (Riegel/VDOT + CTL/TSB form check) are written as markdown into a gitignored local `reports/` folder
   5. Every report states per-source last-successful-sync / data-freshness so stale data is never trusted silently
 **Plans**: TBD
 
 ### Phase 5: Journaling via Claude
-**Goal**: Subjective post-workout reflection starts accumulating early — a validated `tempo journal add` entrypoint records structured entries linked to the right activity, Claude captures them through that boundary (never raw SQL), and an sRPE load track exists for when pace/HR load is unavailable.
+**Goal**: Subjective post-workout reflection starts accumulating early — a validated `runos journal add` entrypoint records structured entries linked to the right activity, Claude captures them through that boundary (never raw SQL), and an sRPE load track exists for when pace/HR load is unavailable.
 **Mode:** mvp
 **Depends on**: Phase 4
 **Requirements**: JRNL-01, JRNL-02, JRNL-03
 **Success Criteria** (what must be TRUE):
-  1. A validated `tempo journal add` entrypoint records structured entries (RPE 1–10, how it felt, notes) and resolves the activity by date + sport
+  1. A validated `runos journal add` entrypoint records structured entries (RPE 1–10, how it felt, notes) and resolves the activity by date + sport
   2. Claude can capture a journal entry by calling the validated entrypoint and is never required to write SQL directly
   3. Journal entries appear in `daily_summary` and contribute an sRPE (RPE × duration) load track usable when pace/HR load is missing
 **Plans**: TBD
@@ -103,7 +103,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Requirements**: GRMN-01, GRMN-02, GRMN-03, GRMN-04, GRMN-05
 **Success Criteria** (what must be TRUE):
   1. A `garminconnect`-backed connector implements the same `Connector` interface as Strava and is isolated so its failures cannot block Strava sync or analysis
-  2. Garmin auth happens once via an explicit `tempo garmin login`; tokens are persisted and reused, and the scheduled job never triggers a fresh login
+  2. Garmin auth happens once via an explicit `runos garmin login`; tokens are persisted and reused, and the scheduled job never triggers a fresh login
   3. On a Garmin 429 / auth failure the run fails-logs-skips without retry, and Strava sync + analysis still complete on existing data
   4. Garmin wellness (HRV, sleep, resting HR, body battery, stress, steps) is stored raw then transformed into a `wellness_day` table keyed by `calendarDate`, and `daily_summary` now joins wellness
   5. Personal rolling baselines for HRV / resting HR / sleep are computed so raw wellness values can be interpreted against personal norms
@@ -135,12 +135,12 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 5/5 plans executed — Phase 8 COMPLETE (2026-05-27)
 
 ### Phase 9: Telegram Bot Foundation (v1.1)
-**Goal**: A `python-telegram-bot` long-polling worker exists, locked to the owner's chat id, runnable via `tempo bot run`. No voice handling yet — this phase proves the scaffold, the secrets path, and the allowlist work in isolation before any audio or agent code lands.
+**Goal**: A `python-telegram-bot` long-polling worker exists, locked to the owner's chat id, runnable via `runos bot run`. No voice handling yet — this phase proves the scaffold, the secrets path, and the allowlist work in isolation before any audio or agent code lands.
 **Mode:** mvp
 **Depends on**: Phase 8
 **Requirements**: VOICE-01, VOICE-02
 **Success Criteria** (what must be TRUE):
-  1. `tempo bot run` starts a long-polling worker (`Application.run_polling()`) against `TELEGRAM_BOT_TOKEN`, registers a `/start` handler gated on `filters.Chat(chat_id=TELEGRAM_OWNER_CHAT_ID)`, and replies to the owner with a hardcoded greeting
+  1. `runos bot run` starts a long-polling worker (`Application.run_polling()`) against `TELEGRAM_BOT_TOKEN`, registers a `/start` handler gated on `filters.Chat(chat_id=TELEGRAM_OWNER_CHAT_ID)`, and replies to the owner with a hardcoded greeting
   2. A `/start` (or any message) from any chat id other than the owner produces NO reply and is silently dropped — verified by sending from a second Telegram account (or by mocking a non-owner update in tests)
   3. `TELEGRAM_BOT_TOKEN` and `TELEGRAM_OWNER_CHAT_ID` load via `pydantic-settings` from the gitignored `.env`; missing either raises a clear startup error (no silent failure); `.env.example` documents both variables
   4. README / `docs/TELEGRAM_BOT.md` documents the one-time setup (talk to @BotFather → `/newbot` → grab token; send a message to the bot then `GET /getUpdates` to find the owner chat id); a `chmod 600 .env` reminder is included
@@ -157,13 +157,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. A voice memo sent by the owner is downloaded to `<content_dir>/voice/<message_id>-<file_unique_id>.ogg` (gitignored, dir created with 0700); the path NEVER leaves the local machine
   2. Voice memos with `voice.file_size > 20 MB` are rejected with a clear reply (e.g. "Voice note too big — 20 MB max") rather than crashing the handler or calling `getFile`
   3. A single `faster-whisper.WhisperModel` instance is loaded at process startup (warmed by one dummy transcription so the first real memo doesn't pay download/load cost) and reused across all subsequent transcriptions — verified by a log line on startup AND by handler code that imports the singleton rather than instantiating per-call
-  4. Default model is `small.en` with `compute_type="int8"`, `cpu_threads=4`, `vad_filter=True`; `TEMPO_TRANSCRIBE_MODEL` and `TEMPO_TRANSCRIBE_COMPUTE_TYPE` pydantic-settings fields let the user swap (`tiny.en` / `base.en` / `medium.en` / `large-v3-turbo`); models live under a gitignored `download_root` inside the data dir, NOT `~/.cache/huggingface`
+  4. Default model is `small.en` with `compute_type="int8"`, `cpu_threads=4`, `vad_filter=True`; `RUNOS_TRANSCRIBE_MODEL` and `RUNOS_TRANSCRIBE_COMPUTE_TYPE` pydantic-settings fields let the user swap (`tiny.en` / `base.en` / `medium.en` / `large-v3-turbo`); models live under a gitignored `download_root` inside the data dir, NOT `~/.cache/huggingface`
   5. After a successful transcription the bot replies to the owner with the raw transcript text (HTML-escaped via `html.escape`) so the user can confirm the pipeline works end-to-end before any agent intelligence is wired
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 11: Claude Code Agent Loop (v1.1)
-**Goal**: Transcripts become Claude Code sessions. Each chat has a session id that resumes within a 4-hour rolling window via `claude --resume`; the agent runs in the Tempo project directory with full Claude Code tooling (Bash, Read, Write, Edit, GSD slash commands, `tempo` CLI); only the final assistant message is sent back as HTML-formatted Telegram messages (split at 4096 chars); per-turn token usage is logged.
+**Goal**: Transcripts become Claude Code sessions. Each chat has a session id that resumes within a 4-hour rolling window via `claude --resume`; the agent runs in the RunOS project directory with full Claude Code tooling (Bash, Read, Write, Edit, GSD slash commands, `runos` CLI); only the final assistant message is sent back as HTML-formatted Telegram messages (split at 4096 chars); per-turn token usage is logged.
 **Mode:** mvp
 **Depends on**: Phase 10
 **Requirements**: VOICE-07, VOICE-08, VOICE-09, VOICE-10, VOICE-13
@@ -182,15 +182,15 @@ Plans:
 **UI hint**: yes
 
 ### Phase 12: Lifecycle, Hardening, Privacy (v1.1)
-**Goal**: The bot becomes a real always-on background service: launchd LaunchAgent with `KeepAlive=true` so it survives crashes, sleep/wake, and reboots; a top-level error handler that never lets a single bad message crash the worker; a voice-file retention policy so audio doesn't accumulate; and a confirmation that the agent session is scoped to the Tempo project directory only.
+**Goal**: The bot becomes a real always-on background service: launchd LaunchAgent with `KeepAlive=true` so it survives crashes, sleep/wake, and reboots; a top-level error handler that never lets a single bad message crash the worker; a voice-file retention policy so audio doesn't accumulate; and a confirmation that the agent session is scoped to the RunOS project directory only.
 **Mode:** mvp
 **Depends on**: Phase 11
 **Requirements**: VOICE-11, VOICE-12, VOICE-14, VOICE-15
 **Success Criteria** (what must be TRUE):
-  1. A committed `launchd/com.tempo.telegram-bot.plist` template (secret-free, like the existing `com.tempo.daily.plist`) defines a `LaunchAgent` with `Label=com.tempo.telegram-bot`, absolute `ProgramArguments` invoking `uv run tempo bot run`, `WorkingDirectory` set to the project root, `RunAtLoad=true`, `KeepAlive=true`, `ThrottleInterval=10`, and `StandardOutPath` / `StandardErrorPath` pointing into a gitignored `logs/` directory; install docs cover `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/...` and `bootout` to load/unload
+  1. A committed `launchd/com.runos.telegram-bot.plist` template (secret-free, like the existing `com.runos.daily.plist`) defines a `LaunchAgent` with `Label=com.runos.telegram-bot`, absolute `ProgramArguments` invoking `uv run runos bot run`, `WorkingDirectory` set to the project root, `RunAtLoad=true`, `KeepAlive=true`, `ThrottleInterval=10`, and `StandardOutPath` / `StandardErrorPath` pointing into a gitignored `logs/` directory; install docs cover `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/...` and `bootout` to load/unload
   2. A top-level error boundary wraps each Telegram update handler: any exception in the download → transcribe → agent → reply pipeline is caught, logged with structured context (chat id, message id, stage, exception type), and acknowledged in Telegram with a brief "something went wrong" reply — the bot worker process NEVER exits on a single bad message; verified by an injected fault test (e.g. force `transcribe()` to raise, confirm the worker is still polling for the next update)
-  3. Voice files are deleted from the local cache after successful transcription by default; `TEMPO_VOICE_RETENTION_DAYS` pydantic-settings field (default `0` = delete-immediately) lets the user keep N days of audio; transcripts are NEVER deleted (kept for re-running analysis later); a startup pass purges files older than the retention window
-  4. The `claude-agent-sdk` invocation passes `cwd=<tempo project dir>` (and any per-SDK options that scope filesystem access to that tree); no read or write access is configured outside the project root; a smoke test confirms a request like "what's outside this project?" is rejected by the agent's own working-dir scope
+  3. Voice files are deleted from the local cache after successful transcription by default; `RUNOS_VOICE_RETENTION_DAYS` pydantic-settings field (default `0` = delete-immediately) lets the user keep N days of audio; transcripts are NEVER deleted (kept for re-running analysis later); a startup pass purges files older than the retention window
+  4. The `claude-agent-sdk` invocation passes `cwd=<RunOS project root>` (and any per-SDK options that scope filesystem access to that tree); no read or write access is configured outside the project root; a smoke test confirms a request like "what's outside this project?" is rejected by the agent's own working-dir scope
   5. The README's "Telegram Voice Coach (v1.1)" section documents the privacy contract end-to-end: voice bytes never leave the laptop (faster-whisper is CPU-local); transcripts + Claude Code calls flow through the user's existing Claude subscription (same surface they already accept by using Claude Code); Telegram carries the memo and the reply text; no additional cloud surface vs. baseline Claude Code use
 **Plans**: 2 plans
 Plans:
@@ -199,16 +199,16 @@ Plans:
 **UI hint**: yes
 
 ### Phase 14: First-Run Setup Wizard (v1.3)
-**Goal**: A single interactive `tempo setup` command walks a new user from zero (fresh clone, no DB, no `.env`, no tokens) to a fully working daily-sync pipeline (and optionally a running Telegram bot). Replaces the multi-step manual setup currently spread across the README with one orchestrated, idempotent flow. The wizard is pure orchestration — every credentialed step delegates to the existing CLI surface (`tempo strava auth`, `tempo garmin login`, `tempo install-scheduler`, `tempo bot install-scheduler`). Stdlib-only prompts (`input`, `getpass`); no new deps. Atomic `.env` writes with 0600 perms (mirroring `tempo/connectors/tokens.py`). Each step is skippable; `--only=<step>` lets the user re-run a single step (e.g. to add the bot to an existing install).
+**Goal**: A single interactive `runos setup` command walks a new user from zero (fresh clone, no DB, no `.env`, no tokens) to a fully working daily-sync pipeline (and optionally a running Telegram bot). Replaces the multi-step manual setup currently spread across the README with one orchestrated, idempotent flow. The wizard is pure orchestration — every credentialed step delegates to the existing CLI surface (`runos strava auth`, `runos garmin login`, `runos install-scheduler`, `runos bot install-scheduler`). Stdlib-only prompts (`input`, `getpass`); no new deps. Atomic `.env` writes with 0600 perms (mirroring `runos/connectors/tokens.py`). Each step is skippable; `--only=<step>` lets the user re-run a single step (e.g. to add the bot to an existing install).
 **Mode:** mvp
 **Depends on**: Phase 13
 **Requirements**: SETUP-01, SETUP-02, SETUP-03, SETUP-04, SETUP-05
 **Success Criteria** (what must be TRUE):
-  1. `tempo setup` walks the user through, in order: welcome banner + tooling check (Python ≥ 3.14, `uv` present) → DB init → content-dir picker → Strava creds (with strava.com/settings/api instructions) + OAuth flow → optional Garmin login → optional Telegram bot creds (with @BotFather / @userinfobot instructions) → optional daily launchd install → optional bot launchd install (only if Telegram configured) → smoke `tempo sync` → success summary with "what's installed and what's not"
-  2. The wizard detects existing state and never blindly clobbers it: a present `.env` key is shown as `[set]` with a `keep / change / skip` choice; a present DB / token file / launchd plist is shown as `[done]` and the corresponding step defaults to skip-with-confirm; a user can re-run `tempo setup` after a partial install and have it pick up where they left off
-  3. All `.env` writes go through a `_atomic_env_write(env_path, updates: dict[str, str])` helper modelled on `tempo/connectors/tokens.py` (temp-write → fsync → `os.replace`, mode 0600, dir fsync); existing keys not in `updates` are preserved verbatim (including comments and ordering where reasonable); secret values entered via `getpass` are never echoed back to the terminal after entry
-  4. The Strava / Garmin / Telegram / launchd steps invoke the EXISTING `tempo` CLI flows via `typer.testing.CliRunner` or direct function calls — there is NO duplicated auth handshake, no duplicated launchd plist render, no duplicated MFA prompt code. The wizard owns only: prompts, `.env` I/O, state detection, dispatch, and the final smoke test
-  5. CLI flags work: `--skip-garmin`, `--skip-telegram`, `--skip-scheduler`, `--only=<step>` (`db` / `content` / `strava` / `garmin` / `telegram` / `scheduler` / `bot-scheduler` / `smoke`); the final smoke test runs `tempo sync` and reports per-source status (Strava: ok / rate-limited / auth-error / etc.; Garmin same); a non-zero exit code is returned ONLY if a step the user did NOT skip failed terminally
+  1. `runos setup` walks the user through, in order: welcome banner + tooling check (Python ≥ 3.14, `uv` present) → DB init → content-dir picker → Strava creds (with strava.com/settings/api instructions) + OAuth flow → optional Garmin login → optional Telegram bot creds (with @BotFather / @userinfobot instructions) → optional daily launchd install → optional bot launchd install (only if Telegram configured) → smoke `runos sync` → success summary with "what's installed and what's not"
+  2. The wizard detects existing state and never blindly clobbers it: a present `.env` key is shown as `[set]` with a `keep / change / skip` choice; a present DB / token file / launchd plist is shown as `[done]` and the corresponding step defaults to skip-with-confirm; a user can re-run `runos setup` after a partial install and have it pick up where they left off
+  3. All `.env` writes go through a `_atomic_env_write(env_path, updates: dict[str, str])` helper modelled on `runos/connectors/tokens.py` (temp-write → fsync → `os.replace`, mode 0600, dir fsync); existing keys not in `updates` are preserved verbatim (including comments and ordering where reasonable); secret values entered via `getpass` are never echoed back to the terminal after entry
+  4. The Strava / Garmin / Telegram / launchd steps invoke the EXISTING `runos` CLI flows via `typer.testing.CliRunner` or direct function calls — there is NO duplicated auth handshake, no duplicated launchd plist render, no duplicated MFA prompt code. The wizard owns only: prompts, `.env` I/O, state detection, dispatch, and the final smoke test
+  5. CLI flags work: `--skip-garmin`, `--skip-telegram`, `--skip-scheduler`, `--only=<step>` (`db` / `content` / `strava` / `garmin` / `telegram` / `scheduler` / `bot-scheduler` / `smoke`); the final smoke test runs `runos sync` and reports per-source status (Strava: ok / rate-limited / auth-error / etc.; Garmin same); a non-zero exit code is returned ONLY if a step the user did NOT skip failed terminally
 **Plans**: TBD
 
 ### Phase 13: Strength & Conditioning Tracker (v1.2)
@@ -217,11 +217,11 @@ Plans:
 **Depends on**: Phase 12
 **Requirements**: SC-01, SC-02, SC-03, SC-04, SC-05
 **Success Criteria** (what must be TRUE):
-  1. `tempo/analysis/strength.py` defines frozen+slots `StrengthSet` / `StrengthExercise` / `StrengthSession` / `StrengthContext` / `StrengthRollup` dataclasses + a `parse_strength(path: Path) -> StrengthContext` function + a `strength_rollup(sessions, today) -> StrengthRollup` function — modelled directly on `tempo/analysis/heat.py`
+  1. `runos/analysis/strength.py` defines frozen+slots `StrengthSet` / `StrengthExercise` / `StrengthSession` / `StrengthContext` / `StrengthRollup` dataclasses + a `parse_strength(path: Path) -> StrengthContext` function + a `strength_rollup(sessions, today) -> StrengthRollup` function — modelled directly on `runos/analysis/heat.py`
   2. The parser handles every wrinkle in the owner's documented format: per-session header `## YYYY-MM-DD [HH:MM] [— Name]`, optional `rest:` / `notes:` metadata lines, exercise bullets `- Exercise (Equipment): set, set, set [GROUP]`, weighted sets (`55x8` → weight_kg=55, reps=8), bodyweight-rep sets (bare `15` → reps=15, weight_kg=None), timed holds (`1:00` → duration_s=60, reps=None), `[A]`/`[B]` superset group labels; unknown keys / malformed sets / a missing file all degrade gracefully without raising
   3. `Settings.strength_path` returns `<content_root>/strength.md` (mirrors `heat_path`); the analysis runner threads `strength_path` through `assess_recovery_from_db` exactly the way `heat_path` is threaded; the recovery report renders a `## Strength & conditioning` section using the same 3-state rule as heat (absent → omit / lapsed → one-line nudge / active → rollup line with counts, total tonnage, last-session age)
   4. A committed `strength.md.example` (repo root, alongside `races.md.example` / `heat.md.example`) shows the exact format with the owner's Tuesday 2026-05-26 session as a fully-worked example; `docs/STRENGTH.md` documents the format end-to-end (keys, sets-grammar, superset labels, equipment annotation, lenient-parsing contract)
-  5. New pytest tests live under `tests/test_strength.py` (parser happy/malformed/missing-file paths + rollup window math) + `tests/test_recovery.py` is extended with the strength rollup integration; `uv run pytest tests/ -x --deselect tests/test_bot_transcribe.py::test_transcribe_file_real_fixture_returns_nonempty` is green; `uv run ruff check tempo/ tests/` is clean
+  5. New pytest tests live under `tests/test_strength.py` (parser happy/malformed/missing-file paths + rollup window math) + `tests/test_recovery.py` is extended with the strength rollup integration; `uv run pytest tests/ -x --deselect tests/test_bot_transcribe.py::test_transcribe_file_real_fixture_returns_nonempty` is green; `uv run ruff check runos/ tests/` is clean
 **Plans**: TBD
 
 ## Progress

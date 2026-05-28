@@ -1,4 +1,4 @@
-"""Tests for the per-chat Claude Code session-id store (tempo.bot.sessions).
+"""Tests for the per-chat Claude Code session-id store (runos.bot.sessions).
 
 Pure-stdlib SQLite, no mocks. Tests use the migrated `conn` fixture from
 ``tests/conftest.py`` (real on-disk DB at user_version=5 after migrate). All
@@ -11,7 +11,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
-from tempo.bot import sessions
+from runos.bot import sessions
 
 T0 = datetime(2026, 5, 27, 12, 0, tzinfo=UTC)
 
@@ -99,9 +99,9 @@ def test_two_chat_ids_do_not_interfere(conn: sqlite3.Connection) -> None:
     assert sessions.get_or_create_session(conn, 2) == "sess-B"
 
 
-def test_session_re_exports_from_tempo_bot_package() -> None:
-    """The three public functions are importable from `tempo.bot` (matches existing pattern)."""
-    from tempo.bot import (
+def test_session_re_exports_from_runos_bot_package() -> None:
+    """The three public functions are importable from `runos.bot` (matches existing pattern)."""
+    from runos.bot import (
         get_or_create_session,
         reset_session,
         save_session,

@@ -1,6 +1,6 @@
-"""Tests for ``tempo.setup.env_io``: atomic ``.env`` read/write (SETUP-03).
+"""Tests for ``runos.setup.env_io``: atomic ``.env`` read/write (SETUP-03).
 
-The atomic-write contract mirrors :meth:`tempo.connectors.tokens.TokenStore.save`
+The atomic-write contract mirrors :meth:`runos.connectors.tokens.TokenStore.save`
 — mkstemp in the destination directory → fchmod → fsync → ``os.replace`` →
 dir-fsync → chmod 0600. A crash mid-write must NEVER leave a partial ``.env``.
 """
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tempo.setup.env_io import _quote_value, atomic_write_env, read_env
+from runos.setup.env_io import _quote_value, atomic_write_env, read_env
 
 # ---- read_env ----
 
@@ -210,7 +210,7 @@ def test_atomic_write_env_does_not_leave_partial_on_replace_error(
         raise OSError("simulated disk full")
 
     # Patch the bound reference inside env_io so internal os.replace is the one we hit.
-    monkeypatch.setattr("tempo.setup.env_io.os.replace", boom)
+    monkeypatch.setattr("runos.setup.env_io.os.replace", boom)
     with pytest.raises(OSError, match="simulated disk full"):
         atomic_write_env(env, {"NEW": "v"})
 
@@ -230,7 +230,7 @@ def test_atomic_write_env_does_not_leave_partial_on_fresh_file_error(
     def boom(_src: str, _dst: str) -> None:
         raise OSError("simulated crash")
 
-    monkeypatch.setattr("tempo.setup.env_io.os.replace", boom)
+    monkeypatch.setattr("runos.setup.env_io.os.replace", boom)
     with pytest.raises(OSError):
         atomic_write_env(env, {"KEY": "v"})
 
@@ -244,7 +244,7 @@ def test_atomic_write_env_calls_fsync(tmp_path: Path, monkeypatch: pytest.Monkey
     fsynced: list[int] = []
     real_fsync = os.fsync
     monkeypatch.setattr(
-        "tempo.setup.env_io.os.fsync",
+        "runos.setup.env_io.os.fsync",
         lambda fd: (fsynced.append(fd), real_fsync(fd))[1],
     )
     atomic_write_env(tmp_path / ".env", {"KEY": "v"})

@@ -1,25 +1,25 @@
 # Claude Agent SDK Research
 
 **Researched:** 2026-05-27
-**Target:** Tempo Telegram conversational agent (Python 3.14 / uv / typer CLI)
+**Target:** RunOS Telegram conversational agent (Python 3.14 / uv / typer CLI)
 **Overall confidence:** HIGH (official Anthropic docs, current PyPI release)
 
 ## Recommendation
 
 **Use the raw `anthropic` Python SDK with tool-use, not `claude-agent-sdk`** for
-the Tempo Telegram bot. The Claude Agent SDK exists and is real (PyPI
+the RunOS Telegram bot. The Claude Agent SDK exists and is real (PyPI
 `claude-agent-sdk` 0.2.87, May 2026, published by Anthropic), but it is the
 *Claude Code* harness exposed as a library: it spawns the Claude Code Node.js
 CLI as a subprocess over JSON/stdio and is oriented around filesystem-touching
 "agentic coding" tools (Read/Write/Edit/Bash/Glob/Grep). It works for general
 agents — and the README and several Telegram-bot reference projects demonstrate
-that — but the impedance mismatch for Tempo is significant:
+that — but the impedance mismatch for RunOS is significant:
 
 1. **Subprocess + Node.js dependency.** The Python SDK is a thin RPC client to
    the bundled Node CLI. That adds startup latency per turn, an extra runtime
    to keep alive, and a non-trivial debugging surface for a single-user local
    tool. For a chat agent that just calls four or five Python functions
-   (`tempo journal add`, `tempo analyze recovery`, etc.), there is no upside
+   (`runos journal add`, `runos analyze recovery`, etc.), there is no upside
    to routing through a JS subprocess.
 2. **Tools are MCP servers, not Python functions.** Custom tools must be
    registered through `create_sdk_mcp_server` and invoked under the
@@ -45,7 +45,7 @@ SDK" comparison in their own docs.
 
 **Reach for `claude-agent-sdk` instead if/when** you want the agent to do
 filesystem work on the user's machine (read training-plan markdown, edit
-report files, run shell commands) — i.e. when Tempo starts feeling more like a
+report files, run shell commands) — i.e. when RunOS starts feeling more like a
 local coding agent than a chat-with-tools bot. That's not the next milestone.
 
 ## What is the Agent SDK
@@ -80,7 +80,7 @@ local coding agent than a chat-with-tools bot. That's not the next milestone.
 
 Important note from the docs: starting **June 15, 2026**, Agent SDK usage on
 Claude.ai subscription plans will draw from a new monthly Agent SDK credit
-separate from interactive usage. For Tempo (personal API key) this doesn't
+separate from interactive usage. For RunOS (personal API key) this doesn't
 matter, but flag it.
 
 ## Hello-world agent
@@ -105,13 +105,13 @@ async def get_time(args):
     from datetime import datetime
     return {"content": [{"type": "text", "text": datetime.now().isoformat()}]}
 
-server = create_sdk_mcp_server(name="tempo", version="0.1.0", tools=[get_time])
+server = create_sdk_mcp_server(name="runos", version="0.1.0", tools=[get_time])
 
 async def main():
     opts = ClaudeAgentOptions(
         model="claude-haiku-4-5",
-        system_prompt="You are Tempo, a terse training assistant.",
-        mcp_servers={"tempo": server},
+        system_prompt="You are RunOS, a terse training assistant.",
+        mcp_servers={"runos": server},
         allowed_tools=["mcp__tempo__get_time"],
         setting_sources=[],   # do not load ~/.claude or project .claude
         max_turns=4,
@@ -134,7 +134,7 @@ loop documented at <https://docs.claude.com/en/docs/agents-and-tools/tool-use/ov
 
 Tools are async functions decorated with `@tool(name, description, input_schema)`,
 registered into an in-process MCP server, and exposed via `allowed_tools` under
-the `mcp__<server>__<tool>` namespace. The Tempo journal example:
+the `mcp__<server>__<tool>` namespace. The RunOS journal example:
 
 ```python
 from typing import Any
@@ -153,7 +153,7 @@ from claude_agent_sdk import tool, create_sdk_mcp_server
 )
 async def add_journal_entry(args: dict[str, Any]) -> dict[str, Any]:
     # Call the underlying typer command / library function
-    from tempo.journal import add_entry
+    from runos.journal import add_entry
     entry_id = add_entry(
         day=args["day"], sport=args["sport"], rpe=args["rpe"],
         feel=args["feel"], notes=args["notes"] or None,
@@ -161,7 +161,7 @@ async def add_journal_entry(args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": f"Saved entry #{entry_id}."}]}
 
 tempo_tools = create_sdk_mcp_server(
-    name="tempo", version="0.1.0",
+    name="runos", version="0.1.0",
     tools=[add_journal_entry, ...],
 )
 ```
@@ -205,7 +205,7 @@ TOOLS = [
 
 def dispatch(name: str, args: dict) -> str:
     if name == "add_journal_entry":
-        from tempo.journal import add_entry
+        from runos.journal import add_entry
         return f"Saved entry #{add_entry(**args)}."
     raise KeyError(name)
 ```
@@ -240,7 +240,7 @@ dispatch function is plain Python you can unit-test without an event loop.
   append, and at the start of each new user message drop everything older
   than 4h while preserving tool_use/tool_result pairings (don't split a pair).
 - Token-budget pruning (drop oldest until under N tokens) is the same shape.
-- Persist to SQLite (already part of Tempo) as `agent_messages(ts, role, content_json)`.
+- Persist to SQLite (already part of RunOS) as `agent_messages(ts, role, content_json)`.
 
 **Verdict:** For a 4-hour rolling Telegram window, roll-your-own beats the
 SDK's session model. The SDK's "resume by session id" is designed for
@@ -305,12 +305,12 @@ Every `messages.create()` response has `response.usage` with
 `cache_read_input_tokens`. Cost is `usage * model_rate` — compute it
 yourself with a small constants table (rates below). No `max_budget_usd`
 equivalent, but a `max_turns` integer cap in your own loop achieves the
-same thing for the cost shape Tempo will have (no 25-call agentic
+same thing for the cost shape RunOS will have (no 25-call agentic
 explorations — at most 3 tool calls per turn).
 
-For Tempo's local-logging needs, write a row per turn to a SQLite
+For RunOS's local-logging needs, write a row per turn to a SQLite
 `agent_turns(ts, user_msg, n_tool_calls, input_tokens, output_tokens, cost_usd, latency_ms)`
-table. `tempo agent costs --since 30d` becomes a one-liner SQL query.
+table. `runos agent costs --since 30d` becomes a one-liner SQL query.
 
 ## Model selection
 
@@ -323,7 +323,7 @@ Current Claude family pricing (verified against
 | Claude Sonnet 4.6 | $3 | $15 | $0.30 | Recommended default for most agent workloads |
 | Claude Haiku 4.5 | $1 | $5 | $0.10 | Fast, cheap, good enough for routing/chat |
 
-**For Tempo specifically:**
+**For RunOS specifically:**
 
 - **Haiku 4.5 as the default.** A Telegram turn of "I did 8 miles easy, felt
   good, RPE 4" → one `add_journal_entry` tool call → confirmation reply is
@@ -371,10 +371,10 @@ Ten lines.
   `"invalid_request"`, `"server_error"`, `"max_output_tokens"`, `"unknown"`.
   Check this before treating a turn as complete.
 - For your own retries (Telegram-side network errors, transient connector
-  failures inside tools), `tenacity` is already in the Tempo stack and is
+  failures inside tools), `tenacity` is already in the RunOS stack and is
   the right tool.
 
-**Recommendation for Tempo:** Trust the `anthropic` SDK's built-in retry for
+**Recommendation for RunOS:** Trust the `anthropic` SDK's built-in retry for
 API errors. Wrap each tool's underlying call with `tenacity` for connector
 failures (Strava/Garmin already do this). Catch and log a one-line "API
 unavailable, try again in a minute" to Telegram for anything that escapes
@@ -382,7 +382,7 @@ both layers.
 
 ## Security model
 
-For a single-user Telegram bot reading and writing Tempo's local SQLite, the
+For a single-user Telegram bot reading and writing RunOS's local SQLite, the
 threat model is narrow but not empty:
 
 1. **Telegram allowlist** — the bot only responds to a hardcoded
@@ -401,7 +401,7 @@ threat model is narrow but not empty:
      `confirm_destructive_action(token)` tool actually executes. Keep the
      model from one-shot-deleting things from a misheard voice transcript.
    - **No shell tools.** Do not expose Bash, Read/Write on arbitrary paths,
-     or `tempo` as a generic shell command. Define one Python function per
+     or `runos` as a generic shell command. Define one Python function per
      CLI action and bind it directly. (This rules out the Agent SDK's
      built-in `Bash`/`Read`/`Write` tools — set
      `allowed_tools=["mcp__tempo__*"]` and nothing else.)
@@ -423,7 +423,7 @@ threat model is narrow but not empty:
 ## Pitfalls
 
 - **Runaway tool loops.** Even with a 3-tool happy path, set a hard
-  `max_turns` cap (5 is plenty for Tempo). The Agent SDK has
+  `max_turns` cap (5 is plenty for RunOS). The Agent SDK has
   `max_turns` and `max_budget_usd`; with raw SDK, write your own counter and
   break on `n_turns >= 5` regardless of `stop_reason`.
 - **Repeated identical tool calls.** A separate failure mode: the model
@@ -444,7 +444,7 @@ threat model is narrow but not empty:
   Garmin notes), that text enters the model context as a `tool_result`.
   Sanitize: strip control characters, cap length, don't let activity names
   contain anything the model could interpret as a system instruction.
-  (Probably overkill for Tempo's threat model, but worth noting.)
+  (Probably overkill for RunOS's threat model, but worth noting.)
 - **Conversation bloat.** A 4-hour rolling window can still accumulate to
   20k+ tokens if the user is chatty + tool results are large. Truncate
   tool-result payloads (`get_recent_activities` should return summarised

@@ -3,31 +3,31 @@ phase: 12-lifecycle-hardening-privacy
 plan: 12-01
 subsystem: bot-lifecycle
 tags: [launchd, telegram-bot, privacy, voice-retention, cli]
-requires: [tempo.bot.app, tempo.bot.handlers, tempo.scheduler, tempo.config]
+requires: [runos.bot.app, runos.bot.handlers, runos.scheduler, runos.config]
 provides:
-  - launchd com.tempo.telegram-bot LaunchAgent template (KeepAlive=true)
-  - tempo bot install-scheduler CLI command
-  - tempo bot purge-voice CLI command
+  - launchd com.runos.telegram-bot LaunchAgent template (KeepAlive=true)
+  - runos bot install-scheduler CLI command
+  - runos bot purge-voice CLI command
   - VOICE_RETENTION_DAYS setting (privacy-safe default 0)
   - voice cache startup sweep + per-handler immediate-delete
   - agent cwd + data_dir startup log lines
 affects:
-  - tempo/cli.py (new bot subcommands)
-  - tempo/scheduler.py (telegram-bot plist render + install)
-  - tempo/config.py (voice_retention_days)
-  - tempo/bot/handlers.py (cleanup helper + finally-block in voice_handler)
-  - tempo/bot/app.py (sweep + cwd log in _post_init)
+  - runos/cli.py (new bot subcommands)
+  - runos/scheduler.py (telegram-bot plist render + install)
+  - runos/config.py (voice_retention_days)
+  - runos/bot/handlers.py (cleanup helper + finally-block in voice_handler)
+  - runos/bot/app.py (sweep + cwd log in _post_init)
   - .gitignore (logs/)
 key-files:
   created:
-    - launchd/com.tempo.telegram-bot.plist
+    - launchd/com.runos.telegram-bot.plist
     - .planning/phases/12-lifecycle-hardening-privacy/12-01-SUMMARY.md
   modified:
-    - tempo/cli.py
-    - tempo/scheduler.py
-    - tempo/config.py
-    - tempo/bot/handlers.py
-    - tempo/bot/app.py
+    - runos/cli.py
+    - runos/scheduler.py
+    - runos/config.py
+    - runos/bot/handlers.py
+    - runos/bot/app.py
     - .gitignore
     - tests/test_config.py
     - tests/test_scheduler.py
@@ -37,7 +37,7 @@ key-files:
 decisions:
   - "Privacy-safe default: VOICE_RETENTION_DAYS=0 means audio is deleted immediately after transcription. retention>0 keeps files for the operator's debug convenience, bounded by the startup sweep."
   - "launchd KeepAlive=true + ThrottleInterval=10 + RunAtLoad=true: bot survives crashes + wake-from-sleep without manual restart, but won't pin CPU spinning on fast crashes."
-  - "Tempo NEVER auto-runs launchctl. install-scheduler prints the manual load/start/unload commands the user runs themselves."
+  - "RunOS NEVER auto-runs launchctl. install-scheduler prints the manual load/start/unload commands the user runs themselves."
   - "logs/ at <project>/logs/ (gitignored) rather than data_dir/logs/ -- the bot plist points there because the user inspects logs alongside the code."
   - "plutil -lint runs BEFORE writing the plist into LaunchAgents -- a broken {{PLACEHOLDER}} substitution can never reach launchd."
   - "cwd + data_dir logged at startup so the launchd WorkingDirectory and the resolved data dir are trivially visible in the startup log (debugging 'claude wrote files to /')."
@@ -69,9 +69,9 @@ launchd-managed process trivially debuggable.
   `StandardOutPath` / `StandardErrorPath` (under `<project>/logs/`) cannot
   accidentally land in the public repo.
 
-### 2. Committed `launchd/com.tempo.telegram-bot.plist` template + `tempo bot install-scheduler`
+### 2. Committed `launchd/com.runos.telegram-bot.plist` template + `runos bot install-scheduler`
 
-- `launchd/com.tempo.telegram-bot.plist` ships as a committed template (lints
+- `launchd/com.runos.telegram-bot.plist` ships as a committed template (lints
   clean under `plutil -lint`). Three placeholders the install command
   substitutes: `{{UV_BIN}}`, `{{PROJECT_ROOT}}`, `{{TZ}}`.
 - `KeepAlive=true` + `ThrottleInterval=10` + `RunAtLoad=true`. launchd
@@ -80,13 +80,13 @@ launchd-managed process trivially debuggable.
 - `OMP_NUM_THREADS=4` caps faster-whisper / CTranslate2 thread
   oversubscription on M-series Macs.
 - `StandardOutPath` / `StandardErrorPath` -> `<project>/logs/telegram-bot.{stdout,stderr}.log`.
-- `tempo.scheduler` gains `render_telegram_bot_plist()` +
+- `runos.scheduler` gains `render_telegram_bot_plist()` +
   `install_telegram_bot_plist()`, mirroring the existing `install_plist()`
   for the daily run. Auto-resolves `uv` via `shutil.which`, reads
   `/etc/localtime` for the IANA TZ, always creates `<project>/logs/`, and
   runs `plutil -lint` against the rendered output before writing -- a
   broken substitution can never reach `~/Library/LaunchAgents/`.
-- `tempo bot install-scheduler` CLI command (mirrors `tempo install-scheduler`):
+- `runos bot install-scheduler` CLI command (mirrors `runos install-scheduler`):
   writes the rendered plist under `<project>/launchd/` by default;
   `--to-launch-agents` writes into `~/Library/LaunchAgents/`. NEVER runs
   `launchctl` itself; prints the manual `launchctl load -w` +
@@ -106,10 +106,10 @@ launchd-managed process trivially debuggable.
   No-op for retention<=0 or missing dir. Bounded: iterates only the cache
   dir (no recursion); skips subdirectories.
 - `_post_init` logs `agent cwd = <abs>` + `data_dir = ...` at every
-  startup -- the launchd `WorkingDirectory` and the Tempo data dir become
+  startup -- the launchd `WorkingDirectory` and the RunOS data dir become
   trivially visible in `<project>/logs/telegram-bot.stdout.log`.
 
-### 4. `tempo bot purge-voice [--yes]` — manual privacy hatch
+### 4. `runos bot purge-voice [--yes]` — manual privacy hatch
 
 - Lists count + total KB in `voice_cache_dir`, asks for confirmation
   (interactive) unless `--yes`/`-y` is passed, then unlinks every file.
@@ -124,19 +124,19 @@ launchd-managed process trivially debuggable.
 | # | Type | Hash | Subject |
 |---|------|------|---------|
 | 1 | feat | `42d9336` | feat(12-01): add VOICE_RETENTION_DAYS setting + ignore logs/ |
-| 2 | feat | `00f9c05` | feat(12-01): add Telegram-bot launchd plist + `tempo bot install-scheduler` |
+| 2 | feat | `00f9c05` | feat(12-01): add Telegram-bot launchd plist + `runos bot install-scheduler` |
 | 3 | feat | `16703ae` | feat(12-01): voice-retention policy + startup sweep + cwd log |
-| 4 | feat | `7fa242d` | feat(12-01): add `tempo bot purge-voice [--yes]` privacy hatch |
+| 4 | feat | `7fa242d` | feat(12-01): add `runos bot purge-voice [--yes]` privacy hatch |
 | 5 | style | `6ad4b3c` | style(12-01): ruff format Phase 12 test additions |
 
 ## Verification
 
 - `uv run pytest tests/ --deselect tests/test_bot_transcribe.py::test_transcribe_file_real_fixture_returns_nonempty` -> **492 passed, 1 deselected**
-- `uv run ruff check tempo/ tests/` -> **All checks passed**
-- `uv run ruff format --check tempo/ tests/` -> **clean**
-- `uv run tempo --help` -> renders, no regressions
-- `uv run tempo bot --help` -> shows `install-scheduler`, `purge-voice`, `run` subcommands
-- `plutil -lint launchd/com.tempo.telegram-bot.plist` -> OK
+- `uv run ruff check runos/ tests/` -> **All checks passed**
+- `uv run ruff format --check runos/ tests/` -> **clean**
+- `uv run runos --help` -> renders, no regressions
+- `uv run runos bot --help` -> shows `install-scheduler`, `purge-voice`, `run` subcommands
+- `plutil -lint launchd/com.runos.telegram-bot.plist` -> OK
 
 ## New tests (18)
 
@@ -192,7 +192,7 @@ the handler returns.
   inside a comment body. The committed-template parse test failed.
 - **Fix:** Replaced the body-internal `--` separators with `:`. The
   rendered template still lints clean and parses under `plistlib`.
-- **Files modified:** `launchd/com.tempo.telegram-bot.plist`
+- **Files modified:** `launchd/com.runos.telegram-bot.plist`
 - **Commit:** `00f9c05`
 
 **2. [Rule 1 - Bug] Stray `no_reset.assert_not_called()` line in new test**
@@ -206,10 +206,10 @@ the handler returns.
 ### Plan-Wide Adjustments
 
 **Worktree fork drift:** The worktree branch had forked before Phases 9-11
-landed, so `tempo/bot/` and the Phase 9-11 plan directories were missing on
+landed, so `runos/bot/` and the Phase 9-11 plan directories were missing on
 spawn. Resolved by `git merge main --no-edit` per execution-context guidance
 ("If your worktree forked before recent merges, run `git merge origin/main`").
-Verified `tempo/bot/` and Phase 11 SUMMARY existed before starting Task 1.
+Verified `runos/bot/` and Phase 11 SUMMARY existed before starting Task 1.
 The execution context's plan file path (`.planning/phases/12-lifecycle-hardening-privacy/12-01-PLAN.md`)
 did not yet exist anywhere in git history; the inline specification in the
 execution context served as the source of truth for what to build.
@@ -228,6 +228,6 @@ changes.
 
 Verified via:
 - `git log --oneline --all | grep -E "(42d9336|00f9c05|16703ae|7fa242d|6ad4b3c)"` -> all 5 commits present.
-- `ls launchd/com.tempo.telegram-bot.plist` -> exists.
+- `ls launchd/com.runos.telegram-bot.plist` -> exists.
 - `ls .planning/phases/12-lifecycle-hardening-privacy/12-01-SUMMARY.md` -> exists.
 - `uv run pytest tests/ --deselect tests/test_bot_transcribe.py::test_transcribe_file_real_fixture_returns_nonempty` -> 492 passed.

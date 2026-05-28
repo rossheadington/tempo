@@ -4,11 +4,11 @@ plan: 01
 subsystem: bot
 tags: [bot, sessions, sqlite, migrations, schema, docs]
 requires:
-  - migration runner (tempo.db.migrate, SCHEMA_VERSION constant)
-  - existing tempo.bot package (re-export pattern from Phase 9/10)
+  - migration runner (runos.db.migrate, SCHEMA_VERSION constant)
+  - existing runos.bot package (re-export pattern from Phase 9/10)
   - conftest.py `conn` fixture (in-memory migrated SQLite)
 provides:
-  - tempo.bot.sessions module (per-chat Claude Code session-id store)
+  - runos.bot.sessions module (per-chat Claude Code session-id store)
   - bot_session table at schema v5
   - SESSION_WINDOW_HOURS (locked 4-hour resume window)
   - get_or_create_session / save_session / reset_session API
@@ -21,7 +21,7 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "Validated boundary (mirrors tempo.journal.service): a thin module that
+    - "Validated boundary (mirrors runos.journal.service): a thin module that
       owns all writes to a single SQLite table via parameterised SQL inside
       `with conn:` transactions. No ORM. No free-form SQL outside this module."
     - "ISO 8601 UTC timestamps stored as TEXT, parsed back via
@@ -31,12 +31,12 @@ tech-stack:
       session_id is unchanged, rotates it when session_id flips)."
 key-files:
   created:
-    - tempo/migrations/0005_bot_sessions.sql
-    - tempo/bot/sessions.py
+    - runos/migrations/0005_bot_sessions.sql
+    - runos/bot/sessions.py
     - tests/test_bot_sessions.py
   modified:
-    - tempo/db.py (SCHEMA_VERSION 4 -> 5, new BOT_TABLES constant)
-    - tempo/bot/__init__.py (re-export SESSION_WINDOW_HOURS + 3 functions)
+    - runos/db.py (SCHEMA_VERSION 4 -> 5, new BOT_TABLES constant)
+    - runos/bot/__init__.py (re-export SESSION_WINDOW_HOURS + 3 functions)
     - tests/test_db.py (3 new tests for migration 0005)
     - docs/TELEGRAM_BOT.md (Phase 11 prerequisites section)
 decisions:
@@ -50,8 +50,8 @@ decisions:
   - "No FK constraint on chat_id (Telegram-supplied external value)."
   - "Explicit ix_bot_session_chat_id index even though PK already covers it,
     for symmetry with ix_wellness_day / ix_journal_day from prior migrations."
-  - "Re-export the public surface from tempo.bot to match the existing
-    handlers/transcribe pattern (`from tempo.bot import get_or_create_session`)."
+  - "Re-export the public surface from runos.bot to match the existing
+    handlers/transcribe pattern (`from runos.bot import get_or_create_session`)."
 metrics:
   duration_minutes: 12
   completed: 2026-05-27
@@ -75,9 +75,9 @@ parallel.
 
 ## What got built
 
-### 1. Migration `0005_bot_sessions.sql` + `tempo.db` constants (Task 1)
+### 1. Migration `0005_bot_sessions.sql` + `runos.db` constants (Task 1)
 
-- New migration file `tempo/migrations/0005_bot_sessions.sql` creates the
+- New migration file `runos/migrations/0005_bot_sessions.sql` creates the
   `bot_session` table:
   ```sql
   CREATE TABLE bot_session (
@@ -90,10 +90,10 @@ parallel.
   ```
   Header comment follows the `0003_journal.sql` / `0004_wellness.sql` style:
   references VOICE-08, references 11-CONTEXT.md, names the trust boundary
-  (`tempo.bot.sessions`), and documents why there is no FK on `chat_id` (it
+  (`runos.bot.sessions`), and documents why there is no FK on `chat_id` (it
   is a Telegram-supplied external value).
-- `tempo.db.SCHEMA_VERSION` bumped from 4 to 5.
-- New module constant `tempo.db.BOT_TABLES = ("bot_session",)` placed
+- `runos.db.SCHEMA_VERSION` bumped from 4 to 5.
+- New module constant `runos.db.BOT_TABLES = ("bot_session",)` placed
   alongside `FOUNDATION_TABLES` / `STRUCTURED_TABLES` / `JOURNAL_TABLES` /
   `WELLNESS_TABLES`, with a one-line "Phase 11 (v1.1)" comment.
 - Three new tests in `tests/test_db.py`:
@@ -107,9 +107,9 @@ parallel.
     just-initialised DB is a no-op (returns 5, no error), and every prior
     table (foundation + structured + journal + wellness + bot) still exists.
 
-### 2. `tempo/bot/sessions.py` + re-exports + ~10 tests (Task 2)
+### 2. `runos/bot/sessions.py` + re-exports + ~10 tests (Task 2)
 
-- New module `tempo/bot/sessions.py` (~140 lines incl. docstrings):
+- New module `runos/bot/sessions.py` (~140 lines incl. docstrings):
   - `SESSION_WINDOW_HOURS: int = 4` -- the locked default per 11-CONTEXT.md.
   - `get_or_create_session(conn, chat_id, *, now=None, window_hours=4) -> str | None`
     -- read-only lookup; parses `last_message_at` via `datetime.fromisoformat`
@@ -127,12 +127,12 @@ parallel.
   - Imports: stdlib only (`sqlite3`, `datetime`). No Telegram, no
     `claude_agent_sdk`, no `faster_whisper` (verified via grep --
     success-criteria check 5).
-- `tempo/bot/__init__.py` extended:
+- `runos/bot/__init__.py` extended:
   - Adds the four names (`SESSION_WINDOW_HOURS`, `get_or_create_session`,
     `save_session`, `reset_session`) to the import block and `__all__`
     (kept sorted).
   - Module docstring "Modules" bullet list now includes a
-    `:mod:`tempo.bot.sessions`` entry naming the three exports and the
+    `:mod:`runos.bot.sessions`` entry naming the three exports and the
     window constant.
 - New test file `tests/test_bot_sessions.py` -- 10 tests using the existing
   `conn` fixture from `conftest.py` (real on-disk migrated SQLite, no mocks):
@@ -167,7 +167,7 @@ the existing Phase 9/10 onboarding flow). Content:
   `claude-agent-sdk` Python package added by `uv sync` in Plan 11-02.
 - One-line shell check: `command -v claude || echo "claude CLI missing"`.
 - Auth-precedence callout: if `ANTHROPIC_API_KEY` is set the SDK may prefer
-  it; Tempo's invocation does not pass an API key; leave it unset for v1.1.
+  it; RunOS's invocation does not pass an API key; leave it unset for v1.1.
 - Session-memory callout: the bot remembers the last 4 hours of chat;
   `/new` resets the session early; the id is stored in `bot_session`.
 
@@ -188,17 +188,17 @@ Verification commands (all green):
 - `uv run pytest tests/ -x --deselect tests/test_bot_transcribe.py::test_transcribe_file_real_fixture_returns_nonempty` -> **437 passed, 1 deselected**.
 - `uv run ruff check .` -> **All checks passed**.
 - `uv run ruff format --check .` -> **87 files already formatted**.
-- `python -c "from tempo.bot import get_or_create_session, save_session, reset_session, SESSION_WINDOW_HOURS; print(SESSION_WINDOW_HOURS)"` -> **4**.
-- `grep -n "SCHEMA_VERSION = 5" tempo/db.py` -> hit.
-- `grep -n "CREATE TABLE bot_session" tempo/migrations/0005_bot_sessions.sql` -> hit.
-- Forbidden-imports grep on `tempo/bot/sessions.py` (`claude_agent_sdk` | `telegram` | `faster_whisper`) -> 0 matches (success-criterion 5).
+- `python -c "from runos.bot import get_or_create_session, save_session, reset_session, SESSION_WINDOW_HOURS; print(SESSION_WINDOW_HOURS)"` -> **4**.
+- `grep -n "SCHEMA_VERSION = 5" runos/db.py` -> hit.
+- `grep -n "CREATE TABLE bot_session" runos/migrations/0005_bot_sessions.sql` -> hit.
+- Forbidden-imports grep on `runos/bot/sessions.py` (`claude_agent_sdk` | `telegram` | `faster_whisper`) -> 0 matches (success-criterion 5).
 
 ## Commits
 
 1. `5127a6c` -- `test(11-01): add failing tests for bot_session migration + SCHEMA_VERSION=5`
 2. `a7c70ae` -- `feat(11-01): add 0005_bot_sessions migration + SCHEMA_VERSION=5 + BOT_TABLES`
-3. `af9d7c0` -- `test(11-01): add failing tests for tempo.bot.sessions store`
-4. `d181225` -- `feat(11-01): tempo.bot.sessions per-chat Claude Code session-id store`
+3. `af9d7c0` -- `test(11-01): add failing tests for runos.bot.sessions store`
+4. `d181225` -- `feat(11-01): runos.bot.sessions per-chat Claude Code session-id store`
 5. `c752d8c` -- `docs(11-01): add Phase 11 prerequisites section to docs/TELEGRAM_BOT.md`
 
 Tasks 1 and 2 used a strict RED/GREEN cycle (test commit -> implementation
@@ -225,11 +225,11 @@ writes; no new network surface, no new auth path, no schema change at any
 existing trust boundary. The `bot_session` schema and the `_save_session` /
 `_load_session` helpers form the validated boundary that future plans
 (11-02, 11-03) must go through to write the table -- consistent with the
-existing `tempo.journal.service` pattern.
+existing `runos.journal.service` pattern.
 
 ## What's next
 
-- **Plan 11-02**: implement `tempo/bot/agent.py` with `AgentTurn` dataclass
+- **Plan 11-02**: implement `runos/bot/agent.py` with `AgentTurn` dataclass
   and `run_turn(prompt, session_id) -> AgentTurn` wrapping
   `claude_agent_sdk.query`. This plan can now consume `save_session(chat_id,
   turn.session_id, now)` against the settled interface.

@@ -1,6 +1,6 @@
-"""Tests for the presentation-layer units formatter (``tempo.units``).
+"""Tests for the presentation-layer units formatter (``runos.units``).
 
-The ``Units`` dataclass lives in ``tempo.analysis.preferences`` (Wave 17-01).
+The ``Units`` dataclass lives in ``runos.analysis.preferences`` (Wave 17-01).
 This test module declares a local ``Units`` stub matching the locked shape
 so the formatter's tests don't depend on 17-01 landing first; the formatter
 only reads ``units.distance`` and ``units.pace``, so a shape-compatible stub
@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from tempo.units import (
+from runos.units import (
     KM_PER_MILE,
     format_distance,
     format_pace,

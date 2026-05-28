@@ -1,4 +1,4 @@
-"""Tests for ``tempo.bot.agent`` (Phase 11 Plan 11-02 / VOICE-07/09/13).
+"""Tests for ``runos.bot.agent`` (Phase 11 Plan 11-02 / VOICE-07/09/13).
 
 Covers the Claude Agent SDK wrapper that Plan 11-03's handlers will compose with
 the session store from Plan 11-01. The wrapper is intentionally tiny and fully
@@ -21,9 +21,9 @@ mockable -- these tests prove that the wrapper:
   <= 4096 chars (Telegram bot API body cap).
 
 **No real SDK calls.** ``claude_agent_sdk.query`` is monkey-patched at the
-``tempo.bot.agent.query`` import site; tests never touch Node, the ``claude``
+``runos.bot.agent.query`` import site; tests never touch Node, the ``claude``
 CLI, or the network. Async tests use ``asyncio.run(...)`` inline -- matches
-``tests/test_bot_handlers.py`` / ``tests/test_bot_app.py``; Tempo does not
+``tests/test_bot_handlers.py`` / ``tests/test_bot_app.py``; RunOS does not
 use ``pytest-asyncio``.
 """
 
@@ -35,7 +35,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tempo.bot.agent import (
+from runos.bot.agent import (
     TELEGRAM_MAX_BODY_CHARS,
     AgentInvocationError,
     AgentTurn,
@@ -117,7 +117,7 @@ def test_run_turn_concatenates_assistant_text_blocks_only(monkeypatch, tmp_path:
         _assistant_message("part one ", "part two", with_tool_use=True),
         _result_message(session_id="sess-XYZ", input_tokens=10, output_tokens=20),
     ]
-    monkeypatch.setattr("tempo.bot.agent.query", _make_fake_query(messages))
+    monkeypatch.setattr("runos.bot.agent.query", _make_fake_query(messages))
 
     turn = asyncio.run(run_turn("hi", None, cwd=tmp_path))
 
@@ -139,7 +139,7 @@ def test_run_turn_captures_session_id_and_usage_from_result_message(
             total_cost_usd=0.0123,
         ),
     ]
-    monkeypatch.setattr("tempo.bot.agent.query", _make_fake_query(messages))
+    monkeypatch.setattr("runos.bot.agent.query", _make_fake_query(messages))
 
     turn = asyncio.run(run_turn("hi", None, cwd=tmp_path))
 
@@ -156,7 +156,7 @@ def test_run_turn_returns_new_session_id_when_resume_is_none(monkeypatch, tmp_pa
         _assistant_message("fresh"),
         _result_message(session_id="sess-FRESH", input_tokens=1, output_tokens=2),
     ]
-    monkeypatch.setattr("tempo.bot.agent.query", _make_fake_query(messages, captured))
+    monkeypatch.setattr("runos.bot.agent.query", _make_fake_query(messages, captured))
 
     turn = asyncio.run(run_turn("hi", None, cwd=tmp_path))
 
@@ -172,7 +172,7 @@ def test_run_turn_passes_resume_to_options(monkeypatch, tmp_path: Path) -> None:
         _assistant_message("resumed"),
         _result_message(session_id="sess-OLD", input_tokens=0, output_tokens=0),
     ]
-    monkeypatch.setattr("tempo.bot.agent.query", _make_fake_query(messages, captured))
+    monkeypatch.setattr("runos.bot.agent.query", _make_fake_query(messages, captured))
 
     turn = asyncio.run(run_turn("hi again", "sess-OLD", cwd=tmp_path))
 
@@ -196,7 +196,7 @@ def test_run_turn_cost_is_none_when_result_message_omits_total_cost_usd(
             include_cost=False,
         ),
     ]
-    monkeypatch.setattr("tempo.bot.agent.query", _make_fake_query(messages))
+    monkeypatch.setattr("runos.bot.agent.query", _make_fake_query(messages))
 
     turn = asyncio.run(run_turn("hi", None, cwd=tmp_path))
 
@@ -212,7 +212,7 @@ def test_run_turn_raises_agent_invocation_error_on_missing_cli(monkeypatch, tmp_
         raise FileNotFoundError("claude")
         yield  # pragma: no cover -- make this an async generator
 
-    monkeypatch.setattr("tempo.bot.agent.query", boom)
+    monkeypatch.setattr("runos.bot.agent.query", boom)
 
     with pytest.raises(AgentInvocationError) as excinfo:
         asyncio.run(run_turn("hi", None, cwd=tmp_path))
@@ -224,7 +224,7 @@ def test_run_turn_raises_agent_invocation_error_on_missing_cli(monkeypatch, tmp_
 def test_run_turn_raises_when_no_result_message(monkeypatch, tmp_path: Path) -> None:
     """If the SDK never yields a ResultMessage we have no session id to persist -- raise."""
     messages = [_assistant_message("only text, no result")]
-    monkeypatch.setattr("tempo.bot.agent.query", _make_fake_query(messages))
+    monkeypatch.setattr("runos.bot.agent.query", _make_fake_query(messages))
 
     with pytest.raises(AgentInvocationError):
         asyncio.run(run_turn("hi", None, cwd=tmp_path))

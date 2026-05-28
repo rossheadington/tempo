@@ -11,15 +11,15 @@ from datetime import date, timedelta
 
 import pytest
 
-from tempo.connectors.base import Connector, RawWriter
-from tempo.connectors.garmin import (
+from runos.connectors.base import Connector, RawWriter
+from runos.connectors.garmin import (
     SOURCE,
     GarminAuthError,
     GarminConnector,
     GarminSyncError,
     _is_rate_limited,
 )
-from tempo.sync import state as sync_state
+from runos.sync import state as sync_state
 from tests.garmin_fakes import (
     FakeGarminClient,
     FakeTooManyRequests,

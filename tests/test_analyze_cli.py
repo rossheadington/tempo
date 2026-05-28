@@ -1,6 +1,6 @@
-"""End-to-end CLI verification of `tempo analyze` (Phase 4).
+"""End-to-end CLI verification of `runos analyze` (Phase 4).
 
-Seeds the CLI's own DB (via the TEMPO_DATA_DIR temp dir), sets load config + the
+Seeds the CLI's own DB (via the RUNOS_DATA_DIR temp dir), sets load config + the
 races.md/heat.md context in that data dir, runs the commands as a user would, and
 asserts dated markdown reports are written into the gitignored reports dir with
 per-source freshness headers. No network, no credentials.
@@ -14,19 +14,19 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from tempo import db
-from tempo.cli import app
-from tempo.config import get_settings
-from tempo.connectors.base import RawWriter
-from tempo.sync import state
-from tempo.transforms.runner import run_transform
+from runos import db
+from runos.cli import app
+from runos.config import get_settings
+from runos.connectors.base import RawWriter
+from runos.sync import state
+from runos.transforms.runner import run_transform
 from tests.strava_fakes import make_run
 
 cli = CliRunner()
 
 
 @pytest.fixture
-def seeded_cli(tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def seeded_cli(runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A CLI data dir seeded with activities + load config + races/heat context."""
     # Phase 17: physiology config now lives in preferences.md, not .env vars.
     settings = get_settings()
@@ -77,7 +77,7 @@ def seeded_cli(tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         f"- {h2.isoformat()} - type: sauna | duration_min: 30 | temp_c: 88\n",
         encoding="utf-8",
     )
-    return tempo_data_dir
+    return runos_data_dir
 
 
 def test_analyze_runs_full_suite(seeded_cli: Path) -> None:
@@ -85,7 +85,7 @@ def test_analyze_runs_full_suite(seeded_cli: Path) -> None:
     assert result.exit_code == 0, result.output
     reports = list((seeded_cli / "reports").glob("*.md"))
     names = {p.name.split("-", 3)[-1] for p in reports}
-    # Phase 7: the bare `tempo analyze` now runs the FULL suite (4 reports).
+    # Phase 7: the bare `runos analyze` now runs the FULL suite (4 reports).
     assert {"load-trend.md", "race-readiness.md", "recovery.md", "correlations.md"} <= names
 
 
@@ -135,10 +135,10 @@ def test_analyze_correlations_subcommand(seeded_cli: Path) -> None:
     assert "insufficient data" in text.lower()
 
 
-def test_analyze_on_empty_db_degrades_not_crash(tempo_data_dir: Path) -> None:
+def test_analyze_on_empty_db_degrades_not_crash(runos_data_dir: Path) -> None:
     result = cli.invoke(app, ["analyze"])
     assert result.exit_code == 0, result.output
-    reports = list((tempo_data_dir / "reports").glob("*.md"))
+    reports = list((runos_data_dir / "reports").glob("*.md"))
     # Full suite = load-trend + race-readiness + recovery + correlations + nutrition.
     assert len(reports) == 5
     # The first four share the ``## Data freshness`` block; nutrition uses an
@@ -152,7 +152,7 @@ def test_analyze_on_empty_db_degrades_not_crash(tempo_data_dir: Path) -> None:
 
 
 def test_analyze_nutrition_reads_target_kcal_from_preferences_md(
-    tempo_data_dir: Path,
+    runos_data_dir: Path,
 ) -> None:
     """Phase 17: the CLI must honour `target_kcal` in preferences.md (not .env).
 
@@ -163,7 +163,7 @@ def test_analyze_nutrition_reads_target_kcal_from_preferences_md(
     """
     from datetime import UTC, datetime
 
-    from tempo.config import get_settings
+    from runos.config import get_settings
 
     settings = get_settings()
     settings.ensure_dirs()
@@ -180,12 +180,12 @@ def test_analyze_nutrition_reads_target_kcal_from_preferences_md(
 
     result = cli.invoke(app, ["analyze", "nutrition"])
     assert result.exit_code == 0, result.output
-    files = list((tempo_data_dir / "reports").glob("*-nutrition.md"))
+    files = list((runos_data_dir / "reports").glob("*-nutrition.md"))
     assert len(files) == 1
     text = files[0].read_text(encoding="utf-8")
     # The Goal section only renders when target_kcal is non-None — which means
     # the CLI successfully sourced it from preferences.md (not the deleted
-    # TEMPO_TARGET_KCAL env var).
+    # RUNOS_TARGET_KCAL env var).
     assert "2400" in text
     assert "Goal" in text or "Target" in text
 
@@ -194,7 +194,7 @@ def test_analyze_load_trend_renders_miles_when_preferences_says_miles(
     seeded_cli: Path,
 ) -> None:
     """Phase 17: the load-trend report's distance column honours `## Units` in preferences.md."""
-    from tempo.config import get_settings
+    from runos.config import get_settings
 
     settings = get_settings()
     # Replace the seeded preferences.md (which has Physiology only) with one

@@ -9,22 +9,22 @@
 
 **What this phase delivers (Layer 1):**
 
-- A new `food.md` tracker file in the content dir (default `<content_root>/food.md`, redirectable via `TEMPO_CONTENT_DIR` — the owner's working dir is `~/Projects/tempo/training/`).
-- A new module `tempo/analysis/nutrition.py` defining frozen+slots `FoodEntry` / `MealBlock` / `FoodContext` / `DailyNutrition` / `NutritionRollup` dataclasses plus a lenient `parse_food(path)`, `daily_nutrition(entries, day)`, and `nutrition_rollup(entries, today)` function. Mirrors `tempo/analysis/weight.py` / `tempo/analysis/strength.py` in shape but accepts two interchangeable input formats (inline single-line and block-per-meal).
-- `Settings.food_path` derived property in `tempo/config.py` (mirrors `weight_path` / `strength_path` / `heat_path`).
-- A new `tempo analyze nutrition` CLI command + `tempo/analysis/nutrition_report.py` (or extension to the existing report renderer) that writes `reports/<date>-nutrition.md` with daily breakdown + 7-day rollup. Date freshness header consistent with the other reports.
-- The recovery analysis (`tempo/analysis/recovery.py`) gains a nutrition mini-section attached to `RecoveryAssessment` (`nutrition: NutritionRollup | None`, `nutrition_present: bool`) and the renderer gains a `## Nutrition` section AFTER the `## Weight` section, BEFORE any future trailing section. Same 3-state degradation rule: absent (file missing or empty) → omit; stale (last logged day >3 days ago) → one-line nudge; current → 7-day P/C/F/cal trailing rollup line.
-- `assess_recovery_from_db` accepts an optional `food_path: Path | None` argument; the analysis runner (`tempo/analysis/runner.py`) threads it through; the CLI passes `settings.food_path` exactly the way it passes `settings.weight_path` / `settings.strength_path` / `settings.heat_path`.
-- A new `tempo analyze nutrition` CLI command (mirrors the existing per-report CLI commands) AND the top-level `tempo analyze` aggregate gains a nutrition report alongside the existing four.
+- A new `food.md` tracker file in the content dir (default `<content_root>/food.md`, redirectable via `RUNOS_CONTENT_DIR` — the owner's working dir is `~/Projects/RunOS/training/`).
+- A new module `runos/analysis/nutrition.py` defining frozen+slots `FoodEntry` / `MealBlock` / `FoodContext` / `DailyNutrition` / `NutritionRollup` dataclasses plus a lenient `parse_food(path)`, `daily_nutrition(entries, day)`, and `nutrition_rollup(entries, today)` function. Mirrors `runos/analysis/weight.py` / `runos/analysis/strength.py` in shape but accepts two interchangeable input formats (inline single-line and block-per-meal).
+- `Settings.food_path` derived property in `runos/config.py` (mirrors `weight_path` / `strength_path` / `heat_path`).
+- A new `runos analyze nutrition` CLI command + `runos/analysis/nutrition_report.py` (or extension to the existing report renderer) that writes `reports/<date>-nutrition.md` with daily breakdown + 7-day rollup. Date freshness header consistent with the other reports.
+- The recovery analysis (`runos/analysis/recovery.py`) gains a nutrition mini-section attached to `RecoveryAssessment` (`nutrition: NutritionRollup | None`, `nutrition_present: bool`) and the renderer gains a `## Nutrition` section AFTER the `## Weight` section, BEFORE any future trailing section. Same 3-state degradation rule: absent (file missing or empty) → omit; stale (last logged day >3 days ago) → one-line nudge; current → 7-day P/C/F/cal trailing rollup line.
+- `assess_recovery_from_db` accepts an optional `food_path: Path | None` argument; the analysis runner (`runos/analysis/runner.py`) threads it through; the CLI passes `settings.food_path` exactly the way it passes `settings.weight_path` / `settings.strength_path` / `settings.heat_path`.
+- A new `runos analyze nutrition` CLI command (mirrors the existing per-report CLI commands) AND the top-level `runos analyze` aggregate gains a nutrition report alongside the existing four.
 - A committed `food.md.example` template in the repo root showing both formats side-by-side (inline AND block-per-meal in the same example file) as a worked example.
 - A new `docs/NUTRITION.md` documenting both formats end-to-end (grammar for each, lenient-parsing contract, equivalence: a meal parsed from inline == a meal parsed from block, agent-append guidance, the relationship to MyFitnessPal exports — the parser format is designed so a future CSV importer can produce the inline form trivially).
 - New tests `tests/test_nutrition.py` (parser happy/malformed/missing-file paths + both formats parse equivalently + rollup window math) + extended `tests/test_recovery.py` covering the recovery-report integration + `tests/test_nutrition_report.py` (or extended `tests/test_report.py`) covering the standalone report.
 
 **What this phase does NOT deliver (explicitly out of scope, deferred):**
 
-- A MyFitnessPal CSV importer (`tempo food import <csv>`). Layer 2 follow-up — reclassified as `NUTR-CSV-01` / `NUTR-CSV-02` in REQUIREMENTS.md. The format chosen here is deliberately importer-friendly so the CSV importer becomes mechanical.
-- Structured DB tables (`food_entry`, `meal_block`, `daily_nutrition`). The markdown layer must prove useful in real use first. If it does, a follow-up phase adds the structured-table derivation (rederivable from the markdown source — same invariant as the rest of Tempo).
-- A `tempo food add` CLI command (mirror of `tempo journal add`). Manual markdown edit only for now; the agent appends directly when asked.
+- A MyFitnessPal CSV importer (`runos food import <csv>`). Layer 2 follow-up — reclassified as `NUTR-CSV-01` / `NUTR-CSV-02` in REQUIREMENTS.md. The format chosen here is deliberately importer-friendly so the CSV importer becomes mechanical.
+- Structured DB tables (`food_entry`, `meal_block`, `daily_nutrition`). The markdown layer must prove useful in real use first. If it does, a follow-up phase adds the structured-table derivation (rederivable from the markdown source — same invariant as the rest of RunOS).
+- A `runos food add` CLI command (mirror of `runos journal add`). Manual markdown edit only for now; the agent appends directly when asked.
 - Macro / calorie GOAL setting + deficit/surplus computation. The dataclass exposes a `target_kcal: int | None` slot but the rollup leaves goal-comparison to the report renderer; setting goals is deferred to a follow-up phase.
 - Per-meal-type aggregation (breakfast vs lunch vs dinner vs snacks). `MealBlock.meal_name` is captured but the rollup is daily-total only.
 - Micronutrients (fibre, sugar, sodium, vitamins). Macros + calories only.
@@ -41,7 +41,7 @@
 - All tracker files live in the user's content dir, resolved via `config.content_dir`. Same pattern as `races_path` / `heat_path` / `strength_path` / `weight_path`.
 - New derived path: `food_path` on `Settings` (`content_root / "food.md"`).
 - Committed `.md.example` template in the repo root (`food.md.example`), mirroring `weight.md.example` / `strength.md.example`.
-- The owner's content dir resolves to `~/Projects/tempo/training/` per their `.env`. The phase MUST NOT hard-code this path; it MUST go through `settings.food_path`. The real file at `training/food.md` is gitignored by the existing `training/` rule.
+- The owner's content dir resolves to `~/Projects/RunOS/training/` per their `.env`. The phase MUST NOT hard-code this path; it MUST go through `settings.food_path`. The real file at `training/food.md` is gitignored by the existing `training/` rule.
 
 ### `food.md` format (LOCKED) — TWO interchangeable formats
 
@@ -104,7 +104,7 @@ Header line: `## YYYY-MM-DD <meal_name>` (mandatory date + meal_name; meal_name 
 
 ### Dataclasses (LOCKED)
 
-All `@dataclass(frozen=True, slots=True)`, in `tempo/analysis/nutrition.py`:
+All `@dataclass(frozen=True, slots=True)`, in `runos/analysis/nutrition.py`:
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -163,19 +163,19 @@ class NutritionRollup:
 - All averages use `(today - N, today]` left-open right-closed windows so a same-day log always counts.
 - `daily_nutrition(entries, day)` sums all `FoodEntry`s with `entry.date == day`. Macro percentages computed AFTER summation, from kcal-share: `(protein_g * 4) / total_kcal * 100`. If `kcal == 0` (degenerate) → all three percentages = 0.0.
 - `avg_7d` averages across DAYS with entries, not raw entries. A day without entries is not counted in the denominator (so a partial log doesn't drag the average down). `days_logged_7d` is the count for transparency.
-- `target_kcal_default: int | None = None` on `Settings`. Optional; the user can set `TEMPO_TARGET_KCAL` in `.env` to enable goal tracking. If unset, `deficit_surplus_7d` is `None` and the report renderer omits the goal line.
+- `target_kcal_default: int | None = None` on `Settings`. Optional; the user can set `RUNOS_TARGET_KCAL` in `.env` to enable goal tracking. If unset, `deficit_surplus_7d` is `None` and the report renderer omits the goal line.
 
-### Standalone `tempo analyze nutrition` report (LOCKED)
+### Standalone `runos analyze nutrition` report (LOCKED)
 
-- New CLI: `tempo analyze nutrition` writes `reports/<YYYY-MM-DD>-nutrition.md` for today (or `--date YYYY-MM-DD` for a back-date).
-- Report content (matches the existing report convention from `tempo/analysis/report.py`):
+- New CLI: `runos analyze nutrition` writes `reports/<YYYY-MM-DD>-nutrition.md` for today (or `--date YYYY-MM-DD` for a back-date).
+- Report content (matches the existing report convention from `runos/analysis/report.py`):
   - Header banner with date + data-freshness line: `Data: food.md present (N entries across D days, last 2026-05-27)`.
   - `## Today's totals` — single line: `P:38g · C:54g · F:6g · cal:303 (28/52/18 P/C/F %)`. If today has no entries: `_No entries logged for today yet._`.
   - `## Per-meal breakdown` — one subheader per `(date=today, meal_name)`, listing the entries. Omitted if no entries today.
   - `## 7-day rolling average` — single line: `P:122g · C:312g · F:64g · cal:2310 (D days logged of 7)` and the macro-pct line. If days_logged_7d == 0 → `_No entries in the last 7 days._`.
   - `## 28-day kcal mean` — `2235 kcal/day` or `_Insufficient history._`.
   - `## Goal` (only if `target_kcal_default` is set) — `Target 2200 kcal/day · 7d delta +110 kcal/day` (with sign).
-- Top-level `tempo analyze` (the aggregator) gains nutrition alongside the existing four reports.
+- Top-level `runos analyze` (the aggregator) gains nutrition alongside the existing four reports.
 
 ### Recovery-report integration (LOCKED)
 
@@ -242,16 +242,16 @@ class NutritionRollup:
 
 - Food intake is sensitive data. The `food.md` file MUST live in the gitignored content dir; the repo MUST NOT contain real entries — only `food.md.example` with anonymised numbers.
 - The parser MUST NOT log entry contents. If a malformed-line warning is emitted, it logs the line number only, not the food label or macros.
-- `Settings.target_kcal_default` is OPTIONAL and silently absent when `TEMPO_TARGET_KCAL` is unset (no warning).
+- `Settings.target_kcal_default` is OPTIONAL and silently absent when `RUNOS_TARGET_KCAL` is unset (no warning).
 
 ### Code organisation conventions
 
-- New module: `tempo/analysis/nutrition.py`. Mirror `tempo/analysis/weight.py` structure.
-- New module (or extension): `tempo/analysis/nutrition_report.py` for the standalone report rendering. Reuses helpers from `tempo/analysis/report.py` (the header/freshness banner pattern).
+- New module: `runos/analysis/nutrition.py`. Mirror `runos/analysis/weight.py` structure.
+- New module (or extension): `runos/analysis/nutrition_report.py` for the standalone report rendering. Reuses helpers from `runos/analysis/report.py` (the header/freshness banner pattern).
 - Tests: `tests/test_nutrition.py` (parser + rollup + daily). `tests/test_nutrition_report.py` (or test_report.py extension) for the standalone report. Recovery integration in `tests/test_recovery.py`.
-- `Settings.food_path` and `Settings.target_kcal_default` in `tempo/config.py` next to `weight_path`.
-- `NutritionRollup` import in `tempo/analysis/recovery.py` next to `WeightRollup`.
-- New `.env.example` key: `# TEMPO_TARGET_KCAL=2200   # optional, enables goal tracking in nutrition report`. Add with a comment.
+- `Settings.food_path` and `Settings.target_kcal_default` in `runos/config.py` next to `weight_path`.
+- `NutritionRollup` import in `runos/analysis/recovery.py` next to `WeightRollup`.
+- New `.env.example` key: `# RUNOS_TARGET_KCAL=2200   # optional, enables goal tracking in nutrition report`. Add with a comment.
 
 </decisions>
 
@@ -262,32 +262,32 @@ class NutritionRollup:
 
 ### Direct-mirror references (Phases 13, 15 shipped the patterns)
 
-- `tempo/analysis/weight.py` — primary template for `nutrition.py` (parser shape, dataclass shape, rollup shape, lenient-parsing contract). Adapted for two-format input + per-day aggregation.
-- `tempo/analysis/strength.py` — secondary template; multi-line-per-session is the closer analogue to block-per-meal.
-- `tempo/config.py::Settings.weight_path` — exact pattern for `food_path` derived property.
-- `tempo/analysis/recovery.py` — find the weight integration (added in Phase 15-02). The nutrition integration goes immediately after, structurally identical.
-- `tempo/analysis/runner.py::generate_recovery` + `generate_all` — find the `weight_path` parameter. Add `food_path` next to it with the same threading.
-- `tempo/cli.py` — find the two `analyze recovery` / `analyze all` call sites that pass `settings.weight_path`. Add `settings.food_path` next to them. ALSO add a new `analyze nutrition` command (mirror the existing per-report commands).
-- `tempo/analysis/report.py` — the existing standalone-report renderer; `nutrition_report.py` reuses its header/freshness banner helpers.
+- `runos/analysis/weight.py` — primary template for `nutrition.py` (parser shape, dataclass shape, rollup shape, lenient-parsing contract). Adapted for two-format input + per-day aggregation.
+- `runos/analysis/strength.py` — secondary template; multi-line-per-session is the closer analogue to block-per-meal.
+- `runos/config.py::Settings.weight_path` — exact pattern for `food_path` derived property.
+- `runos/analysis/recovery.py` — find the weight integration (added in Phase 15-02). The nutrition integration goes immediately after, structurally identical.
+- `runos/analysis/runner.py::generate_recovery` + `generate_all` — find the `weight_path` parameter. Add `food_path` next to it with the same threading.
+- `runos/cli.py` — find the two `analyze recovery` / `analyze all` call sites that pass `settings.weight_path`. Add `settings.food_path` next to them. ALSO add a new `analyze nutrition` command (mirror the existing per-report commands).
+- `runos/analysis/report.py` — the existing standalone-report renderer; `nutrition_report.py` reuses its header/freshness banner helpers.
 - `tests/test_weight.py` + `tests/test_recovery.py` (Phase 15-02 additions) — the test patterns. Mirror them.
 - `weight.md.example` — the template shape. `food.md.example` follows the same conventions plus shows both formats.
 - `docs/WEIGHT.md` — the doc shape. `docs/NUTRITION.md` mirrors it (longer; two formats need separate sections).
 
 ### Settings / config
 
-- `tempo/config.py:1-227` — `Settings` class. `food_path` joins `weight_path`, `strength_path`, `heat_path` as derived properties off `content_root`. `target_kcal_default: int | None` joins as a new optional field with `validation_alias="TEMPO_TARGET_KCAL"`.
+- `runos/config.py:1-227` — `Settings` class. `food_path` joins `weight_path`, `strength_path`, `heat_path` as derived properties off `content_root`. `target_kcal_default: int | None` joins as a new optional field with `validation_alias="RUNOS_TARGET_KCAL"`.
 
 ### Standalone report convention
 
-- `tempo/analysis/report.py` — find an existing report's structure (e.g. recovery report or load-trend report) for the freshness-header / `## sections` pattern.
-- `tempo/cli.py::analyze_recovery` / `analyze_correlation` / etc. — existing per-report CLI commands. The new `analyze nutrition` command mirrors them.
+- `runos/analysis/report.py` — find an existing report's structure (e.g. recovery report or load-trend report) for the freshness-header / `## sections` pattern.
+- `runos/cli.py::analyze_recovery` / `analyze_correlation` / etc. — existing per-report CLI commands. The new `analyze nutrition` command mirrors them.
 
 </canonical_refs>
 
 <specifics>
 ## Specific Ideas
 
-- The owner's working dir is `~/Projects/tempo/training/`. The Phase-14 wizard's content-dir step writes `TEMPO_CONTENT_DIR` to `.env`; this phase relies on that already being set.
+- The owner's working dir is `~/Projects/RunOS/training/`. The Phase-14 wizard's content-dir step writes `RUNOS_CONTENT_DIR` to `.env`; this phase relies on that already being set.
 - The two-format parser is deliberately permissive at the meal-name level — `breakfast`, `Breakfast`, `pre-run`, `post-run`, `late-snack`, `4am-snack` all work. Canonicalisation is lowercase + trim only.
 - `cal:` is the only int field; floats with rounding round to nearest int. Everything else stays as a float (P/C/F to one decimal is fine for `1.3 g` banana protein).
 - The `(today-7, today]` window for `avg_7d` means: today's data counts, but exactly 7 days ago does NOT. This matches weight.md's window semantics for consistency.
@@ -298,7 +298,7 @@ class NutritionRollup:
 <deferred>
 ## Deferred Ideas
 
-- **MFP CSV importer** (`tempo food import <csv>`) — reclassified as v2 `NUTR-CSV-01`. The format chosen here was designed to be the natural output of a CSV importer.
+- **MFP CSV importer** (`runos food import <csv>`) — reclassified as v2 `NUTR-CSV-01`. The format chosen here was designed to be the natural output of a CSV importer.
 - **Structured DB tables** (`food_entry`, `meal_block`) — derived from the markdown source, rederivable. Layer 2.
 - **Per-meal-type rollups** (avg breakfast kcal, etc.) — Layer 2 once the daily rollup proves itself.
 - **Micronutrients** (fibre, sugar, sodium) — add columns to `FoodEntry`. Out of scope.

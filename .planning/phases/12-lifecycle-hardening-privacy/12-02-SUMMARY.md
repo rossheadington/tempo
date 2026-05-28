@@ -4,32 +4,32 @@ plan: 12-02
 subsystem: bot-lifecycle / docs
 tags: [telegram-bot, error-handler, privacy, docs, v1.1-closeout]
 requires:
-  - tempo.bot.app build_application (Phase 9)
-  - tempo.bot.handlers (Phase 10/11)
-  - tempo.bot.agent + sessions (Phase 11)
+  - runos.bot.app build_application (Phase 9)
+  - runos.bot.handlers (Phase 10/11)
+  - runos.bot.agent + sessions (Phase 11)
   - Plan 12-01 launchd plist + voice retention + cwd logging
 provides:
-  - tempo.bot.error_handler.telegram_error_handler (top-level PTB error boundary)
-  - tempo.bot.error_handler.ERROR_REPLY (fixed user-facing reply text)
+  - runos.bot.error_handler.telegram_error_handler (top-level PTB error boundary)
+  - runos.bot.error_handler.ERROR_REPLY (fixed user-facing reply text)
   - docs/PRIVACY.md (single-source user-facing privacy contract)
   - docs/TELEGRAM_BOT.md "Always-on under launchd", "Voice cache retention",
     "Error handler behaviour" sections
   - README "Always-on bot via launchd (v1.1 / Phase 12)" section
 affects:
-  - tempo/bot/app.py (registers app.add_error_handler(...))
-  - tempo/bot/__init__.py (re-exports ERROR_REPLY + telegram_error_handler)
+  - runos/bot/app.py (registers app.add_error_handler(...))
+  - runos/bot/__init__.py (re-exports ERROR_REPLY + telegram_error_handler)
   - .planning/REQUIREMENTS.md (VOICE-11/12/14/15 marked complete)
   - .planning/STATE.md (status=shipped, percent=100, completed_phases includes 12)
   - .planning/ROADMAP.md (Phase 9/10/11/12 ticked + v1.1 milestone status COMPLETE)
 key-files:
   created:
-    - tempo/bot/error_handler.py
+    - runos/bot/error_handler.py
     - tests/test_error_handler.py
     - docs/PRIVACY.md
     - .planning/phases/12-lifecycle-hardening-privacy/12-02-SUMMARY.md
   modified:
-    - tempo/bot/app.py
-    - tempo/bot/__init__.py
+    - runos/bot/app.py
+    - runos/bot/__init__.py
     - docs/TELEGRAM_BOT.md
     - README.md
     - .planning/REQUIREMENTS.md
@@ -58,7 +58,7 @@ metrics:
 The v1.1 closeout plan. Adds the top-level Telegram error boundary
 (`telegram_error_handler`) so a single bad message can never crash the
 worker (VOICE-12), publishes a one-page user-facing privacy contract
-(`docs/PRIVACY.md`) covering everything Tempo touches, what leaves the
+(`docs/PRIVACY.md`) covering everything RunOS touches, what leaves the
 laptop, and the per-credential leak-response steps, and updates
 `docs/TELEGRAM_BOT.md` + `README.md` with launchd lifecycle, voice
 retention, and error-handler-behaviour sections. Marks VOICE-11/12/14/15
@@ -66,7 +66,7 @@ complete and flips the milestone state to `shipped`.
 
 ## What's wired
 
-### New module: `tempo/bot/error_handler.py`
+### New module: `runos/bot/error_handler.py`
 
 * `ERROR_REPLY: str` -- fixed canonical reply: `"Sorry -- something went
   wrong on my end. Check the logs."`
@@ -82,7 +82,7 @@ complete and flips the milestone state to `shipped`.
 
 ### Registration in `build_application`
 
-Added `from tempo.bot.error_handler import telegram_error_handler` and a
+Added `from runos.bot.error_handler import telegram_error_handler` and a
 single `app.add_error_handler(telegram_error_handler)` call AFTER every
 existing handler is registered. The startup INFO log now ends with
 `error_handler=registered` for sanity.
@@ -115,7 +115,7 @@ Single-source user-facing privacy contract, structured as:
   (via Claude Code) with the explicit note that raw `.ogg` audio is
   NEVER uploaded -- Whisper runs locally.
 * **Voice retention policy** -- the `VOICE_RETENTION_DAYS` knob,
-  privacy-safe default of 0, startup sweep, manual `tempo bot purge-voice`.
+  privacy-safe default of 0, startup sweep, manual `runos bot purge-voice`.
 * **The repository is public; the data is not** -- the privacy invariants
   (no creds in git, no personal fixtures, 0600 tokens, no hard-coded
   user paths) that keep that safe.
@@ -128,14 +128,14 @@ Single-source user-facing privacy contract, structured as:
 
 ### `docs/TELEGRAM_BOT.md` updates
 
-* New "Always-on under launchd (Phase 12)" section: `tempo bot
+* New "Always-on under launchd (Phase 12)" section: `runos bot
   install-scheduler` flow, `launchctl bootstrap` / `kickstart` /
   `bootout`, plist properties (`KeepAlive=true`, `ThrottleInterval=10`,
   `RunAtLoad=true`, `WorkingDirectory`, log paths), pointer to the
   plist template, and the `plutil -lint`-before-handoff guard.
 * New "Voice cache retention" section: `VOICE_RETENTION_DAYS` semantics
   (0 = immediate delete; N>0 = N-day retention with startup sweep),
-  `tempo bot purge-voice [--yes]` hatch.
+  `runos bot purge-voice [--yes]` hatch.
 * New "Error handler behaviour" section: the three-step contract
   (log/reply/no-re-raise), the relationship to the Phase 11
   `AgentInvocationError` catch (which fires first for the
@@ -157,7 +157,7 @@ Single-source user-facing privacy contract, structured as:
   Phase 9's narrow scope.
 * "What this phase does NOT yet do" paragraph replaced with a
   "Voice retention" paragraph documenting `VOICE_RETENTION_DAYS=0` +
-  `tempo bot purge-voice` and pointing at `docs/PRIVACY.md`.
+  `runos bot purge-voice` and pointing at `docs/PRIVACY.md`.
 * New "Always-on bot via launchd (v1.1 / Phase 12)" subsection after the
   Claude Code agent loop section: install commands + the error-handler
   reply text + log paths + cross-link to TELEGRAM_BOT.md / PRIVACY.md.
@@ -167,9 +167,9 @@ Single-source user-facing privacy contract, structured as:
 | Req | Description | Where |
 | --- | --- | --- |
 | VOICE-11 | launchd `KeepAlive` lifecycle | Plan 12-01 (plist) + 12-02 docs |
-| VOICE-12 | Top-level error boundary -- worker survives single-message failures | `tempo/bot/error_handler.py` + `build_application` registration + 5 tests |
+| VOICE-12 | Top-level error boundary -- worker survives single-message failures | `runos/bot/error_handler.py` + `build_application` registration + 5 tests |
 | VOICE-14 | Voice files deleted after successful transcription (configurable retention) | Plan 12-01 (handler + sweep) + 12-02 docs (`docs/PRIVACY.md` + TELEGRAM_BOT.md "Voice cache retention") |
-| VOICE-15 | Agent runs in Tempo project dir; no access outside the project tree | Plan 12-01 (cwd log + launchd `WorkingDirectory`) + 12-02 docs (`docs/PRIVACY.md` "What leaves the laptop") |
+| VOICE-15 | Agent runs in RunOS project dir; no access outside the project tree | Plan 12-01 (cwd log + launchd `WorkingDirectory`) + 12-02 docs (`docs/PRIVACY.md` "What leaves the laptop") |
 
 All 15 VOICE-* requirements now complete; 60/60 v1.1 requirements
 satisfied.
@@ -197,21 +197,21 @@ None. No CLI logins or third-party auth flows touched by this plan.
 
 * `uv run pytest`: **498 passed, 0 failed, 28 PTB deprecation warnings**
   (the `voice.duration -> timedelta` deprecation comes from inside
-  python-telegram-bot itself and is not actionable on the Tempo side).
-* `uv run ruff check tempo/ tests/`: All checks passed.
+  python-telegram-bot itself and is not actionable on the RunOS side).
+* `uv run ruff check runos/ tests/`: All checks passed.
 
 ## Commits
 
 | Hash | Message |
 | --- | --- |
-| 16787e5 | `test(12-02): add failing tests for tempo.bot.error_handler (RED)` |
+| 16787e5 | `test(12-02): add failing tests for runos.bot.error_handler (RED)` |
 | 08f514f | `feat(12-02): add top-level Telegram error handler (VOICE-12)` |
 | 306b658 | `docs(12-02): add docs/PRIVACY.md — single-source privacy contract` |
 | (this commit) | `docs(12-02): launchd + privacy doc updates; close v1.1 milestone` |
 
 ## Self-Check: PASSED
 
-* `tempo/bot/error_handler.py` -- FOUND
+* `runos/bot/error_handler.py` -- FOUND
 * `tests/test_error_handler.py` -- FOUND
 * `docs/PRIVACY.md` -- FOUND
 * `.planning/phases/12-lifecycle-hardening-privacy/12-02-SUMMARY.md` -- FOUND

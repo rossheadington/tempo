@@ -6,10 +6,10 @@ import math
 import sqlite3
 from datetime import date, timedelta
 
-from tempo.analysis import baselines
-from tempo.connectors.base import RawWriter
-from tempo.connectors.garmin import SOURCE as GARMIN
-from tempo.transforms.runner import run_transform
+from runos.analysis import baselines
+from runos.connectors.base import RawWriter
+from runos.connectors.garmin import SOURCE as GARMIN
+from runos.transforms.runner import run_transform
 from tests.garmin_fakes import make_hrv, make_sleep, make_stats
 
 
@@ -125,7 +125,7 @@ def test_read_metric_series_empty_when_no_wellness_table() -> None:
     import tempfile
     from pathlib import Path
 
-    from tempo import db
+    from runos import db
 
     with tempfile.TemporaryDirectory() as tmp:
         c = db.init_db(Path(tmp) / "t.db")

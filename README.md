@@ -1,4 +1,4 @@
-# Tempo
+# RunOS
 
 Personal training & health data pipeline. Pulls running and wellness data from
 multiple sources, stores it in a structured, queryable form, and runs scheduled
@@ -33,15 +33,15 @@ daily-sync pipeline.
 ### One command (recommended)
 
 ```bash
-git clone https://github.com/rossheadington/tempo
-cd tempo
+git clone https://github.com/rossheadington/RunOS
+cd RunOS
 uv sync
-uv run tempo setup
+uv run runos setup
 ```
 
 The interactive wizard walks you through DB init → Strava OAuth →
 optional Garmin login → optional Telegram bot → optional launchd jobs →
-smoke `tempo sync`. Idempotent: re-runs pick up where you left off, with
+smoke `runos sync`. Idempotent: re-runs pick up where you left off, with
 already-done steps showing `[done]` and partial-state values showing
 `[set] keep / change / fresh`.
 
@@ -51,9 +51,9 @@ See [`docs/SETUP.md`](docs/SETUP.md) for the full end-to-end walkthrough
 ### Re-running a single step
 
 ```bash
-uv run tempo setup --only=telegram          # add the bot to an existing install
-uv run tempo setup --only=strava            # rotate Strava creds
-uv run tempo setup --skip-garmin            # full run, no Garmin
+uv run runos setup --only=telegram          # add the bot to an existing install
+uv run runos setup --only=strava            # rotate Strava creds
+uv run runos setup --skip-garmin            # full run, no Garmin
 ```
 
 ### Manual setup (advanced)
@@ -62,25 +62,25 @@ If you prefer to run each step by hand (or you're debugging a stuck
 install), the equivalent commands are:
 
 ```bash
-# Edit .env with TEMPO_STRAVA_CLIENT_ID + TEMPO_STRAVA_CLIENT_SECRET first
+# Edit .env with RUNOS_STRAVA_CLIENT_ID + RUNOS_STRAVA_CLIENT_SECRET first
 # (see .env.example for the full variable list).
 
-uv run tempo init                                   # DB schema
-uv run tempo strava auth                            # prints OAuth URL
-uv run tempo strava auth --code <CODE>              # completes handshake
+uv run runos init                                   # DB schema
+uv run runos strava auth                            # prints OAuth URL
+uv run runos strava auth --code <CODE>              # completes handshake
 
 # Optional: Garmin
-uv run tempo garmin login
+uv run runos garmin login
 
 # Optional: Telegram bot (see docs/TELEGRAM_BOT.md for the full walkthrough)
-uv run tempo bot run                                # foreground; launchd for background
+uv run runos bot run                                # foreground; launchd for background
 
 # Optional: launchd
-uv run tempo install-scheduler --to-launch-agents --hour 5 --minute 30
-uv run tempo bot install-scheduler --to-launch-agents
+uv run runos install-scheduler --to-launch-agents --hour 5 --minute 30
+uv run runos bot install-scheduler --to-launch-agents
 
 # Smoke
-uv run tempo sync
+uv run runos sync
 ```
 
 Full details + per-step recovery: [`docs/SETUP.md`](docs/SETUP.md). The
@@ -89,35 +89,35 @@ to understand the moving parts.
 
 ## Strava setup (one-time)
 
-Tempo pulls your Strava data through the official OAuth2 API. You provide your
+RunOS pulls your Strava data through the official OAuth2 API. You provide your
 own API application credentials; nothing is shared and no secret ever enters
-this repo (tokens live under `~/.tempo/tokens/`, mode 0600, gitignored).
+this repo (tokens live under `~/.runos/tokens/`, mode 0600, gitignored).
 
 1. **Create a Strava API application** at
    <https://www.strava.com/settings/api>. Set the *Authorization Callback
    Domain* to `localhost`. Note the **Client ID** and **Client Secret**.
-2. **Configure Tempo.** Copy `.env.example` to `.env` and fill in:
+2. **Configure RunOS.** Copy `.env.example` to `.env` and fill in:
    ```
-   TEMPO_STRAVA_CLIENT_ID=<your client id>
-   TEMPO_STRAVA_CLIENT_SECRET=<your client secret>
+   RUNOS_STRAVA_CLIENT_ID=<your client id>
+   RUNOS_STRAVA_CLIENT_SECRET=<your client secret>
    ```
-3. **Authorise (one time).** Run `tempo strava auth`, open the printed URL in a
+3. **Authorise (one time).** Run `runos strava auth`, open the printed URL in a
    browser, approve access, then copy the `code` query parameter from the
    redirected `localhost` URL and run:
    ```
-   tempo strava auth --code <CODE>
+   runos strava auth --code <CODE>
    ```
    Tokens are stored locally and atomically. Strava rotates refresh tokens on
-   every refresh; Tempo persists the new one durably so you never have to repeat
+   every refresh; RunOS persists the new one durably so you never have to repeat
    this step.
 
 ### Pulling data
 
 ```
-tempo strava backfill            # resumable all-time activity history
-tempo strava backfill --page-budget 5   # spread a large history across runs/days
-tempo strava streams --limit 20  # lazily fetch HR/pace/GPS/power/cadence streams
-tempo sync                       # daily incremental: only activities since the watermark
+runos strava backfill            # resumable all-time activity history
+runos strava backfill --page-budget 5   # spread a large history across runs/days
+runos strava streams --limit 20  # lazily fetch HR/pace/GPS/power/cadence streams
+runos sync                       # daily incremental: only activities since the watermark
 ```
 
 The backfill is checkpointed: if it hits Strava's rate limit (200 req/15 min,
@@ -127,63 +127,63 @@ The backfill is checkpointed: if it hits Strava's rate limit (200 req/15 min,
 (Phase 3) and can be rebuilt from raw without re-fetching.
 
 > **API terms.** Strava's API Agreement includes a 7-day cache limit and a
-> restriction on feeding data to AI models. Tempo's use is private, single-user,
+> restriction on feeding data to AI models. RunOS's use is private, single-user,
 > self-data that is never shared; this is an accepted, documented stance (see
 > `.planning/REQUIREMENTS.md` → Known Accepted Conflicts), not an oversight.
 
 ## Garmin setup (one-time)
 
-Tempo pulls your Garmin **wellness** data (sleep, HRV, resting HR, body battery,
+RunOS pulls your Garmin **wellness** data (sleep, HRV, resting HR, body battery,
 stress, steps) through the unofficial `garminconnect` library. Garmin has no
-official personal API, so this is the most fragile source — Tempo treats it as an
+official personal API, so this is the most fragile source — RunOS treats it as an
 **isolated failure domain**: if Garmin breaks (a site change, an account 429,
 expired session), the daily run logs it and skips, and your Strava sync + all
 analysis still complete on existing data. No Garmin data is ever lost (it is
 re-derivable from the raw store).
 
 > **Privacy & safety:** your Garmin password lives only in the gitignored `.env`.
-> Garmin session tokens are stored under `~/.tempo/tokens/garmin/` (mode 0600),
+> Garmin session tokens are stored under `~/.runos/tokens/garmin/` (mode 0600),
 > outside the repo tree, and are gitignored. Nothing Garmin-related is ever
 > committed.
 
 1. **Configure credentials.** In your `.env`:
    ```
-   TEMPO_GARMIN_EMAIL=<your Garmin Connect email>
-   TEMPO_GARMIN_PASSWORD=<your Garmin Connect password>
+   RUNOS_GARMIN_EMAIL=<your Garmin Connect email>
+   RUNOS_GARMIN_PASSWORD=<your Garmin Connect password>
    ```
 2. **Log in once (interactive).** Run:
    ```
-   tempo garmin login
+   runos garmin login
    ```
    This is the **only** command that submits your credentials. If Garmin asks for
-   a multi-factor (MFA) code, Tempo prompts for it. On success, session tokens are
+   a multi-factor (MFA) code, RunOS prompts for it. On success, session tokens are
    persisted and **reused** — every later sync loads those tokens and **never logs
    in again**. This matters: Garmin aggressively rate-limits logins *per account*,
    and repeated logins can lock you out (of the app too) for 48h+. The scheduled
    sync therefore never triggers a fresh login.
 
    > **If you ever see repeated `429 Too Many Requests`: STOP.** Do not retry —
-   > retries compound an account-level lockout. Wait a few hours. Tempo itself
+   > retries compound an account-level lockout. Wait a few hours. RunOS itself
    > never retries a Garmin 429 (it fails-logs-skips immediately) for exactly this
    > reason.
 
 ### Pulling wellness data
 
 ```
-tempo garmin backfill --days 60   # one-time: trailing 60 days of wellness history
-tempo garmin sync                 # incremental: recent days (reuses tokens)
-tempo sync                        # daily: runs Strava, THEN attempts Garmin (isolated)
+runos garmin backfill --days 60   # one-time: trailing 60 days of wellness history
+runos garmin sync                 # incremental: recent days (reuses tokens)
+runos sync                        # daily: runs Strava, THEN attempts Garmin (isolated)
 ```
 
-`tempo sync` reports per-source status, e.g.:
+`runos sync` reports per-source status, e.g.:
 ```
 Sync complete (per-source status):
   strava: ok (1234 raw rows)
   garmin: skipped -- not authenticated: ...   # never blocks Strava
 ```
 
-Raw Garmin responses are stored verbatim, then transformed (`tempo transform` /
-`tempo rederive`, zero network) into a `wellness_day` table — **one row per local
+Raw Garmin responses are stored verbatim, then transformed (`runos transform` /
+`runos rederive`, zero network) into a `wellness_day` table — **one row per local
 calendar day**, keyed by Garmin's `calendarDate` (the wake-up day it assigns to
 overnight sleep/HRV, which removes the cross-midnight ambiguity). The
 `daily_summary` view left-joins wellness so every day carries its activity,
@@ -192,7 +192,7 @@ wellness, and journal context in one row (rest days with only sleep included).
 ### Personal baselines
 
 Raw HRV / resting HR / sleep numbers are meaningless without a personal norm, so
-Tempo computes **rolling personal baselines** (trailing-window mean + SD with a
+RunOS computes **rolling personal baselines** (trailing-window mean + SD with a
 z-score, plus an EWMA) per metric from `wellness_day`. A reading is compared only
 to the user's own recent history; with too little history a baseline honestly
 reports "insufficient data" rather than inventing a norm. These feed the recovery
@@ -200,27 +200,27 @@ analysis in Phase 7.
 
 > **Library fragility.** `garminconnect` is unofficial and can break when Garmin
 > changes its auth/site (e.g. the `garth` foundation was deprecated in March
-> 2026). Tempo isolates it behind the connector seam so a breakage degrades
+> 2026). RunOS isolates it behind the connector seam so a breakage degrades
 > Garmin only. If it ever stops working, bump the library when upstream patches
 > it; in the meantime Strava + analysis keep running, and you can fall back to
 > Garmin's manual FIT/CSV export.
 
 ## Analysis & reports
 
-Once activities are synced and transformed, Tempo turns them into per-activity
+Once activities are synced and transformed, RunOS turns them into per-activity
 **load** (rTSS pace-based, with an hrTSS fallback), fitness/fatigue/form
 (**CTL/ATL/TSB**), an **ACWR / ramp-rate** guardrail, and **race predictions**
 (Riegel/VDOT), written as dated markdown reports.
 
 ```
-tempo analyze                 # the FULL suite (all four reports below)
-tempo analyze load-trend      # CTL/ATL/TSB, ACWR/ramp, weekly volume
-tempo analyze race-readiness  # Riegel/VDOT vs goal + CTL/TSB form check
-tempo analyze recovery        # multi-signal recovery / overtraining vs baselines
-tempo analyze correlations    # sleep / HRV / RPE vs performance (honest n-gating)
+runos analyze                 # the FULL suite (all four reports below)
+runos analyze load-trend      # CTL/ATL/TSB, ACWR/ramp, weekly volume
+runos analyze race-readiness  # Riegel/VDOT vs goal + CTL/TSB form check
+runos analyze recovery        # multi-signal recovery / overtraining vs baselines
+runos analyze correlations    # sleep / HRV / RPE vs performance (honest n-gating)
 ```
 
-Reports land in the gitignored reports dir (`~/.tempo/reports/` by default) as
+Reports land in the gitignored reports dir (`~/.runos/reports/` by default) as
 `YYYY-MM-DD-load-trend.md`, `-race-readiness.md`, `-recovery.md`,
 `-correlations.md`. Every report opens with a **per-source data-freshness header**
 (last successful sync + staleness flag) so a stale dataset is never trusted
@@ -229,7 +229,7 @@ an invented number.
 
 ### Recovery / overtraining (multi-signal)
 
-`tempo analyze recovery` combines the **rising-load** half (CTL ramp rate / ACWR)
+`runos analyze recovery` combines the **rising-load** half (CTL ramp rate / ACWR)
 with **baseline-relative recovery markers** (HRV, resting HR, sleep vs your own
 personal rolling baselines). The high-confidence overtraining pattern is rising
 load *and* recovery markers diverging from baseline. A key subtlety it encodes:
@@ -241,7 +241,7 @@ than guessing.
 
 ### Correlation insight (honest about small n)
 
-`tempo analyze correlations` links candidate predictors (prior-night sleep / HRV,
+`runos analyze correlations` links candidate predictors (prior-night sleep / HRV,
 subjective RPE) to outcomes (training load as a performance proxy, RPE). Because
 correlation is data-hungry, a relationship is reported **only with at least 20
 paired days**; below that floor each pair shows an explicit *"insufficient data —
@@ -261,9 +261,9 @@ under a launchd `LaunchAgent` with `KeepAlive=true`. See
 
 ```
 # One-time setup: see docs/TELEGRAM_BOT.md (full @BotFather + getUpdates walkthrough).
-# Add TELEGRAM_BOT_TOKEN and TELEGRAM_OWNER_CHAT_ID to .env (no TEMPO_ prefix).
+# Add TELEGRAM_BOT_TOKEN and TELEGRAM_OWNER_CHAT_ID to .env (no RUNOS_ prefix).
 chmod 600 .env
-uv run tempo bot run
+uv run runos bot run
 ```
 
 See [`docs/TELEGRAM_BOT.md`](docs/TELEGRAM_BOT.md) for the @BotFather +
@@ -272,8 +272,8 @@ troubleshooting list (409 Conflict, token rotation).
 
 ### Voice intake (v1.1 / Phase 10)
 
-With the bot running (`uv run tempo bot run`), **record a voice memo in the
-owner's Telegram chat — Tempo transcribes it locally and replies with the
+With the bot running (`uv run runos bot run`), **record a voice memo in the
+owner's Telegram chat — RunOS transcribes it locally and replies with the
 text in italics.** No audio bytes ever leave the laptop: transcription runs
 through [`faster-whisper`](https://github.com/SYSTRAN/faster-whisper) (which
 bundles PyAV — no system `ffmpeg` needed) using a CPU-only model that is
@@ -291,7 +291,7 @@ Under the hood:
   as markup.
 
 **Model configuration.** Three bare env vars (the standard `WHISPER_*`
-convention, no `TEMPO_` prefix) override the locked defaults:
+convention, no `RUNOS_` prefix) override the locked defaults:
 
 ```
 # Defaults shown -- all three are commented out in .env.example.
@@ -306,7 +306,7 @@ convention, no `TEMPO_` prefix) override the locked defaults:
 > a 60-second memo in ~8-12 seconds, which is the sweet spot for accuracy on
 > runner jargon without an unacceptable wait.
 
-**First-run startup cost.** On the very first `tempo bot run` after setting
+**First-run startup cost.** On the very first `runos bot run` after setting
 `WHISPER_MODEL_NAME=...` (or on the very first run at the default
 `small.en`), `faster-whisper` downloads the model from Hugging Face Hub
 (~480 MB for `small.en`, cached under `~/.cache/huggingface/hub/`). The
@@ -327,7 +327,7 @@ common case.
 deletes the raw `.ogg` immediately after the transcript reaches the agent.
 Set it to N>0 in `.env` to keep recent memos for N days for debugging
 Whisper misfires; a startup sweep purges anything older. Flush the cache
-manually any time with `uv run tempo bot purge-voice [--yes]`. Full
+manually any time with `uv run runos bot purge-voice [--yes]`. Full
 details in [`docs/PRIVACY.md`](docs/PRIVACY.md).
 
 ### Claude Code agent loop (v1.1 / Phase 11)
@@ -350,20 +350,20 @@ startup with a clear error before any Telegram traffic. See
 For unattended operation across reboots, sleep/wake, and crashes, the bot
 runs as a `launchd` `LaunchAgent` with `KeepAlive=true` + `RunAtLoad=true`
 + `ThrottleInterval=10`. A top-level error handler
-(`tempo/bot/error_handler.py`) is registered on the PTB `Application` so
+(`runos/bot/error_handler.py`) is registered on the PTB `Application` so
 any uncaught handler exception logs the full traceback + sends a fixed
 *"Sorry — something went wrong on my end. Check the logs."* reply to the
 offending chat without ever re-raising — combined with launchd
 `KeepAlive`, a single bad message can never take the worker down.
 
 ```bash
-uv run tempo bot install-scheduler       # writes plist + prints next steps; doesn't run launchctl
-cp ~/.tempo/launchd/com.tempo.telegram-bot.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tempo.telegram-bot.plist
-launchctl kickstart -k gui/$(id -u)/com.tempo.telegram-bot
+uv run runos bot install-scheduler       # writes plist + prints next steps; doesn't run launchctl
+cp ~/.runos/launchd/com.runos.telegram-bot.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.runos.telegram-bot.plist
+launchctl kickstart -k gui/$(id -u)/com.runos.telegram-bot
 ```
 
-Logs land in `logs/tempo-bot.out.log` and `logs/tempo-bot.err.log`
+Logs land in `logs/runos-bot.out.log` and `logs/runos-bot.err.log`
 (gitignored). See
 [`docs/TELEGRAM_BOT.md`](docs/TELEGRAM_BOT.md) "Always-on under launchd"
 for the full lifecycle (install, kickstart, bootout, removal) and
@@ -372,7 +372,7 @@ touches.
 
 ## Scheduling (the daily run via launchd)
 
-The daily loop — `tempo run-daily` — runs **sync → transform → analyze** and
+The daily loop — `runos run-daily` — runs **sync → transform → analyze** and
 writes the report suite. It is **idempotent and catch-up-aware**: sync is
 watermark-driven and raw writes are idempotent, so running it twice is harmless
 and a **missed day is recovered on the next run** (everything since the last
@@ -384,46 +384,46 @@ written, but the run only prints a `NOTEWORTHY` block (and writes a
 `reports/NOTEWORTHY.md` marker) when a threshold is crossed — ACWR out of the safe
 range, an aggressive ramp, a `monitor`/`elevated` recovery verdict, a strong
 baseline z-score, a target race within ~14 days, or a stale source. The thresholds
-live (configurable + documented) in `tempo/analysis/noteworthy.py`.
+live (configurable + documented) in `runos/analysis/noteworthy.py`.
 
 ```
-tempo run-daily          # sync -> transform -> analyze (the launchd job runs this)
-tempo run-daily --no-sync   # transform + analyze existing data only (no network)
+runos run-daily          # sync -> transform -> analyze (the launchd job runs this)
+runos run-daily --no-sync   # transform + analyze existing data only (no network)
 ```
 
 ### Enable the launchd LaunchAgent (macOS)
 
-Tempo uses **launchd, not cron**. On macOS, cron **silently skips** jobs while the
+RunOS uses **launchd, not cron**. On macOS, cron **silently skips** jobs while the
 Mac is asleep (your daily sync would just never run) and runs in a stripped
 environment that often can't find `uv`/Python. launchd's `StartCalendarInterval`
-runs a **missed job on wake**, and Tempo's generated plist uses absolute paths +
-an explicit `PATH`/`TEMPO_DATA_DIR` so the scheduled run behaves exactly like your
+runs a **missed job on wake**, and RunOS's generated plist uses absolute paths +
+an explicit `PATH`/`RUNOS_DATA_DIR` so the scheduled run behaves exactly like your
 terminal. stdout/stderr are captured to a log file under the data dir.
 
-Generate the plist, then load it (Tempo **never** runs `launchctl` for you — that
+Generate the plist, then load it (RunOS **never** runs `launchctl` for you — that
 explicit, informed step is yours):
 
 ```
-tempo install-scheduler --hour 5 --minute 30     # writes a template under ~/.tempo/launchd/
+runos install-scheduler --hour 5 --minute 30     # writes a template under ~/.runos/launchd/
 # inspect it, then:
-cp ~/.tempo/launchd/com.tempo.daily.plist ~/Library/LaunchAgents/
-launchctl load -w ~/Library/LaunchAgents/com.tempo.daily.plist     # enable
+cp ~/.runos/launchd/com.runos.daily.plist ~/Library/LaunchAgents/
+launchctl load -w ~/Library/LaunchAgents/com.runos.daily.plist     # enable
 # to disable later:
-launchctl unload -w ~/Library/LaunchAgents/com.tempo.daily.plist
+launchctl unload -w ~/Library/LaunchAgents/com.runos.daily.plist
 ```
 
-`tempo install-scheduler --to-launch-agents` writes the plist straight into
+`runos install-scheduler --to-launch-agents` writes the plist straight into
 `~/Library/LaunchAgents/` (still without loading it). A committed, secret-free
-template lives at [`launchd/com.tempo.daily.plist`](launchd/com.tempo.daily.plist).
+template lives at [`launchd/com.runos.daily.plist`](launchd/com.runos.daily.plist).
 
-**Load config** (`.env`): set `TEMPO_THRESHOLD_PACE_S_PER_KM` (required for
-rTSS) and optionally `TEMPO_MAX_HR` / `TEMPO_RESTING_HR` / `TEMPO_THRESHOLD_HR`
+**Load config** (`.env`): set `RUNOS_THRESHOLD_PACE_S_PER_KM` (required for
+rTSS) and optionally `RUNOS_MAX_HR` / `RUNOS_RESTING_HR` / `RUNOS_THRESHOLD_HR`
 (the hrTSS fallback). See `.env.example`.
 
 **Tracker files**: copy `races.md.example`, `heat.md.example`,
 `strength.md.example`, `weight.md.example`, and `food.md.example` into
 your content dir as `races.md` / `heat.md` / `strength.md` / `weight.md`
-/ `food.md` (default `~/.tempo/`) and edit them. Tempo reads `races.md`
+/ `food.md` (default `~/.runos/`) and edit them. RunOS reads `races.md`
 for race-readiness context, `heat.md` for heat-adaptation context,
 `strength.md` for S&C context (see
 [`docs/STRENGTH.md`](docs/STRENGTH.md)), `weight.md` for body-weight
@@ -431,12 +431,12 @@ context with a 7d/28d/EWMA rollup (see
 [`docs/WEIGHT.md`](docs/WEIGHT.md)), and `food.md` for daily nutrition
 with a 7d-trailing rollup (lenient parser accepts both inline and
 block-per-meal formats; see [`docs/NUTRITION.md`](docs/NUTRITION.md)) in
-the recovery report and the standalone `tempo analyze nutrition` report;
+the recovery report and the standalone `runos analyze nutrition` report;
 none are ever committed.
 
 ## Status
 
-**All 7 phases complete — Tempo is feature-complete for v1.** The full pipeline
+**All 7 phases complete — RunOS is feature-complete for v1.** The full pipeline
 runs end to end: pull → store → transform → analyze → report, on a daily schedule.
 
 - **Phase 4** was the Strava end-to-end milestone (load → CTL/ATL/TSB → ACWR/ramp →

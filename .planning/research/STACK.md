@@ -25,7 +25,7 @@ Everything managed with **`uv`**.
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
 | Python | 3.14 | Runtime | Project constraint. All recommended libs support it (garminconnect requires ≥3.12, pandas 3.0 requires ≥3.11, everything else ≥3.10/3.11). |
-| uv | latest (0.9.x line) | Packaging, venv, dep resolution, script running | Project constraint; now the de-facto standard fast Python packager. Use `uv run tempo ...` and a `[project.scripts]` entry point. |
+| uv | latest (0.9.x line) | Packaging, venv, dep resolution, script running | Project constraint; now the de-facto standard fast Python packager. Use `uv run runos ...` and a `[project.scripts]` entry point. |
 | stravalib | 2.4 (Jun 2025) | Strava API v3 client | Handles the painful parts: OAuth2 `refresh_access_token()` + auto-refresh, `BatchedResultsIterator` pagination for all-time history, and `get_activity_streams()` for HR/pace/GPS/power/cadence. Actively maintained (1000+ commits), Python 3.11+. |
 | garminconnect | 0.3.3 (May 2026) | Garmin Connect wellness data | The only practical option. v0.3.x uses the mobile-app SSO flow via `curl_cffi` TLS impersonation to get past Cloudflare; auto-saves/refreshes DI OAuth tokens to `~/.garminconnect/`. Returns sleep, HRV, body battery, resting HR, stress, steps. Requires Python ≥3.12. **Treat as fragile — see Pitfalls.** |
 | SQLite (stdlib `sqlite3`) | bundled with Python 3.14 | Storage (raw + structured) | Project constraint and the correct choice: zero-infra, single-file, transactional DDL. Stdlib driver is sufficient; no ORM needed for a single-user schema you control. |
@@ -34,7 +34,7 @@ Everything managed with **`uv`**.
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| typer | 0.25.1 | CLI framework (`tempo sync`, `tempo analyze`, ...) | Always. Type-hint-driven, built on click, great DX, auto help/completion. Subcommand groups map cleanly to connectors + analyses. |
+| typer | 0.25.1 | CLI framework (`runos sync`, `runos analyze`, ...) | Always. Type-hint-driven, built on click, great DX, auto help/completion. Subcommand groups map cleanly to connectors + analyses. |
 | pydantic-settings | 2.14.1 | Config + secrets from `.env` / env vars | Always. Typed settings (Strava client id/secret, Garmin email, paths) with validation. Pairs with a gitignored `.env`. |
 | python-dotenv | 1.2.2 | `.env` loading | Optional — only if you want dotenv loading outside pydantic-settings (pydantic-settings already reads `.env` natively). Usually not needed. |
 | httpx | 0.28.1 | Direct HTTP (Strava OAuth bootstrap, ad-hoc calls) | Use for the one-time browser-redirect OAuth code exchange if you'd rather not route it through stravalib, or for any endpoint a wrapper doesn't cover. Modern, sync+async, good defaults. |
@@ -55,8 +55,8 @@ Everything managed with **`uv`**.
 
 ```bash
 # Project init
-uv init tempo
-cd tempo
+uv init runos
+cd RunOS
 
 # Core runtime deps
 uv add stravalib garminconnect typer pydantic-settings httpx tenacity
@@ -67,8 +67,8 @@ uv add stravalib garminconnect typer pydantic-settings httpx tenacity
 # Dev deps
 uv add --dev pytest pytest-recording ruff mypy
 
-# Run the CLI (after defining [project.scripts] tempo = "tempo.cli:app")
-uv run tempo --help
+# Run the CLI (after defining [project.scripts] tempo = "runos.cli:app")
+uv run runos --help
 ```
 
 ## Decisions by Dimension
@@ -86,13 +86,13 @@ A single-user schema you fully control does not need an ORM. Raw `sqlite3` with 
 For daily summaries, date-spine joins, and most training-load math, SQL views/queries are sufficient and keep logic next to the data. Don't add a dataframe lib for v1. When in-Python numeric work does appear (rolling 7/28-day load, ACWR, correlations), reach for **polars** (1.41) — faster, lower memory, no index surprises, and it reads SQLite directly. Skip **pandas** for new code; pandas 3.0 is fine but offers no advantage here and brings heavier deps. Confidence: HIGH (recommendation), MEDIUM (exact future need).
 
 ### CLI — `typer`
-Type-hint-driven, built on click, near-zero boilerplate, automatic `--help` and shell completion. Subcommands model the domain cleanly (`tempo strava backfill`, `tempo strava sync`, `tempo garmin sync`, `tempo analyze recovery`). Plain `click` is the fallback if you want fewer abstractions, but typer is strictly more ergonomic for this. Confidence: HIGH.
+Type-hint-driven, built on click, near-zero boilerplate, automatic `--help` and shell completion. Subcommands model the domain cleanly (`runos strava backfill`, `runos strava sync`, `runos garmin sync`, `runos analyze recovery`). Plain `click` is the fallback if you want fewer abstractions, but typer is strictly more ergonomic for this. Confidence: HIGH.
 
 ### Config & secrets — `pydantic-settings` + gitignored `.env`; tokens on disk with 0600
-Typed settings object reads Strava client id/secret, Garmin email, and paths from a gitignored `.env`/env vars with validation. OAuth tokens: let stravalib hold the Strava refresh token (persist it to a gitignored file under e.g. `~/.config/tempo/` or the project's gitignored data dir), and let garminconnect manage its own token cache in `~/.garminconnect/`. Ensure `.env`, the SQLite DB, tokens, and `reports/` health output are in `.gitignore` from the first commit (project constraint: code-only public repo). macOS Keychain is an optional hardening step but `.env` + 0600 token files are the standard, sufficient baseline for a single-user local tool. Confidence: HIGH.
+Typed settings object reads Strava client id/secret, Garmin email, and paths from a gitignored `.env`/env vars with validation. OAuth tokens: let stravalib hold the Strava refresh token (persist it to a gitignored file under e.g. `~/.config/runos/` or the project's gitignored data dir), and let garminconnect manage its own token cache in `~/.garminconnect/`. Ensure `.env`, the SQLite DB, tokens, and `reports/` health output are in `.gitignore` from the first commit (project constraint: code-only public repo). macOS Keychain is an optional hardening step but `.env` + 0600 token files are the standard, sufficient baseline for a single-user local tool. Confidence: HIGH.
 
 ### Scheduling — `launchd` (a `LaunchAgent` plist), not cron
-On macOS, prefer a `~/Library/LaunchAgents/com.tempo.dailysync.plist` `StartCalendarInterval` agent over cron. Key reason: launchd runs a missed job when the Mac wakes from sleep — essential for a laptop that isn't on at 6am. cron is deprecated on macOS and silently skips jobs while asleep. The agent should invoke `uv run tempo sync && uv run tempo analyze` (or a small wrapper script). "Running Claude Code on a schedule" is the *delivery* layer for the analysis step (Claude reads the DB + markdown plan files and writes reports), but the *trigger* should still be launchd kicking off the sync + the analysis run; don't rely on a Claude-side scheduler for data ingestion. Confidence: HIGH.
+On macOS, prefer a `~/Library/LaunchAgents/com.runos.dailysync.plist` `StartCalendarInterval` agent over cron. Key reason: launchd runs a missed job when the Mac wakes from sleep — essential for a laptop that isn't on at 6am. cron is deprecated on macOS and silently skips jobs while asleep. The agent should invoke `uv run runos sync && uv run runos analyze` (or a small wrapper script). "Running Claude Code on a schedule" is the *delivery* layer for the analysis step (Claude reads the DB + markdown plan files and writes reports), but the *trigger* should still be launchd kicking off the sync + the analysis run; don't rely on a Claude-side scheduler for data ingestion. Confidence: HIGH.
 
 ### Testing — `pytest` + recorded HTTP cassettes
 Unit-test transforms/SQL against an in-memory or temp-file SQLite DB. For the connectors, use `pytest-recording`/vcrpy to record real Strava and Garmin responses once and replay them offline — fast, deterministic, no live API hits in CI. **Scrub access tokens, refresh tokens, and any PII from cassettes** before committing (vcrpy supports filtering). This mirrors how garminconnect tests itself. Confidence: HIGH.

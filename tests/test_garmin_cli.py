@@ -6,8 +6,8 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from tempo import db
-from tempo.cli import app
+from runos import db
+from runos.cli import app
 from tests.garmin_fakes import FakeGarminClient, make_day
 
 runner = CliRunner()
@@ -16,19 +16,19 @@ runner = CliRunner()
 def _recent_days() -> list[str]:
     from datetime import timedelta
 
-    from tempo.connectors.garmin import GarminConnector
+    from runos.connectors.garmin import GarminConnector
 
     today = GarminConnector._today()
     return [(today - timedelta(days=i)).isoformat() for i in range(5, -1, -1)]
 
 
-# ---- tempo garmin login (interactive, one-time) ----------------------------
+# ---- runos garmin login (interactive, one-time) ----------------------------
 
 
-def test_garmin_login_persists_via_credential_client(tempo_data_dir: Path, monkeypatch) -> None:
-    """`tempo garmin login` submits credentials once and dumps tokens (GRMN-02)."""
-    monkeypatch.setenv("TEMPO_GARMIN_EMAIL", "runner@example.com")
-    monkeypatch.setenv("TEMPO_GARMIN_PASSWORD", "not-a-real-pw")
+def test_garmin_login_persists_via_credential_client(runos_data_dir: Path, monkeypatch) -> None:
+    """`runos garmin login` submits credentials once and dumps tokens (GRMN-02)."""
+    monkeypatch.setenv("RUNOS_GARMIN_EMAIL", "runner@example.com")
+    monkeypatch.setenv("RUNOS_GARMIN_PASSWORD", "not-a-real-pw")
 
     captured = {}
 
@@ -39,7 +39,7 @@ def test_garmin_login_persists_via_credential_client(tempo_data_dir: Path, monke
         return client
 
     # Patch the factory's default credential client builder.
-    import tempo.connectors.factory as factory
+    import runos.connectors.factory as factory
 
     monkeypatch.setattr(factory, "_real_garmin_credential_client", _factory)
 
@@ -52,21 +52,21 @@ def test_garmin_login_persists_via_credential_client(tempo_data_dir: Path, monke
     assert captured["email"] == "runner@example.com"
 
 
-def test_garmin_login_without_credentials_errors(tempo_data_dir: Path) -> None:
+def test_garmin_login_without_credentials_errors(runos_data_dir: Path) -> None:
     """Missing Garmin credentials -> a clear error, exit 1 (no network)."""
     result = runner.invoke(app, ["garmin", "login"])
     assert result.exit_code == 1
     assert "credentials missing" in result.output.lower()
 
 
-# ---- tempo garmin sync (token reuse; no fresh login) -----------------------
+# ---- runos garmin sync (token reuse; no fresh login) -----------------------
 
 
-def test_garmin_sync_reuses_tokens_no_login(tempo_data_dir: Path, monkeypatch) -> None:
-    """`tempo garmin sync` reuses tokens and performs NO credential login (GRMN-02)."""
+def test_garmin_sync_reuses_tokens_no_login(runos_data_dir: Path, monkeypatch) -> None:
+    """`runos garmin sync` reuses tokens and performs NO credential login (GRMN-02)."""
     client = FakeGarminClient(days={d: make_day(d) for d in _recent_days()})
 
-    import tempo.connectors.factory as factory
+    import runos.connectors.factory as factory
 
     # The connector's client_factory returns our token-only fake.
     monkeypatch.setattr(
@@ -82,7 +82,7 @@ def test_garmin_sync_reuses_tokens_no_login(tempo_data_dir: Path, monkeypatch) -
     assert client.token_login_calls == 1
 
     # Raw wellness rows landed.
-    conn = db.connect(tempo_data_dir / "tempo.db")
+    conn = db.connect(runos_data_dir / "runos.db")
     try:
         n = conn.execute("SELECT COUNT(*) FROM raw_response WHERE source='garmin'").fetchone()[0]
     finally:
@@ -90,13 +90,13 @@ def test_garmin_sync_reuses_tokens_no_login(tempo_data_dir: Path, monkeypatch) -
     assert n > 0
 
 
-def test_garmin_sync_429_reports_skip_not_crash(tempo_data_dir: Path, monkeypatch) -> None:
-    """A 429 on `tempo garmin sync` reports a skip, exit 0 (no retry, no crash)."""
+def test_garmin_sync_429_reports_skip_not_crash(runos_data_dir: Path, monkeypatch) -> None:
+    """A 429 on `runos garmin sync` reports a skip, exit 0 (no retry, no crash)."""
     client = FakeGarminClient(
         days={d: make_day(d) for d in _recent_days()},
         raise_429_on="sleep",
     )
-    import tempo.connectors.factory as factory
+    import runos.connectors.factory as factory
 
     monkeypatch.setattr(factory, "_real_garmin_login_client", lambda: client)
 
@@ -106,18 +106,18 @@ def test_garmin_sync_429_reports_skip_not_crash(tempo_data_dir: Path, monkeypatc
     assert "429" in result.output
 
 
-# ---- tempo sync: Strava + isolated Garmin ----------------------------------
+# ---- runos sync: Strava + isolated Garmin ----------------------------------
 
 
-def test_tempo_sync_reports_both_sources_garmin_isolated(tempo_data_dir: Path, monkeypatch) -> None:
-    """`tempo sync` runs Strava then attempts Garmin; a Garmin 429 is isolated."""
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_ID", "424242")
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_SECRET", "shhh")
+def test_runos_sync_reports_both_sources_garmin_isolated(runos_data_dir: Path, monkeypatch) -> None:
+    """`runos sync` runs Strava then attempts Garmin; a Garmin 429 is isolated."""
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_ID", "424242")
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_SECRET", "shhh")
 
-    from tempo.connectors.tokens import TokenSet, TokenStore
+    from runos.connectors.tokens import TokenSet, TokenStore
     from tests.strava_fakes import FakeStravaClient, make_activity
 
-    store = TokenStore(tempo_data_dir / "tokens", "strava")
+    store = TokenStore(runos_data_dir / "tokens", "strava")
     store.save(TokenSet("access", "refresh", 9_999_999_999))
     strava_fake = FakeStravaClient(
         pages={
@@ -131,13 +131,13 @@ def test_tempo_sync_reports_both_sources_garmin_isolated(tempo_data_dir: Path, m
             2: [],
         }
     )
-    monkeypatch.setattr("tempo.connectors.strava.Client", lambda *a, **k: strava_fake)
+    monkeypatch.setattr("runos.connectors.strava.Client", lambda *a, **k: strava_fake)
 
     # Garmin 429s -> isolated.
     garmin_client = FakeGarminClient(
         days={d: make_day(d) for d in _recent_days()}, raise_429_on="sleep"
     )
-    import tempo.connectors.factory as factory
+    import runos.connectors.factory as factory
 
     monkeypatch.setattr(factory, "_real_garmin_login_client", lambda: garmin_client)
 
@@ -147,7 +147,7 @@ def test_tempo_sync_reports_both_sources_garmin_isolated(tempo_data_dir: Path, m
     assert "garmin: skipped" in result.output
 
     # Strava data landed despite the Garmin failure.
-    conn = db.connect(tempo_data_dir / "tempo.db")
+    conn = db.connect(runos_data_dir / "runos.db")
     try:
         n = conn.execute("SELECT COUNT(*) FROM raw_response WHERE source='strava'").fetchone()[0]
     finally:
@@ -159,15 +159,15 @@ def _patch_sync_pipeline_results(
     monkeypatch, results: list
 ) -> None:
     """Stub pipeline.run_full_sync to return a canned list without touching connectors."""
-    from tempo.sync import pipeline
+    from runos.sync import pipeline
 
     monkeypatch.setattr(pipeline, "run_full_sync", lambda conn, settings: results)
 
 
-def test_tempo_sync_notify_on_failure_silent_when_all_ok(
-    tempo_data_dir: Path, monkeypatch
+def test_runos_sync_notify_on_failure_silent_when_all_ok(
+    runos_data_dir: Path, monkeypatch
 ) -> None:
-    """`tempo sync --notify-on-failure` is silent on full success.
+    """`runos sync --notify-on-failure` is silent on full success.
 
     Even with Telegram fully configured, no message is sent when every
     source returns ok=True. The flag must be safe to wire into an hourly
@@ -176,8 +176,8 @@ def test_tempo_sync_notify_on_failure_silent_when_all_ok(
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token")
     monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "555")
 
-    from tempo.sync import notify
-    from tempo.sync.pipeline import SourceResult
+    from runos.sync import notify
+    from runos.sync.pipeline import SourceResult
 
     _patch_sync_pipeline_results(
         monkeypatch,
@@ -195,15 +195,15 @@ def test_tempo_sync_notify_on_failure_silent_when_all_ok(
     assert posted == []
 
 
-def test_tempo_sync_notify_on_failure_posts_when_garmin_fails(
-    tempo_data_dir: Path, monkeypatch
+def test_runos_sync_notify_on_failure_posts_when_garmin_fails(
+    runos_data_dir: Path, monkeypatch
 ) -> None:
-    """`tempo sync --notify-on-failure` posts when any source returns ok=False."""
+    """`runos sync --notify-on-failure` posts when any source returns ok=False."""
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token")
     monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "555")
 
-    from tempo.sync import notify
-    from tempo.sync.pipeline import SourceResult
+    from runos.sync import notify
+    from runos.sync.pipeline import SourceResult
 
     _patch_sync_pipeline_results(
         monkeypatch,
@@ -228,15 +228,15 @@ def test_tempo_sync_notify_on_failure_posts_when_garmin_fails(
     assert "429" in body
 
 
-def test_tempo_sync_no_flag_does_not_post_even_on_failure(
-    tempo_data_dir: Path, monkeypatch
+def test_runos_sync_no_flag_does_not_post_even_on_failure(
+    runos_data_dir: Path, monkeypatch
 ) -> None:
     """Without --notify-on-failure, no Telegram message is sent for ANY result."""
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token")
     monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "555")
 
-    from tempo.sync import notify
-    from tempo.sync.pipeline import SourceResult
+    from runos.sync import notify
+    from runos.sync.pipeline import SourceResult
 
     _patch_sync_pipeline_results(
         monkeypatch,

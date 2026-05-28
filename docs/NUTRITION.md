@@ -2,10 +2,10 @@
 
 **Status:** Authoritative for Phase 16 (NUTR-03 through NUTR-05).
 
-Tempo has no nutrition-tracking UI by design. The owner maintains a
+RunOS has no nutrition-tracking UI by design. The owner maintains a
 hand-edited `food.md` markdown file in the content dir (default
-`<content_root>/food.md`, redirect with `TEMPO_CONTENT_DIR`), and Tempo
-reads it for the standalone `tempo analyze nutrition` report and a
+`<content_root>/food.md`, redirect with `RUNOS_CONTENT_DIR`), and RunOS
+reads it for the standalone `runos analyze nutrition` report and a
 `## Nutrition` section in the recovery report. The markdown layer comes
 first by intent: the format has to prove itself in real use before a
 structured DB table earns its place (the MyFitnessPal CSV importer is
@@ -249,18 +249,18 @@ sum) all three percentages return `0.0` rather than raising.
 - **`avg_28d_kcal`** — scalar 28-day trailing mean kcal (int) in
   `(today - 28, today]`. Deeper 28-day trend is deferred to v2.
 - **`target_kcal`** — optional; sourced from
-  `Settings.target_kcal_default` (which reads `TEMPO_TARGET_KCAL` via a
+  `Settings.target_kcal_default` (which reads `RUNOS_TARGET_KCAL` via a
   `validation_alias`). `None` when unset.
 - **`deficit_surplus_7d`** — `avg_7d.kcal - target_kcal` (positive =
   surplus, negative = deficit). `None` when either side is `None`.
 
 ---
 
-## Standalone report (`tempo analyze nutrition`)
+## Standalone report (`runos analyze nutrition`)
 
-`tempo analyze nutrition` writes `reports/<YYYY-MM-DD>-nutrition.md` for
+`runos analyze nutrition` writes `reports/<YYYY-MM-DD>-nutrition.md` for
 today (or `--date YYYY-MM-DD` for a back-date). The top-level
-`tempo analyze` aggregator also runs the nutrition report alongside the
+`runos analyze` aggregator also runs the nutrition report alongside the
 existing four. Sections in order:
 
 - **Header banner** — date + data-freshness line: `Data: food.md present
@@ -308,9 +308,9 @@ The renderer follows the standard **3-state degradation rule**:
 
 ---
 
-## Optional goal tracking (`TEMPO_TARGET_KCAL`)
+## Optional goal tracking (`RUNOS_TARGET_KCAL`)
 
-Set `TEMPO_TARGET_KCAL=2200` in `.env` to enable goal tracking. The
+Set `RUNOS_TARGET_KCAL=2200` in `.env` to enable goal tracking. The
 `Settings.target_kcal_default` field reads it via a `validation_alias` on
 the bare env-var name. When set, both the standalone report's `## Goal`
 section and the recovery-report `## Nutrition` goal-suffix line light up.
@@ -356,7 +356,7 @@ the same file freely.
 
 MyFitnessPal does not offer a public personal-data API, but its CSV
 export is well-known. The `food.md` format is **deliberately importer-
-friendly** — a future `tempo food import <csv>` connector (reclassified
+friendly** — a future `runos food import <csv>` connector (reclassified
 to v2 `NUTR-CSV-01`) becomes mechanical: each MFP row maps to one Format
 A inline line. The four required macro keys (`p` / `c` / `f` / `cal`) are
 exactly the four columns every MFP export carries, in any order, so the
@@ -371,12 +371,12 @@ prove itself in real use first.
 
 Deferred (per Phase 16 CONTEXT):
 
-- **MyFitnessPal CSV importer** (`tempo food import <csv>`) —
+- **MyFitnessPal CSV importer** (`runos food import <csv>`) —
   reclassified to v2 `NUTR-CSV-01`.
 - **Structured DB tables** (`food_entry`, `meal_block`,
   `daily_nutrition`) — rederivable from the markdown source once the
   markdown proves itself in real use.
-- **`tempo food add` CLI command** (mirror of `tempo journal add`) —
+- **`runos food add` CLI command** (mirror of `runos journal add`) —
   manual edit or agent-append for now.
 - **Per-meal-type rollups** (avg breakfast kcal across the week) —
   Layer 2 once the daily rollup proves itself.

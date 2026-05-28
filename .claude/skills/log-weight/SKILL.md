@@ -34,10 +34,10 @@ Concrete examples:
 3. **Verify:**
 
 ```bash
-TEMPO_CONTENT_DIR=$(pwd)/training uv run python -c "
+RUNOS_CONTENT_DIR=$(pwd)/training uv run python -c "
 from pathlib import Path
 from datetime import date
-from tempo.analysis.weight import parse_weight, weight_rollup
+from runos.analysis.weight import parse_weight, weight_rollup
 ctx = parse_weight(Path('training/weight.md'))
 r = weight_rollup(ctx.entries, date.today())
 if r.latest_entry:

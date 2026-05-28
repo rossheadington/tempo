@@ -61,10 +61,10 @@ Use for: meals with multiple components broken down by item.
 4. **Verify:**
 
 ```bash
-TEMPO_CONTENT_DIR=$(pwd)/training uv run python -c "
+RUNOS_CONTENT_DIR=$(pwd)/training uv run python -c "
 from pathlib import Path
 from datetime import date
-from tempo.analysis.nutrition import parse_food, daily_nutrition
+from runos.analysis.nutrition import parse_food, daily_nutrition
 ctx = parse_food(Path('training/food.md'))
 d = daily_nutrition(ctx.entries, date.today())
 if d:
@@ -91,4 +91,4 @@ Examples:
 - **Correcting a previous entry.** Append a new line with the same `(date, meal_name, food_label)` triple — the parser's latest-wins kicks in. Tell Ross which line you superseded.
 - **Block-after-inline parser caveat.** The parser handles inline-after-block correctly (post-fix 2026-05-28), but prefers cleanly-separated blocks. If today is split across both formats, that's fine — just be consistent within a meal.
 - **The food.md.example file is committed as a reference** — read it if format details are ambiguous.
-- **`TEMPO_TARGET_KCAL` in .env** enables goal-tracking. If it's set, the recovery report shows a 7d delta vs target. You can mention this if Ross is curious.
+- **`RUNOS_TARGET_KCAL` in .env** enables goal-tracking. If it's set, the recovery report shows a 7d delta vs target. You can mention this if Ross is curious.

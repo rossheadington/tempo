@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from tempo.analysis.weight import (
+from runos.analysis.weight import (
     WeightContext,
     WeightEntry,
     _parse_entry_line,

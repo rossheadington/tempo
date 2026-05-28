@@ -1,14 +1,14 @@
-"""Tests for tempo.db (WAL mode, migrations, foundation tables)."""
+"""Tests for runos.db (WAL mode, migrations, foundation tables)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from tempo import db
+from runos import db
 
 
 def test_init_db_creates_foundation_tables(tmp_path: Path) -> None:
-    db_path = tmp_path / "tempo.db"
+    db_path = tmp_path / "runos.db"
     conn = db.init_db(db_path)
     try:
         tables = db.table_names(conn)
@@ -20,7 +20,7 @@ def test_init_db_creates_foundation_tables(tmp_path: Path) -> None:
 
 
 def test_wal_mode_enabled(tmp_path: Path) -> None:
-    conn = db.init_db(tmp_path / "tempo.db")
+    conn = db.init_db(tmp_path / "runos.db")
     try:
         assert db.journal_mode(conn) == "wal"
     finally:
@@ -28,7 +28,7 @@ def test_wal_mode_enabled(tmp_path: Path) -> None:
 
 
 def test_foreign_keys_enabled(tmp_path: Path) -> None:
-    conn = db.init_db(tmp_path / "tempo.db")
+    conn = db.init_db(tmp_path / "runos.db")
     try:
         assert conn.execute("PRAGMA foreign_keys;").fetchone()[0] == 1
     finally:
@@ -36,7 +36,7 @@ def test_foreign_keys_enabled(tmp_path: Path) -> None:
 
 
 def test_schema_version_set(tmp_path: Path) -> None:
-    conn = db.init_db(tmp_path / "tempo.db")
+    conn = db.init_db(tmp_path / "runos.db")
     try:
         version = conn.execute("PRAGMA user_version;").fetchone()[0]
         assert version == db.SCHEMA_VERSION
@@ -45,7 +45,7 @@ def test_schema_version_set(tmp_path: Path) -> None:
 
 
 def test_migrate_is_idempotent(tmp_path: Path) -> None:
-    db_path = tmp_path / "tempo.db"
+    db_path = tmp_path / "runos.db"
     conn = db.init_db(db_path)
     try:
         # Running migrate again should be a no-op and leave the version unchanged.
@@ -58,7 +58,7 @@ def test_migrate_is_idempotent(tmp_path: Path) -> None:
 
 def test_init_db_creates_parent_dir(tmp_path: Path) -> None:
     # Parent dir does not exist yet; init_db must create it.
-    db_path = tmp_path / "nested" / "deeper" / "tempo.db"
+    db_path = tmp_path / "nested" / "deeper" / "runos.db"
     conn = db.init_db(db_path)
     try:
         assert db_path.exists()
@@ -67,7 +67,7 @@ def test_init_db_creates_parent_dir(tmp_path: Path) -> None:
 
 
 def test_raw_response_unique_constraint(tmp_path: Path) -> None:
-    conn = db.init_db(tmp_path / "tempo.db")
+    conn = db.init_db(tmp_path / "runos.db")
     try:
         conn.execute(
             "INSERT INTO raw_response (source, endpoint, entity_key, payload) "
@@ -91,7 +91,7 @@ def test_raw_response_unique_constraint(tmp_path: Path) -> None:
 
 
 def test_sync_state_and_date_spine_columns(tmp_path: Path) -> None:
-    conn = db.init_db(tmp_path / "tempo.db")
+    conn = db.init_db(tmp_path / "runos.db")
     try:
         sync_cols = {r[1] for r in conn.execute("PRAGMA table_info(sync_state);")}
         assert {"source", "backfill_cursor", "backfill_complete"} <= sync_cols
@@ -103,7 +103,7 @@ def test_sync_state_and_date_spine_columns(tmp_path: Path) -> None:
 
 def test_wellness_day_table_and_columns(tmp_path: Path) -> None:
     """Migration 0004 creates wellness_day keyed by `day` with the Phase-6 metrics."""
-    conn = db.init_db(tmp_path / "tempo.db")
+    conn = db.init_db(tmp_path / "runos.db")
     try:
         assert "wellness_day" in db.table_names(conn)
         cols = {r[1] for r in conn.execute("PRAGMA table_info(wellness_day);")}
@@ -132,7 +132,7 @@ def test_wellness_day_table_and_columns(tmp_path: Path) -> None:
 
 def test_daily_summary_exposes_wellness_columns(tmp_path: Path) -> None:
     """The gold daily_summary view now surfaces wellness fields (STORE-04; GRMN-04)."""
-    conn = db.init_db(tmp_path / "tempo.db")
+    conn = db.init_db(tmp_path / "runos.db")
     try:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(daily_summary);")}
         assert {"hrv_last_night", "resting_hr", "sleep_score", "steps", "has_wellness"} <= cols
@@ -142,7 +142,7 @@ def test_daily_summary_exposes_wellness_columns(tmp_path: Path) -> None:
 
 def test_migrate_creates_bot_session_table(tmp_path: Path) -> None:
     """Migration 0005 creates the bot_session table and bumps SCHEMA_VERSION to 5."""
-    conn = db.init_db(tmp_path / "tempo.db")
+    conn = db.init_db(tmp_path / "runos.db")
     try:
         assert "bot_session" in db.table_names(conn)
         version = conn.execute("PRAGMA user_version;").fetchone()[0]
@@ -155,7 +155,7 @@ def test_migrate_creates_bot_session_table(tmp_path: Path) -> None:
 
 def test_bot_session_table_has_expected_columns(tmp_path: Path) -> None:
     """bot_session has the four documented columns with chat_id as PK (VOICE-08)."""
-    conn = db.init_db(tmp_path / "tempo.db")
+    conn = db.init_db(tmp_path / "runos.db")
     try:
         info = list(conn.execute("PRAGMA table_info(bot_session);"))
         cols = {r[1] for r in info}
@@ -178,7 +178,7 @@ def test_bot_session_table_has_expected_columns(tmp_path: Path) -> None:
 
 def test_migrate_is_idempotent_at_v5(tmp_path: Path) -> None:
     """Re-running migrate() on a current v5 DB is a no-op (no error, version stays 5)."""
-    db_path = tmp_path / "tempo.db"
+    db_path = tmp_path / "runos.db"
     conn = db.init_db(db_path)
     try:
         # Already migrated by init_db; calling migrate again must be a no-op.

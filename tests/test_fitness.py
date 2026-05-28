@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from tempo.analysis.fitness import (
+from runos.analysis.fitness import (
     ACWR_CHRONIC_DAYS,
     acwr,
     evaluate_guardrail,

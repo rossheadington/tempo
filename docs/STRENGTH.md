@@ -2,9 +2,9 @@
 
 **Status:** Authoritative for Phase 13 (SC-01 through SC-05).
 
-Tempo has no strength-tracking UI by design. The owner maintains a hand-edited
+RunOS has no strength-tracking UI by design. The owner maintains a hand-edited
 `strength.md` markdown file in the content dir (default `<content_root>/strength.md`,
-redirect with `TEMPO_CONTENT_DIR`), and Tempo reads it for S&C context in the
+redirect with `RUNOS_CONTENT_DIR`), and RunOS reads it for S&C context in the
 recovery report. The Strong app remains the source of truth during a session
 (set logging, rest timer, PRs); the markdown is the **storage format** -- the
 compact `WxR` syntax is friendlier for hand-editing than Strong's verbose
@@ -178,7 +178,7 @@ hand-editable format. The compact `WxR` syntax fits one bullet per
 exercise, which is friendlier for the markdown layer than Strong's
 verbose `Set 1: 40 kg × 8 reps` exports. There is no Strong-app importer
 in this phase -- the markdown is hand-maintained. A future phase may add a
-`tempo strength import <csv>` connector if the manual mapping becomes
+`runos strength import <csv>` connector if the manual mapping becomes
 painful (see "What's not done in this layer" below).
 
 ---
@@ -191,15 +191,15 @@ Deferred to later phases (per Phase 13 CONTEXT):
   `strength_set`) -- the markdown layer must prove useful in real use
   first. If it does, Layer 2 adds tables plus a transform that rebuilds
   them from the parsed markdown (rederivable, same invariant as the rest
-  of Tempo).
-- **Strong-app CSV importer** (`tempo strength import <csv>`) -- natural
+  of RunOS).
+- **Strong-app CSV importer** (`runos strength import <csv>`) -- natural
   Layer 2 once the markdown is exercised in anger.
-- **Validated `tempo strength add` CLI** (mirror of `tempo journal add`)
+- **Validated `runos strength add` CLI** (mirror of `runos journal add`)
   -- lets the Telegram bot capture lifts via the agent loop.
 - **Standalone S&C report** -- weekly tonnage trend, set-volume by
   movement pattern, RDL/squat/hinge stress balance. Only sensible after
   the structured tables land.
-- **1RM estimation / PR tracking** -- Strong already does this; Tempo
+- **1RM estimation / PR tracking** -- Strong already does this; RunOS
   doesn't need to duplicate it.
 - **Strava `WeightTraining` activity ↔ session auto-link** -- only useful
   if the owner starts logging lifts to Strava (currently they don't).

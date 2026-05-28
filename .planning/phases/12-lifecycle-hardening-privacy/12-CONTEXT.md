@@ -9,14 +9,14 @@
 
 **What this phase delivers:**
 
-- **launchd LaunchAgent** plist (`launchd/com.tempo.telegram-bot.plist`) with `KeepAlive=true`, `ThrottleInterval=10`, log paths under `logs/`, `WorkingDirectory` set to the project root, `EnvironmentVariables` setting `OMP_NUM_THREADS=4` and `TZ` for predictable timestamps.
-- New `tempo bot install-scheduler` CLI subcommand that generates a user-specific plist from a committed template (mirrors the existing `tempo install-scheduler` for the daily-analysis launchd job from Phase 7).
+- **launchd LaunchAgent** plist (`launchd/com.runos.telegram-bot.plist`) with `KeepAlive=true`, `ThrottleInterval=10`, log paths under `logs/`, `WorkingDirectory` set to the project root, `EnvironmentVariables` setting `OMP_NUM_THREADS=4` and `TZ` for predictable timestamps.
+- New `runos bot install-scheduler` CLI subcommand that generates a user-specific plist from a committed template (mirrors the existing `runos install-scheduler` for the daily-analysis launchd job from Phase 7).
 - **Top-level error boundary**: A PTB error handler (`Application.add_error_handler`) that catches anything that propagates from any handler (voice / text / /new), logs the full traceback, and replies to the chat with "Sorry — something went wrong on my end. Check the logs." (configurable text). Never crashes the worker.
 - **Voice-file retention policy**: After successful transcription, delete the cached `.ogg` from `<content_dir>/voice/` immediately by default. Configurable retention window via `voice_retention_days: int = 0` (0 = delete on success; positive = keep N days then sweep via a startup cleanup pass).
-- **Working-directory scoping confirmation**: Confirm + document that the Claude Agent SDK is invoked with `cwd=Path.cwd()` (set to the Tempo project root by launchd's `WorkingDirectory`). Add a startup log line stating the cwd so the user can verify.
+- **Working-directory scoping confirmation**: Confirm + document that the Claude Agent SDK is invoked with `cwd=Path.cwd()` (set to the RunOS project root by launchd's `WorkingDirectory`). Add a startup log line stating the cwd so the user can verify.
 - **Privacy contract doc** (`docs/PRIVACY.md`): One-page explicit document covering what data moves where (voice stays local; transcripts + agent context flow to user's Claude subscription; Telegram carries messages). Linked from README.
 - **Logs hygiene**: ensure `logs/` is gitignored; structured JSON-style log lines for the per-turn observability already wired in Phase 11; rotate via launchd's stdout/stderr append behaviour (no separate rotation tool — for personal use, manual log truncation when needed is fine).
-- **Cleanup CLI helper**: `tempo bot purge-voice` to manually sweep the voice cache. Useful if the user wants to wipe everything before, say, lending the laptop.
+- **Cleanup CLI helper**: `runos bot purge-voice` to manually sweep the voice cache. Useful if the user wants to wipe everything before, say, lending the laptop.
 
 **What this phase does NOT deliver (out of scope):**
 
@@ -34,11 +34,11 @@
 ## Implementation Decisions (LOCKED)
 
 ### launchd plist
-- Committed template: `launchd/com.tempo.telegram-bot.plist`. Mirrors the existing `launchd/com.tempo.daily.plist` from Phase 7. Secret-free (uses absolute path placeholders the install-scheduler command substitutes).
+- Committed template: `launchd/com.runos.telegram-bot.plist`. Mirrors the existing `launchd/com.runos.daily.plist` from Phase 7. Secret-free (uses absolute path placeholders the install-scheduler command substitutes).
 - Key entries:
-  - `Label`: `com.tempo.telegram-bot`
-  - `ProgramArguments`: absolute path to `uv` + `run` + `tempo` + `bot` + `run`
-  - `WorkingDirectory`: absolute path to the Tempo project root
+  - `Label`: `com.runos.telegram-bot`
+  - `ProgramArguments`: absolute path to `uv` + `run` + `runos` + `bot` + `run`
+  - `WorkingDirectory`: absolute path to the RunOS project root
   - `EnvironmentVariables`:
     - `PATH`: includes Homebrew (`/opt/homebrew/bin`) and the system PATH
     - `OMP_NUM_THREADS=4` (faster-whisper thread oversubscription guard)
@@ -51,18 +51,18 @@
 - The committed template uses `{{PROJECT_ROOT}}` / `{{UV_BIN}}` / `{{TZ}}` placeholders that the install command resolves.
 
 ### install-scheduler subcommand
-- New `tempo bot install-scheduler` typer subcommand.
-- Reads the template, substitutes placeholders with absolute values from the runtime environment + Settings, writes the resolved plist to `~/Library/LaunchAgents/com.tempo.telegram-bot.plist`.
+- New `runos bot install-scheduler` typer subcommand.
+- Reads the template, substitutes placeholders with absolute values from the runtime environment + Settings, writes the resolved plist to `~/Library/LaunchAgents/com.runos.telegram-bot.plist`.
 - Prints next steps (NEVER runs `launchctl` itself — explicit user step, mirrors existing pattern):
   ```
-  launchctl unload ~/Library/LaunchAgents/com.tempo.telegram-bot.plist  # if previously installed
-  launchctl load   ~/Library/LaunchAgents/com.tempo.telegram-bot.plist
-  launchctl start  com.tempo.telegram-bot
+  launchctl unload ~/Library/LaunchAgents/com.runos.telegram-bot.plist  # if previously installed
+  launchctl load   ~/Library/LaunchAgents/com.runos.telegram-bot.plist
+  launchctl start  com.runos.telegram-bot
   ```
 - Validates the resolved plist via `plutil -lint` and prints PASS/FAIL.
 
 ### Error boundary
-- `tempo/bot/error_handler.py` (new small module): `async def telegram_error_handler(update, context)` registered via `Application.add_error_handler(telegram_error_handler)` in `build_application`.
+- `runos/bot/error_handler.py` (new small module): `async def telegram_error_handler(update, context)` registered via `Application.add_error_handler(telegram_error_handler)` in `build_application`.
 - Logs the full exception via `logging.exception("Bot handler crashed", extra={"chat_id": ..., "update_type": ...})`.
 - Replies to the originating chat with: `"Sorry — something went wrong on my end. Check the logs."` (the canonical text).
 - If reply itself fails (e.g. the chat is rate-limited), swallow that silently — never re-raise from the error handler.
@@ -76,8 +76,8 @@
 - Startup sweep: in `_post_init` (after `warm_model`), iterate `<content_dir>/voice/` and delete files older than `voice_retention_days` days. Idempotent. Logs `voice cache sweep: deleted N files`.
 - Document this in `docs/PRIVACY.md` and `docs/TELEGRAM_BOT.md`.
 
-### `tempo bot purge-voice` CLI
-- New subcommand: `tempo bot purge-voice [--yes]`.
+### `runos bot purge-voice` CLI
+- New subcommand: `runos bot purge-voice [--yes]`.
 - Without `--yes`: interactive confirmation listing how many files / how much disk.
 - With `--yes`: delete unconditionally.
 - Tested via a small fixture dir.
@@ -92,7 +92,7 @@
 One-page contract:
 
 ```markdown
-# Tempo Privacy Contract
+# RunOS Privacy Contract
 
 What stays on your machine:
 - Voice memos (transcribed locally via faster-whisper; deleted by default after transcription)
@@ -117,13 +117,13 @@ What is NEVER sent anywhere:
 
 Privacy knobs:
 - `VOICE_RETENTION_DAYS=N` — keep cached voice files for N days (default 0 = delete on success)
-- `tempo bot purge-voice` — manually clear the voice cache
+- `runos bot purge-voice` — manually clear the voice cache
 ```
 
 Linked from README.md.
 
 ### gitignore additions
-- Ensure `logs/` is gitignored. (Probably already covered by `~/.tempo/` umbrella if logs go there, but the plist points logs into `<project>/logs/`, so add an explicit `logs/` line.)
+- Ensure `logs/` is gitignored. (Probably already covered by `~/.runos/` umbrella if logs go there, but the plist points logs into `<project>/logs/`, so add an explicit `logs/` line.)
 - Confirm `voice/` is covered (it's under `content_dir` which is gitignored).
 
 ### Testing strategy
@@ -138,7 +138,7 @@ Linked from README.md.
 
 ### Documentation
 - New `docs/PRIVACY.md`.
-- Update `docs/TELEGRAM_BOT.md`: launchd setup section (run `tempo bot install-scheduler` → launchctl commands), voice retention knob, error handler behavior, purge-voice.
+- Update `docs/TELEGRAM_BOT.md`: launchd setup section (run `runos bot install-scheduler` → launchctl commands), voice retention knob, error handler behavior, purge-voice.
 - Update README "Telegram bot (v1.1)" section: brief mention of launchd lifecycle + link to PRIVACY.md.
 
 ### Closing the v1.1 milestone
@@ -150,14 +150,14 @@ Linked from README.md.
 </decisions>
 
 <canonical_refs>
-- `launchd/com.tempo.daily.plist` — existing template for the daily-analysis job; mirror its shape.
-- `tempo/cli.py` — `install-scheduler` command pattern for the daily job.
-- `tempo/scheduler.py` — existing scheduler logic (if it covers helper utilities for plist generation; reuse where possible).
-- `tempo/bot/app.py` — `build_application` to register the error handler.
-- `tempo/bot/handlers.py` — `voice_handler` to add `_cleanup_voice_file` call after success.
-- `tempo/config.py` — Settings pattern to extend with `voice_retention_days`.
+- `launchd/com.runos.daily.plist` — existing template for the daily-analysis job; mirror its shape.
+- `runos/cli.py` — `install-scheduler` command pattern for the daily job.
+- `runos/scheduler.py` — existing scheduler logic (if it covers helper utilities for plist generation; reuse where possible).
+- `runos/bot/app.py` — `build_application` to register the error handler.
+- `runos/bot/handlers.py` — `voice_handler` to add `_cleanup_voice_file` call after success.
+- `runos/config.py` — Settings pattern to extend with `voice_retention_days`.
 - `tests/test_scheduler.py` (if exists) — plist rendering test pattern.
-- CLAUDE.md — Tempo conventions.
+- CLAUDE.md — RunOS conventions.
 
 </canonical_refs>
 
@@ -177,7 +177,7 @@ Linked from README.md.
 - Health-check / heartbeat.
 - Encrypted-at-rest cache.
 - Multi-user retention policies.
-- "Tempo dashboard" for cost/token tracking — logs are sufficient for now.
+- "RunOS dashboard" for cost/token tracking — logs are sufficient for now.
 </deferred>
 
 ---

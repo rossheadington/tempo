@@ -1,0 +1,97 @@
+"""Telegram bot scaffold + voice transcription + sessions + agent loop.
+
+Owner-only Telegram bot that runs locally via long-polling. Phase 9 added the
+wiring; Phase 10 layers local faster-whisper transcription (Plan 10-01) and
+the voice-memo handler (Plan 10-02) on top; Phase 11 adds the per-chat Claude
+Code session-id store (Plan 11-01), the Claude Agent SDK wrapper (Plan 11-02),
+and the handler integration that wires voice + text + ``/clear`` through the
+agent loop (Plan 11-03). The package is import-safe: importing :mod:`runos.bot`
+never starts the bot, never touches the network, never downloads a Whisper
+model, never spawns the ``claude`` CLI, and never calls
+:func:`logging.basicConfig` -- the model is only loaded when :func:`warm_model`
+is called from :func:`runos.bot.app._post_init` at startup, and the SDK is only
+invoked when :func:`run_turn` is called from a handler.
+
+Modules:
+
+* :mod:`runos.bot.app`        -- :func:`build_application` (PTB ``Application``
+  builder gated on the owner chat id, with a ``post_init`` hook that calls
+  ``delete_webhook``, runs migrations, and warms the Whisper model; the
+  builder also verifies the ``claude`` CLI is on PATH at startup) and
+  :func:`run` (the blocking ``run_polling`` entrypoint the CLI wraps).
+* :mod:`runos.bot.handlers`   -- :func:`start_handler` (``/start`` greeting),
+  :func:`voice_handler` (owner-only voice-memo intake, post-Phase-11 routed
+  through the agent loop), :func:`text_handler` (non-command text messages
+  routed through the agent loop), :func:`clear_command_handler` (``/clear``
+  resets the per-chat Claude Code session), :func:`sync_command_handler`
+  (``/sync`` runs Strava + isolated Garmin sync from the bot), and the
+  :data:`MAX_VOICE_BYTES` 20 MB pre-download guard constant.
+* :mod:`runos.bot.sessions`   -- :func:`get_or_create_session` /
+  :func:`save_session` / :func:`reset_session` plus the
+  persistent session that only resets on ``/clear`` (VOICE-08; backs the
+  ``bot_session`` table added by migration 0005).
+* :mod:`runos.bot.transcribe` -- :func:`warm_model` / :func:`get_model` /
+  :func:`transcribe_file`: the module-level WhisperModel singleton and the
+  text-from-ogg helper that consumes the segments generator eagerly.
+* :mod:`runos.bot.agent`      -- :class:`AgentTurn` / :class:`AgentInvocationError`
+  / :func:`run_turn` / :func:`format_for_telegram`: the Claude Agent SDK
+  wrapper (VOICE-07/09/13) that Plan 11-03's handlers compose with the
+  session store and warmed transcriber.
+"""
+
+from runos.bot.agent import (
+    AgentInvocationError,
+    AgentTurn,
+    format_for_telegram,
+    run_turn,
+)
+from runos.bot.app import CLAUDE_CLI_MISSING_ERROR, build_application, run
+from runos.bot.error_handler import ERROR_REPLY, telegram_error_handler
+from runos.bot.handlers import (
+    CLEAR_SESSION_REPLY,
+    GREETING,
+    MAX_VOICE_BYTES,
+    MISSING_CLI_REPLY,
+    SYNC_CONFIG_ERROR,
+    SYNC_REPLY_PREFIX,
+    clear_command_handler,
+    start_handler,
+    sync_command_handler,
+    text_handler,
+    voice_handler,
+)
+from runos.bot.sessions import (
+    get_or_create_session,
+    reset_session,
+    save_session,
+)
+from runos.bot.transcribe import get_model, transcribe_file, warm_model
+
+__all__ = [
+    "AgentInvocationError",
+    "AgentTurn",
+    "CLAUDE_CLI_MISSING_ERROR",
+    "CLEAR_SESSION_REPLY",
+    "ERROR_REPLY",
+    "GREETING",
+    "MAX_VOICE_BYTES",
+    "MISSING_CLI_REPLY",
+    "SYNC_CONFIG_ERROR",
+    "SYNC_REPLY_PREFIX",
+    "build_application",
+    "clear_command_handler",
+    "format_for_telegram",
+    "get_model",
+    "get_or_create_session",
+    "reset_session",
+    "run",
+    "run_turn",
+    "save_session",
+    "start_handler",
+    "sync_command_handler",
+    "telegram_error_handler",
+    "text_handler",
+    "transcribe_file",
+    "voice_handler",
+    "warm_model",
+]

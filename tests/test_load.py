@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from tempo.analysis.load import (
+from runos.analysis.load import (
     REST,
     ActivityLoad,
     DayLoad,

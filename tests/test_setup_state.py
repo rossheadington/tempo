@@ -1,4 +1,4 @@
-"""Tests for ``tempo.setup.state.detect_install_state`` (SETUP-02).
+"""Tests for ``runos.setup.state.detect_install_state`` (SETUP-02).
 
 Combinatorial coverage of the seven InstallState fields across fresh / partial
 / full installs. Pure stdlib + pytest's ``tmp_path`` + ``monkeypatch``; no
@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from tempo import db as _db
-from tempo.config import Settings
-from tempo.setup.state import InstallState, detect_install_state
+from runos import db as _db
+from runos.config import Settings
+from runos.setup.state import InstallState, detect_install_state
 
 
 @pytest.fixture
@@ -208,7 +208,7 @@ def test_daily_scheduler_installed_from_launchagents_plist(
     tmp_path: Path, fake_home: Path
 ) -> None:
     settings = _build_settings(tmp_path)
-    _touch_launch_agent("com.tempo.daily.plist", fake_home)
+    _touch_launch_agent("com.runos.daily.plist", fake_home)
     state = detect_install_state(settings)
     assert state.daily_scheduler_installed is True
     assert state.bot_scheduler_installed is False
@@ -218,7 +218,7 @@ def test_bot_scheduler_installed_from_launchagents_plist(
     tmp_path: Path, fake_home: Path
 ) -> None:
     settings = _build_settings(tmp_path)
-    _touch_launch_agent("com.tempo.telegram-bot.plist", fake_home)
+    _touch_launch_agent("com.runos.telegram-bot.plist", fake_home)
     state = detect_install_state(settings)
     assert state.bot_scheduler_installed is True
     assert state.daily_scheduler_installed is False
@@ -241,8 +241,8 @@ def test_detect_install_state_all_present(tmp_path: Path, fake_home: Path) -> No
     _init_fresh_db(settings)
     _touch_strava_token(settings)
     _touch_garmin_token_dir(settings)
-    _touch_launch_agent("com.tempo.daily.plist", fake_home)
-    _touch_launch_agent("com.tempo.telegram-bot.plist", fake_home)
+    _touch_launch_agent("com.runos.daily.plist", fake_home)
+    _touch_launch_agent("com.runos.telegram-bot.plist", fake_home)
 
     state = detect_install_state(settings)
     assert state == InstallState(

@@ -1,6 +1,6 @@
-"""End-to-end CLI verification of `tempo transform` / `tempo rederive` (Phase 3).
+"""End-to-end CLI verification of `runos transform` / `runos rederive` (Phase 3).
 
-Seeds fake raw rows into the CLI's own DB (via the TEMPO_DATA_DIR temp dir), runs
+Seeds fake raw rows into the CLI's own DB (via the RUNOS_DATA_DIR temp dir), runs
 the commands as a user would, and asserts the structured layer + spine +
 daily_summary are produced. No network, no credentials.
 """
@@ -11,10 +11,10 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from tempo import db
-from tempo.cli import app
-from tempo.config import get_settings
-from tempo.connectors.base import RawWriter
+from runos import db
+from runos.cli import app
+from runos.config import get_settings
+from runos.connectors.base import RawWriter
 from tests.strava_fakes import make_activity, make_streams
 
 runner = CliRunner()
@@ -46,14 +46,14 @@ def _seed_cli_db() -> None:
         conn.close()
 
 
-def test_transform_cli_builds_structured_layer(tempo_data_dir: Path) -> None:
+def test_transform_cli_builds_structured_layer(runos_data_dir: Path) -> None:
     _seed_cli_db()
     result = runner.invoke(app, ["transform"])
     assert result.exit_code == 0, result.output
     assert "2 activities" in result.output
     assert "8 streams" in result.output
 
-    conn = db.connect(tempo_data_dir / "tempo.db")
+    conn = db.connect(runos_data_dir / "runos.db")
     try:
         # late-night run on 2026-05-01 (local), continuous spine through to today.
         assert (
@@ -71,7 +71,7 @@ def test_transform_cli_builds_structured_layer(tempo_data_dir: Path) -> None:
         conn.close()
 
 
-def test_rederive_cli_rebuilds_from_raw(tempo_data_dir: Path) -> None:
+def test_rederive_cli_rebuilds_from_raw(runos_data_dir: Path) -> None:
     _seed_cli_db()
     runner.invoke(app, ["transform"])
     result = runner.invoke(app, ["rederive"])

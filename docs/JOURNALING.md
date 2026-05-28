@@ -2,27 +2,27 @@
 
 **Status:** Authoritative for Phase 5 (JRNL-01/02/03).
 
-Tempo has no journaling UI by design. The user "tells Claude" how a session felt,
-and **Claude captures it by calling the validated `tempo journal add` command** —
+RunOS has no journaling UI by design. The user "tells Claude" how a session felt,
+and **Claude captures it by calling the validated `runos journal add` command** —
 never by writing SQL. This document is the contract Claude follows.
 
 ---
 
 ## The one rule
 
-> **Claude writes structured journal rows ONLY through `tempo journal add`.**
+> **Claude writes structured journal rows ONLY through `runos journal add`.**
 > It never runs `INSERT`/`UPDATE` against the database, and never edits the
 > SQLite file directly.
 
-`tempo journal add` is a thin wrapper over the validated service
-`tempo.journal.service.add_entry`, which is the single boundary that:
+`runos journal add` is a thin wrapper over the validated service
+`runos.journal.service.add_entry`, which is the single boundary that:
 
 - validates RPE (an integer 1–10; rejects 0, 11, fractional, non-numeric);
 - resolves which activity the entry links to, by **local date + sport**;
 - computes **sRPE = RPE × duration_minutes** (a subjective load track);
 - inserts via parameterised SQL inside a transaction.
 
-This keeps the store trustworthy (Tempo's core value): bad RPE values, orphaned
+This keeps the store trustworthy (RunOS's core value): bad RPE values, orphaned
 rows, and accidental writes are impossible through this path. See
 `.planning/research/ARCHITECTURE.md` Pattern 5 / Anti-Pattern 4.
 
@@ -34,7 +34,7 @@ When the user describes a session ("today's tempo felt brutal, like an 8, legs
 were dead"), Claude maps the free speech to the structured fields and runs:
 
 ```
-tempo journal add --rpe 8 --feel "legs dead" --notes "tempo felt brutal" \
+runos journal add --rpe 8 --feel "legs dead" --notes "tempo felt brutal" \
     --day 2026-05-25 --sport Run
 ```
 
@@ -64,7 +64,7 @@ e.g. `Run` / `TrailRun`):
 - **exactly 1 match** → linked automatically.
 - **many matches** (e.g. a double-run day) → **ambiguous**. The command errors
   and lists the candidate activity ids. Claude must re-run with
-  `--activity-id <id>` to pick the right one. Tempo never guesses, because a
+  `--activity-id <id>` to pick the right one. RunOS never guesses, because a
   wrong link would corrupt later correlation analysis.
 
 An explicit `--activity-id` always wins and skips resolution (it must reference a
@@ -81,7 +81,7 @@ real activity).
 2. the **linked activity's** moving time (else elapsed time), in minutes.
 
 If neither yields a positive duration, the entry is still saved but `srpe` is
-left null (Tempo never invents a load).
+left null (RunOS never invents a load).
 
 **Why it matters:** sRPE is used by the analysis layer as a *fallback* daily
 load when the pace/HR-based load (rTSS/hrTSS) is **insufficient** for that day —
@@ -98,21 +98,21 @@ never overrides it.
 A normal run that links automatically and gets sRPE from the activity:
 
 ```
-tempo journal add --rpe 6 --feel ok --day 2026-05-25 --sport Run
+runos journal add --rpe 6 --feel ok --day 2026-05-25 --sport Run
 # -> linked to the day's Run; sRPE = 6 × (moving minutes)
 ```
 
 A rest-day reflection (no activity):
 
 ```
-tempo journal add --rpe 3 --notes "full rest, legs recovering" --day 2026-05-26
+runos journal add --rpe 3 --notes "full rest, legs recovering" --day 2026-05-26
 # -> no activity linked; sRPE null
 ```
 
 Cross-training Strava never saw, with an explicit duration:
 
 ```
-tempo journal add --rpe 5 --sport Strength --duration-min 45 \
+runos journal add --rpe 5 --sport Strength --duration-min 45 \
     --notes "gym lower body" --day 2026-05-26
 # -> no activity linked; sRPE = 5 × 45 = 225
 ```
@@ -120,16 +120,16 @@ tempo journal add --rpe 5 --sport Strength --duration-min 45 \
 A double-run day (disambiguate):
 
 ```
-tempo journal add --rpe 8 --day 2026-05-25 --sport Run
+runos journal add --rpe 8 --day 2026-05-25 --sport Run
 # error: 2 activities match ... pass an explicit --activity-id to disambiguate.
-tempo journal add --rpe 8 --day 2026-05-25 --activity-id 987654321
+runos journal add --rpe 8 --day 2026-05-25 --activity-id 987654321
 # -> linked to activity 987654321
 ```
 
 Review what's been captured:
 
 ```
-tempo journal list --limit 10
+runos journal list --limit 10
 ```
 
 ---
@@ -137,6 +137,6 @@ tempo journal list --limit 10
 ## Where the data lives (privacy)
 
 Journal content is **personal data**. It only ever lives in the gitignored
-`~/.tempo/tempo.db`. It is never committed to the public repo, never written to
+`~/.runos/runos.db`. It is never committed to the public repo, never written to
 `reports/` in raw form, and never leaves the local machine. This is
 non-negotiable (see `.planning/PROJECT.md` privacy constraint).

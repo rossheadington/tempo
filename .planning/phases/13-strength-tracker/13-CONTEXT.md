@@ -9,25 +9,25 @@
 
 **What this phase delivers (Layer 1 only):**
 
-- A new `strength.md` tracker file in the content dir (default `<content_root>/strength.md`, redirectable via `TEMPO_CONTENT_DIR` — the owner's working dir is `~/Projects/tempo/training/` per existing setup).
-- A new module `tempo/analysis/strength.py` defining frozen+slots `StrengthSet` / `StrengthExercise` / `StrengthSession` / `StrengthContext` / `StrengthRollup` dataclasses plus a lenient `parse_strength(path)` and a `strength_rollup(sessions, today)` function. Mirrors `tempo/analysis/heat.py` exactly in shape.
-- `Settings.strength_path` derived property in `tempo/config.py` (mirrors `heat_path`).
-- The recovery analysis (`tempo/analysis/recovery.py`) gains a strength rollup attached to `RecoveryAssessment` (`strength: StrengthRollup | None`, `strength_present: bool`) and the renderer gains a `## Strength & conditioning` section that follows the same 3-state degradation rule heat already uses (absent → omit / lapsed-but-history-exists → one-line nudge / active → full rollup line).
-- `assess_recovery_from_db` accepts an optional `strength_path: Path | None` argument (mirrors `heat_path`); the analysis runner (`tempo/analysis/runner.py`) threads it through; the CLI (`tempo/cli.py`) passes `settings.strength_path` exactly the way it passes `settings.heat_path`.
+- A new `strength.md` tracker file in the content dir (default `<content_root>/strength.md`, redirectable via `RUNOS_CONTENT_DIR` — the owner's working dir is `~/Projects/RunOS/training/` per existing setup).
+- A new module `runos/analysis/strength.py` defining frozen+slots `StrengthSet` / `StrengthExercise` / `StrengthSession` / `StrengthContext` / `StrengthRollup` dataclasses plus a lenient `parse_strength(path)` and a `strength_rollup(sessions, today)` function. Mirrors `runos/analysis/heat.py` exactly in shape.
+- `Settings.strength_path` derived property in `runos/config.py` (mirrors `heat_path`).
+- The recovery analysis (`runos/analysis/recovery.py`) gains a strength rollup attached to `RecoveryAssessment` (`strength: StrengthRollup | None`, `strength_present: bool`) and the renderer gains a `## Strength & conditioning` section that follows the same 3-state degradation rule heat already uses (absent → omit / lapsed-but-history-exists → one-line nudge / active → full rollup line).
+- `assess_recovery_from_db` accepts an optional `strength_path: Path | None` argument (mirrors `heat_path`); the analysis runner (`runos/analysis/runner.py`) threads it through; the CLI (`runos/cli.py`) passes `settings.strength_path` exactly the way it passes `settings.heat_path`.
 - A committed `strength.md.example` template in the repo root (alongside `races.md.example` / `heat.md.example`) showing the owner's Tuesday session as the worked example.
 - A new `docs/STRENGTH.md` documenting the format end-to-end (keys, sets grammar, superset labels, equipment annotation, lenient-parsing contract, the relationship to Strong-app pasted sessions).
 - New tests `tests/test_strength.py` (parser happy/malformed/missing-file paths + rollup window math) + extended `tests/test_recovery.py` covering the recovery-report integration.
 
 **What this phase does NOT deliver (explicitly out of scope, deferred):**
 
-- Structured DB tables for strength sessions / exercises / sets. The markdown layer must prove useful in real use first. If it does, a follow-up phase adds `strength_session` / `strength_exercise` / `strength_set` tables + a transform that rebuilds them from the parsed markdown (rederivable from raw — same invariant as the rest of Tempo).
-- A Strong-app CSV importer. Strong exports CSV; a `tempo strength import <csv>` connector is the natural Layer 2 once Layer 1 is exercised in anger. Out of scope for now — the owner is happy hand-maintaining the markdown.
-- A `tempo strength add` CLI command (mirror of `tempo journal add`). Maybe later; not needed for the first pass.
+- Structured DB tables for strength sessions / exercises / sets. The markdown layer must prove useful in real use first. If it does, a follow-up phase adds `strength_session` / `strength_exercise` / `strength_set` tables + a transform that rebuilds them from the parsed markdown (rederivable from raw — same invariant as the rest of RunOS).
+- A Strong-app CSV importer. Strong exports CSV; a `runos strength import <csv>` connector is the natural Layer 2 once Layer 1 is exercised in anger. Out of scope for now — the owner is happy hand-maintaining the markdown.
+- A `runos strength add` CLI command (mirror of `runos journal add`). Maybe later; not needed for the first pass.
 - A separate "S&C load" report (tonnage trend over time, set-volume by movement pattern, etc.). Layer 4 of the design. Out of scope.
-- 1RM estimation, PR tracking, body-part categories. Strong already does this and Tempo doesn't need to duplicate it.
+- 1RM estimation, PR tracking, body-part categories. Strong already does this and RunOS doesn't need to duplicate it.
 - Any integration with Strava `WeightTraining` activities (Strong sessions are not in Strava in this owner's setup; this is an additive log).
 - Auto-detection of supersets from set timing (`rest: 1:30` is captured as metadata but not used to infer grouping; the owner labels superset groups explicitly with `[A]` / `[B]`).
-- A migration tool from any prior shape. There is no prior strength data in Tempo; this is greenfield.
+- A migration tool from any prior shape. There is no prior strength data in RunOS; this is greenfield.
 
 </domain>
 
@@ -39,7 +39,7 @@
 - All tracker files live in the user's content dir, resolved via `config.content_dir` (or `data_dir` fallback). Same pattern as `races_path` / `heat_path`.
 - New derived path: `strength_path` on `Settings` (`content_root / "strength.md"`).
 - Committed `.md.example` template in the repo root (`strength.md.example`), mirroring `races.md.example` / `heat.md.example`.
-- The owner's content dir resolves to `~/Projects/tempo/training/` per their `.env` (`TEMPO_CONTENT_DIR=...`). The phase MUST NOT hard-code this path; it MUST go through `settings.strength_path`. The real file at `training/strength.md` is gitignored by the existing `training/` rule (already covered).
+- The owner's content dir resolves to `~/Projects/RunOS/training/` per their `.env` (`RUNOS_CONTENT_DIR=...`). The phase MUST NOT hard-code this path; it MUST go through `settings.strength_path`. The real file at `training/strength.md` is gitignored by the existing `training/` rule (already covered).
 
 ### `strength.md` format (LOCKED)
 
@@ -99,7 +99,7 @@ notes: pogos + SLGB supersetted
 
 ### Dataclasses (LOCKED)
 
-All frozen+slots, mirroring `tempo/analysis/heat.py`:
+All frozen+slots, mirroring `runos/analysis/heat.py`:
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -154,7 +154,7 @@ class StrengthRollup:
 
 - `RecoveryAssessment` gains two new fields, exactly mirroring the heat additions in Phase 8: `strength: StrengthRollup | None = None`, `strength_present: bool = False`.
 - `assess_recovery_from_db` gains a `strength_path: Path | None = None` parameter. When provided, parse + rollup happens after the heat block; result is attached to a re-constructed (frozen) `RecoveryAssessment` (same pattern as the existing heat re-construction at the bottom of `assess_recovery_from_db`). Today-for-rollup MUST align with the recovery report's "as of" day, exactly the way heat does it (use `points[-1].day` if points, else `date.today()`).
-- New renderer helper `_render_strength_section(out, strength, strength_present)` in `tempo/analysis/recovery.py`. Mirrors `_render_heat_section`. 3-state rule:
+- New renderer helper `_render_strength_section(out, strength, strength_present)` in `runos/analysis/recovery.py`. Mirrors `_render_heat_section`. 3-state rule:
   - `not strength_present` OR `strength is None` → omit entirely.
   - `strength_present` but `last_session_date is None` (file parsed but zero sessions ever) → omit.
   - `strength_present`, `last_session_date is not None`, ALL of `last_7d_count` / `last_14d_count` / `last_28d_count` are 0 → render header + one-line lapsed nudge: `_S&C protocol lapsed — last session N days ago. (No sessions in the last 28 days.)_`
@@ -169,9 +169,9 @@ class StrengthRollup:
 
 ### Wiring through the runner + CLI
 
-- `tempo/analysis/runner.py`: every site that already threads `heat_path` MUST thread `strength_path` next to it (same signature pattern). At time of writing this is `compute_recovery_assessment` (line ~298) and `analyze_all` (line ~370).
-- `tempo/cli.py`: every site that already passes `settings.heat_path` MUST pass `settings.strength_path` next to it (lines ~611 and ~680).
-- `tempo/config.py`: add `strength_path` derived property mirroring `heat_path` (after `heat_path`, line ~216).
+- `runos/analysis/runner.py`: every site that already threads `heat_path` MUST thread `strength_path` next to it (same signature pattern). At time of writing this is `compute_recovery_assessment` (line ~298) and `analyze_all` (line ~370).
+- `runos/cli.py`: every site that already passes `settings.heat_path` MUST pass `settings.strength_path` next to it (lines ~611 and ~680).
+- `runos/config.py`: add `strength_path` derived property mirroring `heat_path` (after `heat_path`, line ~216).
 
 ### Lenient-parsing contract (honesty / failure modes — mirror Phase 8)
 
@@ -184,7 +184,7 @@ class StrengthRollup:
 
 ### Code-organisation conventions
 
-- New module `tempo/analysis/strength.py` — parser + dataclasses + rollup. Mirror `tempo/analysis/heat.py` structure exactly. Keep the same `_parse_kv` helper style (or import from heat if it's identical and re-export is cleaner — planner's call).
+- New module `runos/analysis/strength.py` — parser + dataclasses + rollup. Mirror `runos/analysis/heat.py` structure exactly. Keep the same `_parse_kv` helper style (or import from heat if it's identical and re-export is cleaner — planner's call).
 - Tests under `tests/test_strength.py`. Mirror `tests/test_heat.py` (`TODAY` fixture, `_session()` builder, parse-then-rollup integration test).
 - Recovery integration tests added to `tests/test_recovery.py`. Mirror the heat integration tests already there (search for "heat" to find them).
 - Set-string parser MUST be its own function (`_parse_set(token: str) -> StrengthSet | None`) so it can be unit-tested in isolation against every flavour.
@@ -192,7 +192,7 @@ class StrengthRollup:
 ### Migration / one-time user actions
 
 - The owner's existing Tuesday session content (pasted in conversation) is the seed for the committed `strength.md.example` template. The owner will create their real `training/strength.md` by copying the example and appending sessions over time. There is no migration tool.
-- The owner's existing `.env` already sets `TEMPO_CONTENT_DIR=~/Projects/tempo/training` (or similar — confirmed by the fact that `training/races.md` is the live file). No `.env.example` change required (no new env var; `strength_path` is derived).
+- The owner's existing `.env` already sets `RUNOS_CONTENT_DIR=~/Projects/RunOS/training` (or similar — confirmed by the fact that `training/races.md` is the live file). No `.env.example` change required (no new env var; `strength_path` is derived).
 
 </decisions>
 
@@ -203,24 +203,24 @@ class StrengthRollup:
 
 ### The pattern to follow exactly
 
-- `tempo/analysis/heat.py` (lines 1-246) — full reference. The new `tempo/analysis/strength.py` mirrors this module's shape: lenient parser, frozen+slots dataclasses, rolling-window rollup with closed intervals.
+- `runos/analysis/heat.py` (lines 1-246) — full reference. The new `runos/analysis/strength.py` mirrors this module's shape: lenient parser, frozen+slots dataclasses, rolling-window rollup with closed intervals.
 - `tests/test_heat.py` (full file) — the test shape to follow. Fixed `TODAY` for deterministic windows; happy-path / malformed / missing-file / rollup integration tests.
 
 ### Config wiring
 
-- `tempo/config.py:208-216` — `races_path` and `heat_path` derived properties. Add `strength_path` right after `heat_path`.
+- `runos/config.py:208-216` — `races_path` and `heat_path` derived properties. Add `strength_path` right after `heat_path`.
 
 ### Recovery integration (where strength plugs in)
 
-- `tempo/analysis/recovery.py:232-260` — `RecoveryAssessment` dataclass with the existing `heat` / `heat_present` fields. Add `strength` / `strength_present` the same way.
-- `tempo/analysis/recovery.py:389-441` — `assess_recovery_from_db` with the heat re-construction at the bottom. Strength block goes after the heat block; the function returns a single re-constructed assessment with both attached.
-- `tempo/analysis/recovery.py:458-500` — `_render_heat_section`. Mirror as `_render_strength_section` below it; call it from `render_recovery` after the heat section call (~line 551).
+- `runos/analysis/recovery.py:232-260` — `RecoveryAssessment` dataclass with the existing `heat` / `heat_present` fields. Add `strength` / `strength_present` the same way.
+- `runos/analysis/recovery.py:389-441` — `assess_recovery_from_db` with the heat re-construction at the bottom. Strength block goes after the heat block; the function returns a single re-constructed assessment with both attached.
+- `runos/analysis/recovery.py:458-500` — `_render_heat_section`. Mirror as `_render_strength_section` below it; call it from `render_recovery` after the heat section call (~line 551).
 
 ### Runner + CLI wiring
 
-- `tempo/analysis/runner.py:263-313` — `compute_recovery_assessment` signature with `heat_path: Path`. Add `strength_path: Path | None = None` (default None so existing callers don't break during transition; the CLI WILL pass it though).
-- `tempo/analysis/runner.py:370-395` — `analyze_all` signature. Same shape.
-- `tempo/cli.py:611, 680` — the two call sites that pass `heat_path=settings.heat_path`. Add `strength_path=settings.strength_path` next to each.
+- `runos/analysis/runner.py:263-313` — `compute_recovery_assessment` signature with `heat_path: Path`. Add `strength_path: Path | None = None` (default None so existing callers don't break during transition; the CLI WILL pass it though).
+- `runos/analysis/runner.py:370-395` — `analyze_all` signature. Same shape.
+- `runos/cli.py:611, 680` — the two call sites that pass `heat_path=settings.heat_path`. Add `strength_path=settings.strength_path` next to each.
 
 ### Existing committed examples
 
@@ -251,12 +251,12 @@ class StrengthRollup:
 <deferred>
 ## Deferred Ideas (Layer 2+ of the modular design)
 
-- **Layer 2 — Structured DB tables.** `strength_session` / `strength_exercise` / `strength_set` tables with a `migrations/0006_strength.sql` migration and a `tempo/transforms/strength.py` pure transform that rebuilds them from the parsed markdown. Rederivable from raw (the markdown becomes the "raw" source for this domain). Adds queryability (`SELECT * FROM strength_session WHERE day BETWEEN ...`) and unlocks Layer 4.
-- **Layer 2b — Strong-app CSV importer.** `tempo strength import <csv>` connector following the `Connector` protocol shape. Writes to `raw_response` (`source='strong'`); a transform turns it into `strength_session` rows. Useful if hand-maintaining `strength.md` becomes painful.
-- **Layer 3 — Validated CLI boundary.** `tempo strength add-session ...` mirror of `tempo journal add`. Lets the bot capture lifts via the Claude Code agent loop (`Hey Claude, log my lift: 4x8 RDL at 55, 4x10 hip thrust at 55, ...`).
+- **Layer 2 — Structured DB tables.** `strength_session` / `strength_exercise` / `strength_set` tables with a `migrations/0006_strength.sql` migration and a `runos/transforms/strength.py` pure transform that rebuilds them from the parsed markdown. Rederivable from raw (the markdown becomes the "raw" source for this domain). Adds queryability (`SELECT * FROM strength_session WHERE day BETWEEN ...`) and unlocks Layer 4.
+- **Layer 2b — Strong-app CSV importer.** `runos strength import <csv>` connector following the `Connector` protocol shape. Writes to `raw_response` (`source='strong'`); a transform turns it into `strength_session` rows. Useful if hand-maintaining `strength.md` becomes painful.
+- **Layer 3 — Validated CLI boundary.** `runos strength add-session ...` mirror of `runos journal add`. Lets the bot capture lifts via the Claude Code agent loop (`Hey Claude, log my lift: 4x8 RDL at 55, 4x10 hip thrust at 55, ...`).
 - **Layer 4 — Standalone S&C report.** Weekly tonnage trend, set-volume by movement pattern (push / pull / hinge / squat / carry / core), PR detection, RDL/squat/hinge stress balance. Pure stdlib like the existing analyses. Only sensible after Layer 2 lands.
-- **Layer 4b — S&C ↔ run-feel correlations.** Extend `tempo/analysis/correlation.py` with strength-day lookups: "next-day HRV after a heavy leg day", "RPE on runs within 24h of a hinge-dominant lift". Honest correlation (insufficient-data fallback) like the existing one.
-- **1RM estimation / PR tracking / movement-pattern categorisation.** Strong already does this. Tempo doesn't need to compete.
+- **Layer 4b — S&C ↔ run-feel correlations.** Extend `runos/analysis/correlation.py` with strength-day lookups: "next-day HRV after a heavy leg day", "RPE on runs within 24h of a hinge-dominant lift". Honest correlation (insufficient-data fallback) like the existing one.
+- **1RM estimation / PR tracking / movement-pattern categorisation.** Strong already does this. RunOS doesn't need to compete.
 - **Strava `WeightTraining` activity ↔ strength session auto-link** (mirroring the Phase 8 race ↔ activity link). Only useful if the owner starts logging lifts to Strava too. Currently they don't.
 - **Heat + strength combined "non-running stress" rollup.** Single number that combines heat exposure minutes and strength tonnage as a generic "non-running load" proxy. Probably misleading — leave it.
 - **Equipment / exercise canonicalisation.** "Romanian Deadlift" vs "RDL" vs "Romanian DL" should all map to the same canonical exercise. Painful + not useful until Layer 4 wants to group by exercise. Out of scope.

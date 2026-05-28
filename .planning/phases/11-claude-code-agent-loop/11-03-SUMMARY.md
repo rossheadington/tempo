@@ -4,10 +4,10 @@ plan: 03
 subsystem: bot
 tags: [bot, handlers, agent, sessions, telegram, typing-indicator, docs]
 requires:
-  - tempo.bot.sessions (Plan 11-01: get_or_create_session / save_session / reset_session, SESSION_WINDOW_HOURS)
-  - tempo.bot.agent (Plan 11-02: run_turn, AgentTurn, AgentInvocationError, format_for_telegram)
-  - tempo.bot.transcribe (Phase 10: warmed singleton, transcribe_file)
-  - tempo.db (connect, init_db, SCHEMA_VERSION=5)
+  - runos.bot.sessions (Plan 11-01: get_or_create_session / save_session / reset_session, SESSION_WINDOW_HOURS)
+  - runos.bot.agent (Plan 11-02: run_turn, AgentTurn, AgentInvocationError, format_for_telegram)
+  - runos.bot.transcribe (Phase 10: warmed singleton, transcribe_file)
+  - runos.db (connect, init_db, SCHEMA_VERSION=5)
   - python-telegram-bot v22 (Application, MessageHandler, CommandHandler, filters)
 provides:
   - voice_handler reworked: post-transcription path -> agent loop (raw transcript echo REMOVED)
@@ -16,7 +16,7 @@ provides:
   - _keep_typing helper: 4s-refresh typing indicator while run_turn is in flight
   - MISSING_CLI_REPLY, NEW_SESSION_REPLY, EMPTY_TRANSCRIPT_REPLY module-level constants
   - build_application: _verify_claude_cli startup check + text/new handler registration + db_path stash + init_db in post_init
-  - CLAUDE_CLI_MISSING_ERROR canonical message (re-exported from tempo.bot)
+  - CLAUDE_CLI_MISSING_ERROR canonical message (re-exported from runos.bot)
   - docs/TELEGRAM_BOT.md "Phase 11: the agent loop" section
   - README.md "Claude Code agent loop (v1.1 / Phase 11)" subsection
 affects:
@@ -28,9 +28,9 @@ tech-stack:
   added: []
   patterns:
     - "Handler -> validated boundary -> Claude Agent SDK composition: handlers
-      open short-lived sqlite connections via tempo.db.connect, route through
-      tempo.bot.sessions (validated boundary for bot_session writes), then call
-      tempo.bot.agent.run_turn (the only seam to claude_agent_sdk)."
+      open short-lived sqlite connections via runos.db.connect, route through
+      runos.bot.sessions (validated boundary for bot_session writes), then call
+      runos.bot.agent.run_turn (the only seam to claude_agent_sdk)."
     - "asyncio.create_task + cancel + gather(return_exceptions=True) for the
       typing keepalive lifecycle: absorbs the CancelledError so it never
       surfaces as 'Task exception was never retrieved'."
@@ -38,15 +38,15 @@ tech-stack:
       canonical user-facing string (MISSING_CLI_REPLY); all other exceptions
       propagate to PTB's default handler per 11-CONTEXT.md error-handling
       LIGHT decision."
-    - "Mock-patch handler-module-rebound names (tempo.bot.handlers.run_turn
+    - "Mock-patch handler-module-rebound names (runos.bot.handlers.run_turn
       etc.) NOT the source module -- the handler does `from ... import ...`
       so the local name is the patch target."
 key-files:
   created: []
   modified:
-    - tempo/bot/handlers.py (voice_handler reworked + text_handler + new_command_handler + _keep_typing + _run_agent_turn shared helper + 4 reply constants)
-    - tempo/bot/app.py (_verify_claude_cli + CLAUDE_CLI_MISSING_ERROR + text/new handler registration + db_path stash + init_db in post_init)
-    - tempo/bot/__init__.py (re-export new handlers + reply constants + CLAUDE_CLI_MISSING_ERROR; sorted __all__)
+    - runos/bot/handlers.py (voice_handler reworked + text_handler + new_command_handler + _keep_typing + _run_agent_turn shared helper + 4 reply constants)
+    - runos/bot/app.py (_verify_claude_cli + CLAUDE_CLI_MISSING_ERROR + text/new handler registration + db_path stash + init_db in post_init)
+    - runos/bot/__init__.py (re-export new handlers + reply constants + CLAUDE_CLI_MISSING_ERROR; sorted __all__)
     - tests/test_bot_handlers.py (2 existing tests updated + 13 new tests)
     - tests/test_bot_app.py (5 new tests for the claude CLI check + handler registration)
     - docs/TELEGRAM_BOT.md ("Phase 11: the agent loop" section after prerequisites)
@@ -54,9 +54,9 @@ key-files:
 decisions:
   - "Path.cwd() is passed to run_turn at handler call time (NOT a cached
     application-level constant). Phase 12's launchd plist will set
-    WorkingDirectory to the Tempo project root; until then `tempo bot run`
+    WorkingDirectory to the RunOS project root; until then `runos bot run`
     is launched from the repo root by convention. Documented inline."
-  - "Per-call short-lived sqlite connections via tempo.db.connect(db_path)
+  - "Per-call short-lived sqlite connections via runos.db.connect(db_path)
     inside a try/finally that closes the conn -- no pooling. Matches the
     rest of the project's convention (journal service, sync writes)."
   - "EMPTY_TRANSCRIPT_REPLY short-circuits before any agent call: Whisper
@@ -68,7 +68,7 @@ decisions:
     re-filter -- it trusts turn.text. Comment in voice_handler references
     the Plan 11-02 contract."
   - "init_db in _post_init (idempotent) so a fresh checkout without prior
-    `tempo init` still has migration 0005 (bot_session table) applied
+    `runos init` still has migration 0005 (bot_session table) applied
     before the first handler runs. Run in asyncio.to_thread because
     init_db opens a sqlite connection that blocks."
   - "_verify_claude_cli runs BEFORE _require_telegram_config so the user
@@ -101,12 +101,12 @@ or forwarded directly (text), routed to Claude Code via `claude-agent-sdk`,
 and the final assistant reply is sent back to Telegram as HTML
 (possibly split across the 4096-char cap). The Phase 10 raw-transcript
 echo is REMOVED. `/new` clears the per-chat session id on demand. While
-the agent runs the chat shows the typing indicator. `tempo bot run`
+the agent runs the chat shows the typing indicator. `runos bot run`
 exits cleanly at startup if the `claude` CLI is missing.
 
 ## What changed
 
-### 1. `tempo/bot/handlers.py` -- voice_handler reworked + 3 new handlers + keepalive (Task 1)
+### 1. `runos/bot/handlers.py` -- voice_handler reworked + 3 new handlers + keepalive (Task 1)
 
 - **`voice_handler`**: pre-agent path (defensive chat-id re-check, 20 MB
   guard, deterministic-filename download, warmed-singleton transcribe)
@@ -136,7 +136,7 @@ exits cleanly at startup if the `claude` CLI is missing.
 - New module-level constants: `MISSING_CLI_REPLY`, `NEW_SESSION_REPLY`,
   `EMPTY_TRANSCRIPT_REPLY`, `_TYPING_REFRESH_S=4.0`.
 
-### 2. `tempo/bot/app.py` -- startup CLI check + handler registration + db_path stash (Task 2)
+### 2. `runos/bot/app.py` -- startup CLI check + handler registration + db_path stash (Task 2)
 
 - **`CLAUDE_CLI_MISSING_ERROR`**: canonical string -- "Set up the Claude
   Code CLI before starting the bot -- see docs/TELEGRAM_BOT.md Phase 11
@@ -148,7 +148,7 @@ exits cleanly at startup if the `claude` CLI is missing.
   - Calls `_verify_claude_cli()` BEFORE `_require_telegram_config` so the
     user is told to install/login the CLI before being asked for tokens.
   - Stashes `settings.db_path` in `app.bot_data["db_path"]` so handlers
-    open per-call connections without re-importing `tempo.config`.
+    open per-call connections without re-importing `runos.config`.
   - Registers `CommandHandler("new", new_command_handler, owner_filter)`
     AFTER `/start` and BEFORE the generic TEXT handler.
   - Registers `MessageHandler(filters.TEXT & ~filters.COMMAND &
@@ -159,7 +159,7 @@ exits cleanly at startup if the `claude` CLI is missing.
   thread, idempotent) BEFORE warming Whisper so migration 0005 is
   guaranteed applied before the first handler fires.
 
-### 3. `tempo/bot/__init__.py` (Tasks 1 + 2)
+### 3. `runos/bot/__init__.py` (Tasks 1 + 2)
 
 Re-exports `text_handler`, `new_command_handler`,
 `CLAUDE_CLI_MISSING_ERROR`, `MISSING_CLI_REPLY`, `NEW_SESSION_REPLY`.
@@ -257,13 +257,13 @@ Verification commands (all green):
 - `uv run pytest -q` -> **468 passed** (was 450 baseline; +18 new tests, 2 updated)
 - `uv run ruff check .` -> **All checks passed!**
 - `uv run ruff format --check .` -> **89 files already formatted**
-- `grep -n "MISSING_CLI_REPLY\|new_command_handler\|text_handler" tempo/bot/handlers.py` -> all present
-- `grep -n "_verify_claude_cli" tempo/bot/app.py` -> present
-- `grep -v '^#' tempo/bot/handlers.py | grep -c "reply_text.*<i>"` -> **0** (Phase 10 italics echo gone; `EMPTY_TRANSCRIPT_REPLY` is a constant referenced via name, not inline)
+- `grep -n "MISSING_CLI_REPLY\|new_command_handler\|text_handler" runos/bot/handlers.py` -> all present
+- `grep -n "_verify_claude_cli" runos/bot/app.py` -> present
+- `grep -v '^#' runos/bot/handlers.py | grep -c "reply_text.*<i>"` -> **0** (Phase 10 italics echo gone; `EMPTY_TRANSCRIPT_REPLY` is a constant referenced via name, not inline)
 - `grep -q "Phase 11: the agent loop" docs/TELEGRAM_BOT.md` -> hit
 - `grep -qE "claude-agent-sdk|Claude Code agent loop" README.md` -> hit
 - `grep -q "4-hour" docs/TELEGRAM_BOT.md` -> hit
-- `uv run tempo --help` -> renders fine (regression OK)
+- `uv run runos --help` -> renders fine (regression OK)
 
 ## Commits
 
@@ -288,7 +288,7 @@ Task 2 was committed.
   the message remains a single logical line. Also collapsed two short
   module-level string definitions (`MISSING_CLI_REPLY`, `NEW_SESSION_REPLY`)
   from multi-line `(...)` form to single-line per ruff format. The
-  `tempo/bot/__init__.py` docstring's first line was shortened to fit
+  `runos/bot/__init__.py` docstring's first line was shortened to fit
   the 100-char limit. These were folded into the Task 3 commit alongside
   the test additions because they only surfaced once tests added new
   imports and triggered ruff's full scan.
@@ -303,14 +303,14 @@ Task 2 was committed.
 - **Worktree fast-forward at startup**: the worktree branch was at the
   Phase 8 tip; the parent main repo had Phases 9/10/11-01/11-02
   unpushed. Fast-forwarded via `git fetch
-  /Users/rossheadington/Projects/tempo main` + `git merge FETCH_HEAD
+  /Users/rossheadington/Projects/RunOS main` + `git merge FETCH_HEAD
   --ff-only` (the execution context explicitly anticipated this; safe
   fast-forward, no rebase, no conflicts).
 
 ## Threat Flags
 
 None. This plan composes existing validated boundaries
-(`tempo.bot.sessions` for `bot_session` writes, `tempo.bot.agent` for
+(`runos.bot.sessions` for `bot_session` writes, `runos.bot.agent` for
 Claude Agent SDK invocation) with PTB v22 handlers; it adds no new
 network surface, no new auth path, and no schema change. Owner-only
 allowlist is enforced by the existing `filters.Chat(chat_id=owner)` at
@@ -333,7 +333,7 @@ surface.
 - All 4 task commits exist in `git log --oneline`: b8ab97e, 2cf97d9,
   0f34453, 3265553.
 - All 7 modified files exist on disk and reflect the documented changes
-  (`tempo/bot/handlers.py`, `tempo/bot/app.py`, `tempo/bot/__init__.py`,
+  (`runos/bot/handlers.py`, `runos/bot/app.py`, `runos/bot/__init__.py`,
   `tests/test_bot_handlers.py`, `tests/test_bot_app.py`,
   `docs/TELEGRAM_BOT.md`, `README.md`).
 - `uv run pytest -q` -> **468 passed**.

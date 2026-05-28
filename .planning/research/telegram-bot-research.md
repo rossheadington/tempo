@@ -8,7 +8,7 @@
 
 Use **`python-telegram-bot` v22.x** (current stable: v22.7) with its **async** API. Run it with **long polling** via `Application.run_polling()` — no public URL, no port forwarding, no certificates needed. Lock the bot to a single chat by combining filters at the handler level: `filters.VOICE & filters.Chat(chat_id=OWNER_CHAT_ID)`. Download voice notes with `await update.message.voice.get_file()` then `await file.download_to_drive(path)`. Send replies as **HTML** (`parse_mode=ParseMode.HTML`) — far less brittle than MarkdownV2 for agent-generated output, since only `&`, `<`, `>` need escaping. Run as a macOS `LaunchAgent` with `KeepAlive=true` so launchd restarts it on crash and re-runs after sleep/wake. `Application.run_polling()` already handles SIGTERM gracefully by default.
 
-PTB is the right pick for a single-user, low-volume bot that needs to coexist with the rest of the Tempo Python 3.14 stack: it's the most mature option, uses `httpx` (compatible with our stack), is fully async, has the largest community / best-maintained docs, and ships first-class filter primitives we need for the allowlist.
+PTB is the right pick for a single-user, low-volume bot that needs to coexist with the rest of the RunOS Python 3.14 stack: it's the most mature option, uses `httpx` (compatible with our stack), is fully async, has the largest community / best-maintained docs, and ships first-class filter primitives we need for the allowlist.
 
 ---
 
@@ -23,7 +23,7 @@ PTB is the right pick for a single-user, low-volume bot that needs to coexist wi
 | Telethon | **Wrong tool.** Telethon is an MTProto **user-client** library — talks to Telegram as a *user account*, not via the Bot API. Heavier, requires `api_id`/`api_hash`, overkill. Use only if you need user-account features (reading another user's messages, MTProto-only features) or to bypass the 20 MB getFile limit. |
 | Pyrogram | Same caveat as Telethon (MTProto). Maintenance has been spottier. Avoid. |
 
-**Use the async API, not the legacy sync wrapper.** PTB v20+ is async-native; the v13 sync API is dead. The rest of Tempo can stay sync — the bot is its own long-lived process.
+**Use the async API, not the legacy sync wrapper.** PTB v20+ is async-native; the v13 sync API is dead. The rest of RunOS can stay sync — the bot is its own long-lived process.
 
 ### Transport: long polling
 
@@ -35,7 +35,7 @@ For a personal bot:
 - **Polling cost:** `getUpdates` is a long-poll (default 10s timeout in PTB) — Telegram holds the connection open until an update arrives. Essentially free.
 
 ```python
-# tempo/bot/main.py
+# runos/bot/main.py
 from telegram.ext import ApplicationBuilder
 
 app = ApplicationBuilder().token(settings.telegram_bot_token).build()
@@ -161,9 +161,9 @@ async def send_agent_reply(update: Update, agent_text: str) -> None:
    TELEGRAM_OWNER_CHAT_ID=987654321
    ```
 
-4. **Load via `pydantic-settings`** (already in the Tempo stack):
+4. **Load via `pydantic-settings`** (already in the RunOS stack):
    ```python
-   # tempo/config.py
+   # runos/config.py
    from pydantic_settings import BaseSettings, SettingsConfigDict
 
    class Settings(BaseSettings):
@@ -173,35 +173,35 @@ async def send_agent_reply(update: Update, agent_text: str) -> None:
        # ... strava, garmin, etc.
    ```
 
-5. **Sanity test:** `uv run python -c "from tempo.config import Settings; print(Settings().telegram_owner_chat_id)"` then run the bot and send it `/start`.
+5. **Sanity test:** `uv run python -c "from runos.config import Settings; print(Settings().telegram_owner_chat_id)"` then run the bot and send it `/start`.
 
 ---
 
 ## launchd lifecycle (Q7)
 
-Run the bot as a **per-user LaunchAgent** in `~/Library/LaunchAgents/`. `KeepAlive=true` restarts it on any exit; `RunAtLoad=true` starts it at login; launchd handles sleep/wake (unlike cron). Same scheduler family already chosen for Tempo's daily sync — no new infra.
+Run the bot as a **per-user LaunchAgent** in `~/Library/LaunchAgents/`. `KeepAlive=true` restarts it on any exit; `RunAtLoad=true` starts it at login; launchd handles sleep/wake (unlike cron). Same scheduler family already chosen for RunOS's daily sync — no new infra.
 
 ```xml
-<!-- ~/Library/LaunchAgents/com.tempo.telegram-bot.plist -->
+<!-- ~/Library/LaunchAgents/com.runos.telegram-bot.plist -->
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key>             <string>com.tempo.telegram-bot</string>
+  <key>Label</key>             <string>com.runos.telegram-bot</string>
   <key>ProgramArguments</key>
   <array>
     <string>/Users/rossheadington/.local/bin/uv</string>
     <string>run</string>
-    <string>tempo</string>
+    <string>runos</string>
     <string>bot</string>
   </array>
-  <key>WorkingDirectory</key>  <string>/Users/rossheadington/Projects/tempo</string>
+  <key>WorkingDirectory</key>  <string>/Users/rossheadington/Projects/RunOS</string>
   <key>RunAtLoad</key>         <true/>
   <key>KeepAlive</key>         <true/>
   <key>ThrottleInterval</key>  <integer>10</integer>
-  <key>StandardOutPath</key>   <string>/Users/rossheadington/Projects/tempo/.logs/bot.out.log</string>
-  <key>StandardErrorPath</key> <string>/Users/rossheadington/Projects/tempo/.logs/bot.err.log</string>
+  <key>StandardOutPath</key>   <string>/Users/rossheadington/Projects/RunOS/.logs/bot.out.log</string>
+  <key>StandardErrorPath</key> <string>/Users/rossheadington/Projects/RunOS/.logs/bot.err.log</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>/usr/local/bin:/usr/bin:/bin</string>
@@ -212,9 +212,9 @@ Run the bot as a **per-user LaunchAgent** in `~/Library/LaunchAgents/`. `KeepAli
 
 Load / unload:
 ```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tempo.telegram-bot.plist
-launchctl print gui/$(id -u)/com.tempo.telegram-bot     # status
-launchctl bootout gui/$(id -u)/com.tempo.telegram-bot   # stop+unload
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.runos.telegram-bot.plist
+launchctl print gui/$(id -u)/com.runos.telegram-bot     # status
+launchctl bootout gui/$(id -u)/com.runos.telegram-bot   # stop+unload
 ```
 
 ### Graceful shutdown
@@ -236,7 +236,7 @@ By default, PTB processes updates **sequentially** (`concurrent_updates=0`). For
 
 2. **Per-handler `block=False`:** `MessageHandler(..., block=False)` makes that handler non-blocking but still serialises other updates. Less flexible than option 1.
 
-Concurrency is safe here because: each handler downloads to a distinct path keyed on `message_id` + `file_unique_id`; the Claude Agent SDK call is per-message stateless; SQLite writes (if any) use the stdlib `sqlite3` connection-per-thread / WAL pattern Tempo already uses.
+Concurrency is safe here because: each handler downloads to a distinct path keyed on `message_id` + `file_unique_id`; the Claude Agent SDK call is per-message stateless; SQLite writes (if any) use the stdlib `sqlite3` connection-per-thread / WAL pattern RunOS already uses.
 
 **Caveat:** if you ever add a `ConversationHandler`, official docs say to set `concurrent_updates=False` because it relies on sequential update ordering. Not relevant for a stateless voice bot.
 
@@ -252,7 +252,7 @@ Concurrency is safe here because: each handler downloads to a distinct path keye
 - **Privacy mode for groups:** by default a bot in a group only sees `/commands` directed at it. Doesn't matter for a 1-on-1 chat, but if you ever add the bot to a group expecting to see all messages, disable privacy via `/setprivacy` in BotFather.
 - **Allowlist bypass:** `filters.Chat` filters at the handler level, but a misconfigured "catch-all" `MessageHandler(filters.ALL, ...)` for debugging will see every chat that messages your bot. Anyone who finds the bot's username can message it. Either remove the catch-all in production, or also gate it on `chat_id`.
 - **launchd crash loops:** if the bot dies immediately on launch (bad token, missing `.env`), `KeepAlive=true` will restart it instantly. Set `ThrottleInterval=10` (above) so launchd backs off to once-per-10s and check `.logs/bot.err.log`. macOS will eventually give up if it crashes too fast for too long.
-- **Working directory + PATH:** launchd starts processes with a minimal `PATH` and `$HOME`-relative working dir. Use **absolute paths** for `ProgramArguments` (full path to `uv`) and set `WorkingDirectory` explicitly, otherwise `uv run tempo bot` may fail to find the project.
+- **Working directory + PATH:** launchd starts processes with a minimal `PATH` and `$HOME`-relative working dir. Use **absolute paths** for `ProgramArguments` (full path to `uv`) and set `WorkingDirectory` explicitly, otherwise `uv run runos bot` may fail to find the project.
 - **Voice file accumulation:** every memo writes an `.ogg` to disk. Add a retention policy (e.g. delete after successful transcript ingest, or nightly cleanup of files older than N days) or the directory will grow unboundedly.
 
 ---

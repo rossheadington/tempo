@@ -6,7 +6,7 @@
 
 ## Context Reminder
 
-Tempo is NOT a product. It is one runner's local tool. The bar for a feature is
+RunOS is NOT a product. It is one runner's local tool. The bar for a feature is
 not "do competitors have it" but "does it make the four target analyses
 (recovery/overtraining, load & trends, race readiness, correlations)
 **trustworthy**, and is it cheap enough to be worth it for an audience of one."
@@ -84,7 +84,7 @@ overreaching risk. **Complexity: LOW.** A cleaner, less-contested companion to A
 
 ### HRV, resting HR, sleep — the recovery inputs (from Garmin)
 
-Not computed by Tempo (Garmin provides them) but they must be **baselined**, not
+Not computed by RunOS (Garmin provides them) but they must be **baselined**, not
 read raw:
 
 - **HRV status**: compare today vs a rolling personal baseline (Garmin uses a 7-day
@@ -144,9 +144,9 @@ output, which is worse than nothing for a tool whose whole value is *trustworthy
 | Markdown reports into reports/ folder | The delivery surface (no UI by design) | LOW | Already in scope; reports must cite the numbers they're built on |
 | Graceful handling of missing/low-quality data | A personal dataset is full of gaps (no HR, GPS dropout, Garmin sync miss) | MEDIUM | Every analysis must degrade to "insufficient data" rather than fabricate |
 
-### Differentiators (where Tempo wins vs the incumbents)
+### Differentiators (where RunOS wins vs the incumbents)
 
-The incumbents are strong on metrics and weak on *synthesis + reflection*. Tempo's
+The incumbents are strong on metrics and weak on *synthesis + reflection*. RunOS's
 edge is that Claude can read objective data + plan + journal + races together and
 write a narrative that a dashboard can't.
 
@@ -154,7 +154,7 @@ write a narrative that a dashboard can't.
 |---------|-------------------|------------|-------|
 | Journaling-via-Claude (no input UI) | Zero-friction capture; conversational extraction of RPE/feel/soreness/context into structured rows | MEDIUM | The capture interface is the chat; Claude must map free speech → schema reliably and link to the right activity (disambiguate "today's run") |
 | Narrative synthesis across all sources | "Your HRV dipped, ramp is hot, and you said the tempo felt awful — back off this week" — a coach-like read no dashboard gives | MEDIUM | Claude over the daily-summary + journal + plan + races; the actual product magic |
-| Correlation insight with subjective inputs | Most tools correlate device metrics only; Tempo can fold in "how it felt"/RPE/mood | MEDIUM | Depends on journaling volume; report effect sizes + confidence, avoid spurious correlations on tiny n |
+| Correlation insight with subjective inputs | Most tools correlate device metrics only; RunOS can fold in "how it felt"/RPE/mood | MEDIUM | Depends on journaling volume; report effect sizes + confidence, avoid spurious correlations on tiny n |
 | Plan/race-aware advice | Analysis grounded in *this runner's* goal race and plan, not generic | LOW–MEDIUM | Reads the markdown; cheap because plan is just context, not a structured engine |
 | Two-layer raw→structured storage | Re-derive new metrics later (e.g., add ACWR-EWMA, new VO2max model) without re-fetching | MEDIUM | Already a PROJECT decision; genuinely future-proofing for a metrics tool |
 | Scheduled "daily check" that only surfaces when noteworthy | Signal over noise: don't generate a report every day, alert when load/recovery/readiness crosses a threshold | MEDIUM | Avoids report fatigue; needs thresholds + change detection |
@@ -172,7 +172,7 @@ For a single-user local tool, most of the incumbents' surface area is pure cost.
 | Social / sharing / segments / leaderboards | Strava's whole identity | Single-user, private-by-design, code-only public repo | None — explicitly not a goal |
 | Multi-sport device feature parity (cycling power curves, swim, etc.) | Incumbents support all sports | User is a runner; cross-training only matters as load input via sRPE | Capture non-run sessions as sRPE load only |
 | Nutrition / food logging | TrainingPeaks/MFP do it | No official MFP API; scraping fragile; explicitly deferred in PROJECT | Deferred; possible CSV-drop ingest later |
-| Re-deriving Garmin's proprietary scores exactly (Body Battery, Training Readiness 0–100, Firebeat VO2max) | Tempt to "match Garmin" | Closed algorithms; chasing parity wastes effort and will never match | Ingest Garmin's scores as inputs; compute Tempo's own transparent signals instead |
+| Re-deriving Garmin's proprietary scores exactly (Body Battery, Training Readiness 0–100, Firebeat VO2max) | Tempt to "match Garmin" | Closed algorithms; chasing parity wastes effort and will never match | Ingest Garmin's scores as inputs; compute RunOS's own transparent signals instead |
 | Auto-adjusting/AI-prescribed daily workouts | "HRV-guided training" hype | Prescribing training has real injury/health stakes; out of scope; advice yes, prescriptions no | Surface signals + suggestions ("consider easy day"), human decides |
 | Generic LLM "chat with all my data" as the primary interface | Feels modern | Unbounded scope, hard to make trustworthy/reproducible | Scheduled, scoped analyses with defined inputs/outputs; chat is for journaling capture |
 | Multi-user / accounts / auth / hosting | Sounds scalable | Single-user by definition; pure overhead | Local files + personal tokens |
@@ -302,7 +302,7 @@ Trigger: Strava loop is trustworthy and the load model is validated against feel
 
 ## Competitor Feature Analysis
 
-| Feature | TrainingPeaks | Intervals.icu | Runalyze | Garmin Connect | Strava | Tempo's Approach |
+| Feature | TrainingPeaks | Intervals.icu | Runalyze | Garmin Connect | Strava | RunOS's Approach |
 |---------|---------------|---------------|----------|----------------|--------|------------------|
 | Fitness/Fatigue/Form (PMC) | Yes (CTL/ATL/TSB origin) | Yes (renamed Fitness/Fatigue/Form) | Yes | Training Status (proxy) | Fitness & Freshness | Compute CTL/ATL/TSB transparently from daily load |
 | Per-activity load | TSS/rTSS | Load (TSS-equiv) | ATL/CTL via HR | Training Load (Firstbeat) | Relative Effort (TRIMP) | rTSS primary, hrTSS fallback, sRPE parallel |
@@ -315,11 +315,11 @@ Trigger: Strava loop is trustworthy and the load model is validated against feel
 | UI | Web/mobile | Web | Web | App | App/web | None — markdown + Claude (deliberate) |
 | Multi-user/social | Coach-athlete | Public/groups | Community | Connections | Social core | Single-user local (deliberate) |
 
-**Takeaway:** The incumbents collectively cover the metrics extremely well — Tempo
+**Takeaway:** The incumbents collectively cover the metrics extremely well — RunOS
 should *borrow their formulas* (they are public and standard) rather than reinvent.
-Tempo's whitespace is the synthesis + frictionless subjective capture + plan/goal
+RunOS's whitespace is the synthesis + frictionless subjective capture + plan/goal
 grounding, delivered as narrative markdown rather than a dashboard. Garmin already
-does recovery best, so Tempo should *consume Garmin's signals as inputs* and add
+does recovery best, so RunOS should *consume Garmin's signals as inputs* and add
 value by combining them with load, plan, journal, and goal — not by re-deriving
 closed scores.
 
@@ -357,5 +357,5 @@ Platform comparison (MEDIUM):
 - [Comparing Garmin Training Status and Strava Fitness & Freshness — Stationary Waves](https://www.stationarywaves.com/2019/03/comparing-garmins-training-status-and.html)
 
 ---
-*Feature research for: personal runner's training & health analytics (Tempo)*
+*Feature research for: personal runner's training & health analytics (RunOS)*
 *Researched: 2026-05-26*

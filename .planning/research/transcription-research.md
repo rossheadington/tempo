@@ -1,7 +1,7 @@
 # Transcription Research — faster-whisper
 
 **Researched:** 2026-05-27
-**Scope:** Local voice-memo transcription for Tempo's Telegram bot milestone (Mac-first, Pi 5 portability).
+**Scope:** Local voice-memo transcription for RunOS's Telegram bot milestone (Mac-first, Pi 5 portability).
 **Overall confidence:** HIGH on library choice and pipeline shape; MEDIUM on exact perf numbers (workload-dependent).
 
 ## Recommendation
@@ -29,7 +29,7 @@
 
 Numbers above are CPU-only, int8 quantization, beam_size=5, VAD on. The turbo's encoder-equal-to-v3 + 4-layer decoder means it's faster than `large-v3` on CPU but still much slower than `small`. Cold start: first run downloads the model from HF Hub (one-time, can be minutes on `large-v3-turbo`) and then loading the int8 model into RAM is ~1–3s on subsequent runs. Confidence: MEDIUM on the table (numbers vary by chip generation, audio content, beam settings).
 
-**UX implication for Telegram:** A typical voice memo is 15–90s. With `small.en`, even a 90s memo finishes in ~10–15s — fine for a chatbot. With `large-v3-turbo` you're at 18–30s, which crosses into "feels slow" territory and risks Telegram bot timeout patterns. Recommend `small.en` as default, expose `TEMPO_TRANSCRIBE_MODEL` as a config knob.
+**UX implication for Telegram:** A typical voice memo is 15–90s. With `small.en`, even a 90s memo finishes in ~10–15s — fine for a chatbot. With `large-v3-turbo` you're at 18–30s, which crosses into "feels slow" territory and risks Telegram bot timeout patterns. Recommend `small.en` as default, expose `RUNOS_TRANSCRIBE_MODEL` as a config knob.
 
 ## Model selection
 
@@ -112,13 +112,13 @@ def transcribe(ogg_path: pathlib.Path) -> str:
 ## Pitfalls
 
 - **`segments` is a generator.** Inference does not run until you iterate. `list(segments)` or a `for` loop is mandatory; calling `transcribe()` and immediately checking `info` will look like it ran but did nothing. Most-reported faster-whisper foot-gun.
-- **Model download on first run is silent and slow.** `small.en` is ~480 MB, `large-v3-turbo` is ~1.6 GB, pulled from HF Hub on first `WhisperModel(...)` call with no progress bar by default. For a Telegram bot, do a warm-up call at startup so the user-visible request isn't paying download cost. Set `download_root` to keep models inside the Tempo project tree (gitignored), not buried in `~/.cache/huggingface`.
+- **Model download on first run is silent and slow.** `small.en` is ~480 MB, `large-v3-turbo` is ~1.6 GB, pulled from HF Hub on first `WhisperModel(...)` call with no progress bar by default. For a Telegram bot, do a warm-up call at startup so the user-visible request isn't paying download cost. Set `download_root` to keep models inside the RunOS project tree (gitignored), not buried in `~/.cache/huggingface`.
 - **Memory growth across many transcriptions.** Documented issues (#249, #390, #1055, #660): RAM creeps up over hundreds of sequential transcriptions, worse with parallel calls. For a single-user voice-memo flow (<50/day) this won't bite. If the bot runs for weeks without restart, plan to either (a) recycle the process daily via launchd, or (b) keep the model in a subprocess that can be torn down. Don't share one `WhisperModel` across threads in parallel.
 - **Thread oversubscription.** Default `cpu_threads=0` lets CTranslate2 auto-detect, which can mean "use all 10 perf cores" and starve the rest of the system. Set explicitly: `cpu_threads=4` on an M-series Mac is a good default. Also set `OMP_NUM_THREADS=4` in the launchd plist env to prevent the BLAS layer from spawning its own pool on top.
 - **Don't load the model per request.** Model init is 1–3s of overhead. Load once at process start, hold a module-level singleton, reuse across all incoming voice memos.
 - **Beam size silently changes accuracy.** faster-whisper defaults `beam_size=5`; openai-whisper defaults to 1. If you benchmark against another implementation, match the setting. For voice memos, beam_size=5 is fine.
 - **CT2 weights are not interchangeable across model variants.** `large-v3-turbo` weights are distinct from `large-v3`; downloading "turbo" pulls the right CT2 model from HF. Don't try to convert PyTorch turbo weights manually — use the published CT2 conversions.
-- **No translation in `turbo`.** If you ever want non-English memos translated to English, switch model to `large-v3`. For Tempo (English only), irrelevant.
+- **No translation in `turbo`.** If you ever want non-English memos translated to English, switch model to `large-v3`. For RunOS (English only), irrelevant.
 - **Telegram voice memo edge case:** Some Telegram clients send memos as `.oga` extension instead of `.ogg`. Same Opus-in-Ogg payload; PyAV decodes either, but if you key off the extension, normalize first.
 
 ## Sources

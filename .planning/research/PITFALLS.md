@@ -20,7 +20,7 @@ A Strava `client_secret`, a refresh token, `garmin_tokens.json`, the SQLite DB, 
 
 **How to avoid:**
 - `.gitignore` from the very first commit (already done) — but treat it as necessary, not sufficient.
-- Keep the SQLite DB, tokens, and `.env` **outside** the repo working tree entirely (e.g., `~/.tempo/`), so an accidental `git add .` cannot reach them.
+- Keep the SQLite DB, tokens, and `.env` **outside** the repo working tree entirely (e.g., `~/.runos/`), so an accidental `git add .` cannot reach them.
 - Add a pre-commit hook (`gitleaks` or `git-secrets`) that blocks commits containing high-entropy strings / known token patterns. This is the real safety net.
 - Decide explicitly whether `reports/` is committed. If analyses contain personal health data, gitignore them or keep them outside the tree. The PROJECT.md says reports go "into a reports/ folder in the repo" — flag this: either commit only redacted/sanitized reports or keep the folder gitignored.
 - Use placeholder/example config files (`.env.example`) that are committed; real config never is.
@@ -52,7 +52,7 @@ The Garmin connector logs in with username/password on every run instead of reus
 - Keep the token file in a stable location outside the repo (Pitfall 1) and make sure the scheduled job uses the same path the interactive login used.
 - **No tight retry loop on auth failure.** On a 429 or auth error, fail the run, log it, and back off for hours — do not retry within the same run. Treat 429 as "stop, do not pass go."
 - Implement exponential backoff with a long floor (hours) for any login retry, and a hard cap on attempts per day (e.g., 1).
-- Add a manual `tempo garmin login` command separate from the scheduled sync, so re-auth (and MFA entry) is an explicit human action, never an automated loop.
+- Add a manual `runos garmin login` command separate from the scheduled sync, so re-auth (and MFA entry) is an explicit human action, never an automated loop.
 
 **Warning signs:**
 - Logs show a login network call on every scheduled run (should be rare — only on token expiry).
@@ -105,7 +105,7 @@ Strava access tokens expire **6 hours** after creation. On refresh, Strava retur
 **How to avoid:**
 - After **every** token refresh, persist the returned `refresh_token` and `expires_at` atomically (write to temp file, `fsync`, rename) before making API calls.
 - Check `expires_at` and only refresh when within ~1 hour of expiry, not on every call.
-- Serialize token access — don't let a manual `tempo sync` and the scheduled job refresh simultaneously (a simple file lock around the token-refresh-and-persist step).
+- Serialize token access — don't let a manual `runos sync` and the scheduled job refresh simultaneously (a simple file lock around the token-refresh-and-persist step).
 - Store `client_id`, `client_secret`, and the rotating `refresh_token` together in the local secrets store (outside the repo).
 - Consider using a maintained wrapper (e.g., `stravalib`) that handles refresh, but still own the persistence of the rotated token.
 
@@ -152,7 +152,7 @@ Strava ingestion phase — backfill design. The resumable/checkpointed/idempoten
 **What goes wrong:**
 The whole product joins activities + wellness + journal on a shared **date spine** and a daily-summary view. If "which day" is computed inconsistently, every downstream analysis (load vs recovery, trends, correlations) is subtly wrong. Two concrete traps:
 1. **Strava:** `start_date` and `start_date_local` are *both* serialized with a trailing `Z` (looks like UTC), but `start_date_local` is actually the wall-clock local time with a fake `Z`. Parsing `start_date_local` as UTC, or bucketing on `start_date` (true UTC), can shove a 10pm run into the next/previous calendar day. A late-evening or early-morning run lands on the wrong date.
-2. **Garmin:** Overnight **sleep/HRV spans two calendar days**. Garmin attributes a night's data to a single `calendarDate` (the "My Day" it shows in Connect). If Tempo instead buckets by the sleep *start* timestamp, last night's sleep gets attached to yesterday, misaligning "recovery today vs load today."
+2. **Garmin:** Overnight **sleep/HRV spans two calendar days**. Garmin attributes a night's data to a single `calendarDate` (the "My Day" it shows in Connect). If RunOS instead buckets by the sleep *start* timestamp, last night's sleep gets attached to yesterday, misaligning "recovery today vs load today."
 
 If both sources are bucketed by different conventions, you get systematic misalignment — e.g., correlating today's HRV with yesterday's run.
 
@@ -239,7 +239,7 @@ This is a single-user, batch-daily, local tool — "scale" means data volume ove
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
 | Re-fetching full history on each sync | Slow runs, rate-limit pressure | Incremental sync with a per-source watermark; backfill is a separate one-time path | Immediately once history > a few hundred activities |
-| Concurrent SQLite writers (manual run + scheduled run) | `database is locked` errors, partial writes | Enable WAL mode; serialize writes / single-writer; file lock around sync | When a manual `tempo sync` overlaps the scheduled job |
+| Concurrent SQLite writers (manual run + scheduled run) | `database is locked` errors, partial writes | Enable WAL mode; serialize writes / single-writer; file lock around sync | When a manual `runos sync` overlaps the scheduled job |
 | Recomputing all-time derived metrics (CTL/ATL trends) from scratch every analysis | Analysis gets slow as years accumulate | Materialize daily summaries; compute rolling metrics incrementally | After a few years of daily data (thousands of rows) — still small, but wasteful |
 | Storing huge stream blobs unindexed and querying across all | Slow analysis queries | Keep raw streams as blobs/JSON but index the structured per-day aggregates that analyses actually read | When stream data spans years and analyses scan raw |
 
@@ -260,7 +260,7 @@ Single-user, but "the user" still gets burned by these.
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
 | Analysis reports don't flag stale/missing data | Owner trusts a "race readiness" report built on data that stopped updating a week ago | Every report header states per-source last-sync date and flags staleness |
-| MFA / re-auth happens inside the scheduled job | Job hangs waiting for a code nobody enters, or fails the whole run | Separate interactive `tempo garmin login` command for re-auth; scheduled job never prompts |
+| MFA / re-auth happens inside the scheduled job | Job hangs waiting for a code nobody enters, or fails the whole run | Separate interactive `runos garmin login` command for re-auth; scheduled job never prompts |
 | Silent partial sync (Garmin failed, Strava ok) reported as success | Owner thinks data is complete | Per-source status surfaced; partial success clearly labeled |
 | Unit confusion in reports (meters vs km, m/s vs min/km) | Misleading paces/distances | Convert units once in the structured layer with documented canonical units; test conversions |
 

@@ -24,13 +24,13 @@ text handlers off the same allowlist.
 ## Prerequisites
 
 - A Telegram account (the @BotFather flow happens entirely inside Telegram).
-- Tempo configured and runnable (`uv run tempo --help` works).
+- RunOS configured and runnable (`uv run runos --help` works).
 
 ## Step 1: Create the bot via @BotFather
 
 1. Open Telegram, search for **@BotFather**, and `/start` it.
 2. Send `/newbot`.
-3. Choose a **display name** (e.g. "Tempo Coach"). This shows up in chat.
+3. Choose a **display name** (e.g. "RunOS Coach"). This shows up in chat.
 4. Choose a **username** ending in `bot` (e.g. `tempo_<yourname>_bot`).
 5. @BotFather replies with the **HTTP API token** in the form
    `1234567890:AAH...`. **Treat this like a password.** Anyone with this token
@@ -52,8 +52,8 @@ Open `.env` and add:
 TELEGRAM_BOT_TOKEN=1234567890:AAH...
 ```
 
-Note: the env-var name is **NOT** prefixed with `TEMPO_`. The standard Telegram
-convention is preserved (Tempo's `Settings` reads this bare name via a
+Note: the env-var name is **NOT** prefixed with `RUNOS_`. The standard Telegram
+convention is preserved (RunOS's `Settings` reads this bare name via a
 `validation_alias`). The token is loaded as a `SecretStr` so it never appears
 in logs or `repr(settings)`.
 
@@ -77,24 +77,24 @@ in logs or `repr(settings)`.
    TELEGRAM_OWNER_CHAT_ID=987654321
    ```
 
-   (This name is also bare -- not prefixed with `TEMPO_`.)
+   (This name is also bare -- not prefixed with `RUNOS_`.)
 
 ## Step 4: Run the bot
 
 ```bash
-uv run tempo bot run
+uv run runos bot run
 ```
 
 Expected stdout:
 
 ```
-... tempo.bot INFO Bot configured -- owner_chat_id=987654321, concurrent_updates=True
-... tempo.bot INFO Bot started -- waiting for messages...
+... runos.bot INFO Bot configured -- owner_chat_id=987654321, concurrent_updates=True
+... runos.bot INFO Bot started -- waiting for messages...
 ```
 
 From your phone, send `/start` to the bot. Expected reply:
 
-> Tempo bot online. Send a voice memo to journal a session, or text for any other request.
+> RunOS bot online. Send a voice memo to journal a session, or text for any other request.
 
 (Voice-memo handling lands in Phase 10. The greeting is the only handler this
 phase ships.)
@@ -124,22 +124,22 @@ code path.
 ## Always-on under launchd (Phase 12)
 
 For unattended operation across reboots, sleep/wake cycles, and crashes the
-bot runs as a `launchd` `LaunchAgent` with `KeepAlive=true`. Tempo writes
+bot runs as a `launchd` `LaunchAgent` with `KeepAlive=true`. RunOS writes
 the plist for you and prints the manual `launchctl` commands; it never runs
 `launchctl` itself.
 
 ```bash
-uv run tempo bot install-scheduler        # writes ~/.tempo/launchd/com.tempo.telegram-bot.plist + prints next steps
-cp ~/.tempo/launchd/com.tempo.telegram-bot.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tempo.telegram-bot.plist
-launchctl kickstart -k gui/$(id -u)/com.tempo.telegram-bot
+uv run runos bot install-scheduler        # writes ~/.runos/launchd/com.runos.telegram-bot.plist + prints next steps
+cp ~/.runos/launchd/com.runos.telegram-bot.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.runos.telegram-bot.plist
+launchctl kickstart -k gui/$(id -u)/com.runos.telegram-bot
 ```
 
 To stop / remove:
 
 ```bash
-launchctl bootout gui/$(id -u)/com.tempo.telegram-bot
-rm ~/Library/LaunchAgents/com.tempo.telegram-bot.plist
+launchctl bootout gui/$(id -u)/com.runos.telegram-bot
+rm ~/Library/LaunchAgents/com.runos.telegram-bot.plist
 ```
 
 The plist sets:
@@ -148,16 +148,16 @@ The plist sets:
   exits for any reason, but the 10-second throttle stops a fast crash loop
   from pinning CPU.
 * `RunAtLoad=true` -- starts automatically on boot / `bootstrap`.
-* `WorkingDirectory` -- the Tempo project root, so the agent's `cwd` is
+* `WorkingDirectory` -- the RunOS project root, so the agent's `cwd` is
   the repo (the bot logs the resolved cwd + `data_dir` at startup so you
   can see this in the launchd log).
-* `StandardOutPath` / `StandardErrorPath` -- `logs/tempo-bot.out.log` and
-  `logs/tempo-bot.err.log` under the project root (gitignored).
+* `StandardOutPath` / `StandardErrorPath` -- `logs/runos-bot.out.log` and
+  `logs/runos-bot.err.log` under the project root (gitignored).
 
 The template lives at
-[`launchd/com.tempo.telegram-bot.plist`](../launchd/com.tempo.telegram-bot.plist);
+[`launchd/com.runos.telegram-bot.plist`](../launchd/com.runos.telegram-bot.plist);
 `install-scheduler` substitutes `{{PROJECT_DIR}}`, `{{UV_PATH}}`, and
-`{{PATH}}` into the user-specific copy under `~/.tempo/launchd/` and
+`{{PATH}}` into the user-specific copy under `~/.runos/launchd/` and
 `plutil -lint`s the result BEFORE asking you to copy it into
 `~/Library/LaunchAgents/` -- a broken substitution can never reach
 launchd. See `docs/PRIVACY.md` "What leaves the laptop, and to whom" for
@@ -173,7 +173,7 @@ is governed by `VOICE_RETENTION_DAYS` in `.env`:
   deleted in the handler's `finally` block immediately after the agent
   turn. The audio never persists on disk past one turn.
 * `VOICE_RETENTION_DAYS=N` for N>0 -- the `.ogg` stays for N days.
-  `tempo/bot/app.py::_post_init` sweeps `<voice_cache_dir>/` on every
+  `runos/bot/app.py::_post_init` sweeps `<voice_cache_dir>/` on every
   bot startup and deletes anything older than `N * 86400` seconds, so a
   long-running bot under launchd cannot accumulate unbounded audio
   across restarts. Use only when debugging Whisper misfires.
@@ -181,8 +181,8 @@ is governed by `VOICE_RETENTION_DAYS` in `.env`:
 Manual purge any time (the bot does not need to be running):
 
 ```bash
-uv run tempo bot purge-voice         # asks for confirmation
-uv run tempo bot purge-voice --yes   # non-interactive (scripts / launchd)
+uv run runos bot purge-voice         # asks for confirmation
+uv run runos bot purge-voice --yes   # non-interactive (scripts / launchd)
 ```
 
 `purge-voice` deletes every file under `<voice_cache_dir>/` regardless of
@@ -191,13 +191,13 @@ the retention setting.
 ## Error handler behaviour
 
 The bot registers a single top-level error handler
-(`tempo/bot/error_handler.py::telegram_error_handler`) on the PTB
+(`runos/bot/error_handler.py::telegram_error_handler`) on the PTB
 `Application` via `add_error_handler`. Any exception raised by a
 registered handler that the handler itself does not catch routes through
 this boundary:
 
 1. The full traceback is logged at ERROR (`Bot handler crashed: <repr>`)
-   so the launchd log file (`logs/tempo-bot.err.log`) shows what
+   so the launchd log file (`logs/runos-bot.err.log`) shows what
    actually failed.
 2. A single fixed reply is sent back to the offending chat:
 
@@ -229,7 +229,7 @@ subprocess and uses your existing Claude Code login. The bot does NOT use
 
 Prerequisites:
 
-1. **Node 18+ on PATH.** `brew install node` on macOS. The Tempo bot worker
+1. **Node 18+ on PATH.** `brew install node` on macOS. The RunOS bot worker
    process must inherit a PATH that includes Node; under launchd (Phase 12),
    the LaunchAgent plist will need an `EnvironmentVariables.PATH` that finds
    it.
@@ -246,7 +246,7 @@ command -v claude || echo "claude CLI missing"
 ```
 
 Auth precedence: if `ANTHROPIC_API_KEY` is set in the user's environment, the
-SDK may prefer it over the Claude Code subscription credentials. Tempo's
+SDK may prefer it over the Claude Code subscription credentials. RunOS's
 invocation explicitly does NOT pass an API key; leave `ANTHROPIC_API_KEY`
 unset for v1.1 so the bot uses your Claude subscription via `claude login`.
 
@@ -285,9 +285,9 @@ per-turn cost figure — that field is logged as `cost=subscription`.
 Token counts are always present and are the primary usage signal.
 
 Auth and Node prerequisites are reiterated from above: `ANTHROPIC_API_KEY`
-is NOT used (Tempo deliberately does not pass one); the bot relies on
+is NOT used (RunOS deliberately does not pass one); the bot relies on
 `claude login` having been run once and `claude` being on the bot's PATH.
-If `claude` is missing at `tempo bot run` startup the bot exits before
+If `claude` is missing at `runos bot run` startup the bot exits before
 any Telegram traffic with `Set up the Claude Code CLI before starting the
 bot -- see docs/TELEGRAM_BOT.md Phase 11 prerequisites (Node 18+ +
 `claude login`).` — no silent boot followed by a Telegram-only error.
@@ -309,10 +309,10 @@ uncaught task exception.
 Phase 12 closes the remaining lifecycle/privacy gaps on top of this
 pipeline: the launchd `LaunchAgent` with `KeepAlive=true` (see "Always-on
 under launchd" above), the `VOICE_RETENTION_DAYS` retention policy + the
-`tempo bot purge-voice` hatch (see "Voice cache retention" above), and the
+`runos bot purge-voice` hatch (see "Voice cache retention" above), and the
 top-level `telegram_error_handler` that catches every other handler
 exception (see "Error handler behaviour" above). With those wired,
-`tempo bot run` -- whether you start it manually or via launchd -- is
+`runos bot run` -- whether you start it manually or via launchd -- is
 v1.1-complete.
 
 ## Troubleshooting
@@ -335,7 +335,7 @@ v1.1-complete.
   Step 3 and compare values.
 
 - **Lost the token** -- send `/revoke` to @BotFather. It rotates the token
-  and the old one dies immediately. Update `.env` and restart `tempo bot run`.
+  and the old one dies immediately. Update `.env` and restart `runos bot run`.
 
 - **`.env` is world-readable** -- `chmod 600 .env` and verify with `ls -l .env`
   (you want `-rw-------`). Anything else and another local user on the same
@@ -347,7 +347,7 @@ The bot token is a **full-access credential** for the bot itself. Anyone with
 it can send arbitrary messages as the bot. The owner chat id allowlist means a
 leaked token alone can't interact with *you* (the bot won't reply to anyone
 else), but rotate via `/revoke` immediately if it ever leaks. The token is
-treated as a real secret throughout Tempo: `SecretStr` in `Settings`, never
+treated as a real secret throughout RunOS: `SecretStr` in `Settings`, never
 logged, `.env` is gitignored from day one, and the README enforces
 `chmod 600 .env` alongside the Strava and Garmin token guidance.
 

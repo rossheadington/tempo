@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from tempo.transforms.bucketing import (
+from runos.transforms.bucketing import (
     BucketingError,
     local_day_from_calendar_date,
     local_day_from_strava_local,

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tempo.analysis.preferences import (
+from runos.analysis.preferences import (
     Nutrition,
     Physiology,
     PreferencesContext,

@@ -14,9 +14,9 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, timedelta
 
-from tempo.analysis import recovery
-from tempo.analysis.baselines import BaselinePoint
-from tempo.analysis.fitness import FitnessPoint, Guardrail, evaluate_guardrail
+from runos.analysis import recovery
+from runos.analysis.baselines import BaselinePoint
+from runos.analysis.fitness import FitnessPoint, Guardrail, evaluate_guardrail
 
 
 def _bp(
@@ -214,9 +214,9 @@ def test_load_ok_but_no_baselines_degrades_gracefully() -> None:
 
 
 def _seed_wellness_and_load(conn: sqlite3.Connection, n: int, *, crash_hrv_at: int | None) -> None:
-    from tempo.connectors.base import RawWriter
-    from tempo.sync import state
-    from tempo.transforms.runner import run_transform
+    from runos.connectors.base import RawWriter
+    from runos.sync import state
+    from runos.transforms.runner import run_transform
     from tests.garmin_fakes import make_hrv, make_sleep, make_stats
     from tests.strava_fakes import make_run
 
@@ -245,8 +245,8 @@ def _seed_wellness_and_load(conn: sqlite3.Connection, n: int, *, crash_hrv_at: i
 
 def test_assess_recovery_from_db_flags_a_crash(conn: sqlite3.Connection) -> None:
     _seed_wellness_and_load(conn, 70, crash_hrv_at=68)
-    from tempo.analysis.load import LoadConfig
-    from tempo.analysis.runner import build_load_series
+    from runos.analysis.load import LoadConfig
+    from runos.analysis.runner import build_load_series
 
     cfg = LoadConfig(threshold_pace_s_per_km=240.0, max_hr=190, resting_hr=48, threshold_hr=170)
     series = build_load_series(conn, cfg)
@@ -259,9 +259,9 @@ def test_assess_recovery_from_db_flags_a_crash(conn: sqlite3.Connection) -> None
 
 def test_render_recovery_has_freshness_and_either_direction_note(conn: sqlite3.Connection) -> None:
     _seed_wellness_and_load(conn, 70, crash_hrv_at=68)
-    from tempo.analysis import data as dataread
-    from tempo.analysis.load import LoadConfig
-    from tempo.analysis.runner import build_load_series
+    from runos.analysis import data as dataread
+    from runos.analysis.load import LoadConfig
+    from runos.analysis.runner import build_load_series
 
     cfg = LoadConfig(threshold_pace_s_per_km=240.0, max_hr=190, resting_hr=48, threshold_hr=170)
     series = build_load_series(conn, cfg)
@@ -362,7 +362,7 @@ def test_render_recovery_omits_heat_when_no_heat_file() -> None:
 
 def test_render_recovery_omits_heat_when_present_but_empty() -> None:
     """heat.md present but no sessions parsed -> section omitted (no header)."""
-    from tempo.analysis.heat import HeatRollup
+    from runos.analysis.heat import HeatRollup
 
     empty = HeatRollup(
         today=date(2026, 4, 1),
@@ -382,7 +382,7 @@ def test_render_recovery_omits_heat_when_present_but_empty() -> None:
 
 def test_render_recovery_renders_heat_when_recent_sessions() -> None:
     """Sessions in the 7/14/28-day windows -> full rollup line."""
-    from tempo.analysis.heat import HeatRollup
+    from runos.analysis.heat import HeatRollup
 
     rollup = HeatRollup(
         today=date(2026, 4, 1),
@@ -408,7 +408,7 @@ def test_render_recovery_renders_heat_when_recent_sessions() -> None:
 
 def test_render_recovery_renders_heat_lapsed_nudge() -> None:
     """Sessions exist in history but ALL >28 days old -> one-line lapsed nudge (A4 override)."""
-    from tempo.analysis.heat import HeatRollup
+    from runos.analysis.heat import HeatRollup
 
     lapsed = HeatRollup(
         today=date(2026, 4, 1),
@@ -433,7 +433,7 @@ def test_render_recovery_renders_heat_lapsed_nudge() -> None:
 
 def test_render_recovery_heat_today_phrase() -> None:
     """A session today renders 'last session: today' (NOT '0 days ago')."""
-    from tempo.analysis.heat import HeatRollup
+    from runos.analysis.heat import HeatRollup
 
     today_rollup = HeatRollup(
         today=date(2026, 4, 1),
@@ -465,7 +465,7 @@ def test_render_recovery_omits_strength_when_no_strength_file() -> None:
 
 def test_render_recovery_omits_strength_when_present_but_empty() -> None:
     """strength.md present but no sessions parsed -> section omitted (no header)."""
-    from tempo.analysis.strength import StrengthRollup
+    from runos.analysis.strength import StrengthRollup
 
     empty = StrengthRollup(
         today=date(2026, 4, 1),
@@ -486,7 +486,7 @@ def test_render_recovery_omits_strength_when_present_but_empty() -> None:
 
 def test_render_recovery_renders_strength_when_recent_sessions() -> None:
     """Sessions in the 7/14/28-day windows -> full rollup line with tonnage + name."""
-    from tempo.analysis.strength import StrengthRollup
+    from runos.analysis.strength import StrengthRollup
 
     rollup = StrengthRollup(
         today=date(2026, 5, 27),
@@ -515,7 +515,7 @@ def test_render_recovery_renders_strength_when_recent_sessions() -> None:
 
 def test_render_recovery_renders_strength_lapsed_nudge() -> None:
     """Sessions exist in history but ALL >28 days old -> one-line lapsed nudge."""
-    from tempo.analysis.strength import StrengthRollup
+    from runos.analysis.strength import StrengthRollup
 
     lapsed = StrengthRollup(
         today=date(2026, 5, 27),
@@ -542,8 +542,8 @@ def test_render_recovery_renders_strength_lapsed_nudge() -> None:
 
 def test_render_recovery_strength_section_follows_heat() -> None:
     """When both heat and strength are active, strength renders AFTER heat."""
-    from tempo.analysis.heat import HeatRollup
-    from tempo.analysis.strength import StrengthRollup
+    from runos.analysis.heat import HeatRollup
+    from runos.analysis.strength import StrengthRollup
 
     heat_rollup = HeatRollup(
         today=date(2026, 5, 27),
@@ -594,7 +594,7 @@ def test_fmt_tonnage_kg_vs_tonnes() -> None:
 
 def _weight_rollup_current(*, unit_mixed: bool = False) -> object:
     """Helper: build a 'current' WeightRollup (latest weigh-in yesterday)."""
-    from tempo.analysis.weight import WeightEntry, WeightRollup
+    from runos.analysis.weight import WeightEntry, WeightRollup
 
     entry = WeightEntry(
         date=date(2026, 5, 27), weight=72.4, unit="kg", notes=None, source_line=1
@@ -620,7 +620,7 @@ def test_recovery_renderer_omits_weight_section_when_absent() -> None:
 
 def test_recovery_renderer_omits_weight_when_present_but_empty() -> None:
     """weight.md present but no entries parsed -> section omitted (no header)."""
-    from tempo.analysis.weight import WeightRollup
+    from runos.analysis.weight import WeightRollup
 
     empty = WeightRollup(
         latest_entry=None,
@@ -639,7 +639,7 @@ def test_recovery_renderer_omits_weight_when_present_but_empty() -> None:
 
 def test_recovery_renderer_emits_stale_nudge_when_last_weigh_in_over_14d() -> None:
     """Latest entry >14d old -> one-line stale nudge (no rollup numbers)."""
-    from tempo.analysis.weight import WeightEntry, WeightRollup
+    from runos.analysis.weight import WeightEntry, WeightRollup
 
     entry = WeightEntry(
         date=date(2026, 5, 7), weight=72.4, unit="kg", notes=None, source_line=1
@@ -691,7 +691,7 @@ def test_recovery_renderer_appends_mixed_unit_caveat() -> None:
 
 def test_recovery_renderer_weight_section_follows_strength() -> None:
     """When both strength and weight are active, weight renders AFTER strength."""
-    from tempo.analysis.strength import StrengthRollup
+    from runos.analysis.strength import StrengthRollup
 
     strength_rollup = StrengthRollup(
         today=date(2026, 5, 27),
@@ -738,7 +738,7 @@ def _avg_day(
     entry_count: int = 21,
 ) -> object:
     """Helper: build a DailyNutrition for use as latest_day / avg_7d."""
-    from tempo.analysis.nutrition import DailyNutrition
+    from runos.analysis.nutrition import DailyNutrition
 
     return DailyNutrition(
         date=date(2026, 4, 1),
@@ -760,7 +760,7 @@ def _nutrition_current(
     deficit_surplus_7d: int | None = None,
 ) -> object:
     """Helper: build a 'current' NutritionRollup (latest entry within 3 days)."""
-    from tempo.analysis.nutrition import NutritionRollup
+    from runos.analysis.nutrition import NutritionRollup
 
     avg = _avg_day()
     return NutritionRollup(
@@ -784,7 +784,7 @@ def test_recovery_renderer_omits_nutrition_section_when_absent() -> None:
 
 def test_recovery_renderer_omits_nutrition_when_present_but_empty() -> None:
     """food.md present but no entries parsed -> section omitted (no header)."""
-    from tempo.analysis.nutrition import NutritionRollup
+    from runos.analysis.nutrition import NutritionRollup
 
     empty = NutritionRollup(
         today=date(2026, 4, 1),
@@ -849,8 +849,8 @@ def test_recovery_renderer_appends_goal_line_when_target_set() -> None:
 
 def test_recovery_renderer_nutrition_section_follows_weight() -> None:
     """When all four trackers are active, order is Heat → Strength → Weight → Nutrition."""
-    from tempo.analysis.heat import HeatRollup
-    from tempo.analysis.strength import StrengthRollup
+    from runos.analysis.heat import HeatRollup
+    from runos.analysis.strength import StrengthRollup
 
     heat_rollup = HeatRollup(
         today=date(2026, 4, 1),
@@ -902,7 +902,7 @@ def test_recovery_renderer_nutrition_section_follows_weight() -> None:
 def test_recovery_renderer_handles_mixed_format_food_input(tmp_path) -> None:
     """Mixed inline + block entries on the same day produce a correct rollup
     that surfaces in the recovery section."""
-    from tempo.analysis.nutrition import nutrition_rollup, parse_food
+    from runos.analysis.nutrition import nutrition_rollup, parse_food
 
     food_path = tmp_path / "food.md"
     food_path.write_text(

@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from tempo.connectors.base import RawWriter
-from tempo.connectors.garmin import SOURCE
-from tempo.transforms import wellness
-from tempo.transforms.runner import run_rederive, run_transform
+from runos.connectors.base import RawWriter
+from runos.connectors.garmin import SOURCE
+from runos.transforms import wellness
+from runos.transforms.runner import run_rederive, run_transform
 from tests.garmin_fakes import make_hrv, make_sleep, make_stats
 
 

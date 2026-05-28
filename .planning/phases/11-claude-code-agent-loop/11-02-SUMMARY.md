@@ -5,14 +5,14 @@ subsystem: bot
 tags: [bot, claude-agent-sdk, telegram, voice-coach]
 requires:
   - "claude-agent-sdk python wrapper (>=0.2.87)"
-  - "Plan 10-01 / 11-01 prerequisites (tempo/bot package + sessions module already in tree)"
+  - "Plan 10-01 / 11-01 prerequisites (runos/bot package + sessions module already in tree)"
 provides:
-  - "tempo.bot.agent.AgentTurn — frozen dataclass returned by run_turn"
-  - "tempo.bot.agent.AgentInvocationError — typed error for missing Node CLI / auth"
-  - "tempo.bot.agent.run_turn — async fn wrapping claude_agent_sdk.query"
-  - "tempo.bot.agent.format_for_telegram — HTML-escape + 4096-char chunking helper"
+  - "runos.bot.agent.AgentTurn — frozen dataclass returned by run_turn"
+  - "runos.bot.agent.AgentInvocationError — typed error for missing Node CLI / auth"
+  - "runos.bot.agent.run_turn — async fn wrapping claude_agent_sdk.query"
+  - "runos.bot.agent.format_for_telegram — HTML-escape + 4096-char chunking helper"
 affects:
-  - "Plan 11-03 will import all four names via `from tempo.bot import ...`"
+  - "Plan 11-03 will import all four names via `from runos.bot import ...`"
 tech-stack:
   added:
     - "claude-agent-sdk>=0.2.87 (runtime dep)"
@@ -22,13 +22,13 @@ tech-stack:
     - "Worst-case prefix-budget reservation so post-chunk assertion cannot trip"
 key-files:
   created:
-    - tempo/bot/agent.py
+    - runos/bot/agent.py
     - tests/test_bot_agent.py
     - .planning/phases/11-claude-code-agent-loop/11-02-SUMMARY.md
   modified:
     - pyproject.toml
     - uv.lock
-    - tempo/bot/__init__.py
+    - runos/bot/__init__.py
 decisions:
   - "Duck-type messages (role+content for AssistantMessage; usage+session_id for ResultMessage) instead of isinstance against SDK private types — survives SDK class-name renames"
   - "Reserve worst-case `[NN/NN] ` (8-char) prefix width up front so the post-chunk size assertion always holds"
@@ -49,9 +49,9 @@ metrics:
 
 ## What Was Built
 
-### `tempo/bot/agent.py` (new module)
+### `runos/bot/agent.py` (new module)
 
-The single seam between Tempo and `claude_agent_sdk`. Public surface:
+The single seam between RunOS and `claude_agent_sdk`. Public surface:
 
 - **`AgentTurn`** — `@dataclass(frozen=True, slots=True)` with the exact six fields specified in the plan's `<interfaces>`: `text`, `session_id`, `tokens_in`, `tokens_out`, `cost_usd: float | None`, `duration_s`.
 - **`AgentInvocationError(Exception)`** — typed error Plan 11-03 will catch to surface a user-facing "claude login" hint. Raised on:
@@ -66,11 +66,11 @@ The single seam between Tempo and `claude_agent_sdk`. Public surface:
   - Single chunk (no prefix) when escaped length ≤ 4096.
   - Otherwise greedy-packs paragraphs (split on `\n\n`) into chunks of ≤ `4096 - 8` chars (reserving worst-case `[NN/NN] ` prefix), hard-splits oversized single paragraphs, and prefixes each final chunk `[k/N] `.
 
-The module is **import-safe**: importing `tempo.bot.agent` (or `tempo.bot`) does NOT spawn the `claude` CLI, touch the network, or read any state. The SDK subprocess only starts when `run_turn` is awaited.
+The module is **import-safe**: importing `runos.bot.agent` (or `runos.bot`) does NOT spawn the `claude` CLI, touch the network, or read any state. The SDK subprocess only starts when `run_turn` is awaited.
 
-### `tempo/bot/__init__.py` (modified)
+### `runos/bot/__init__.py` (modified)
 
-Re-exports `AgentTurn`, `AgentInvocationError`, `run_turn`, `format_for_telegram` via the package-level `__all__` (kept sorted). Module docstring extended with the new `tempo.bot.agent` bullet.
+Re-exports `AgentTurn`, `AgentInvocationError`, `run_turn`, `format_for_telegram` via the package-level `__all__` (kept sorted). Module docstring extended with the new `runos.bot.agent` bullet.
 
 ### `tests/test_bot_agent.py` (new — 12 tests)
 
@@ -89,7 +89,7 @@ Re-exports `AgentTurn`, `AgentInvocationError`, `run_turn`, `format_for_telegram
 | 11| `test_format_for_telegram_hard_split_when_no_paragraph_break`             | hard-split fallback for paragraph > budget                   |
 | 12| `test_format_for_telegram_escapes_then_splits`                            | escape happens BEFORE length math (post-escape size drives split) |
 
-All tests monkeypatch `tempo.bot.agent.query` with a fake async iterator that yields `SimpleNamespace` stand-ins. No Node subprocess, no `claude` CLI, no network is involved. Async tests use `asyncio.run(...)` inline — matches `tests/test_bot_handlers.py` / `tests/test_bot_app.py`.
+All tests monkeypatch `runos.bot.agent.query` with a fake async iterator that yields `SimpleNamespace` stand-ins. No Node subprocess, no `claude` CLI, no network is involved. Async tests use `asyncio.run(...)` inline — matches `tests/test_bot_handlers.py` / `tests/test_bot_app.py`.
 
 ### `pyproject.toml` (modified)
 
@@ -103,11 +103,11 @@ All tests monkeypatch `tempo.bot.agent.query` with a fake async iterator that yi
 | `grep -n "claude-agent-sdk" pyproject.toml`                                   | hit at line 15 |
 | `uv run pytest tests/test_bot_agent.py -x -v`                                 | 12 passed |
 | `uv run pytest`                                                               | 450 passed |
-| `uv run ruff check tempo/bot/agent.py tests/test_bot_agent.py tempo/bot/__init__.py` | clean |
+| `uv run ruff check runos/bot/agent.py tests/test_bot_agent.py runos/bot/__init__.py` | clean |
 | `uv run ruff format --check ...`                                              | clean |
 | `grep -c "def test_" tests/test_bot_agent.py >= 6`                            | 12 (≥ 6) |
 | `grep -c "claude_agent_sdk" tests/test_bot_agent.py` (real import count)     | 0 source-level imports (1 docstring mention) |
-| `tempo/bot/agent.py` imports `telegram` or `faster_whisper`                   | NO (success criterion #6) |
+| `runos/bot/agent.py` imports `telegram` or `faster_whisper`                   | NO (success criterion #6) |
 
 ## Success Criteria
 
@@ -116,7 +116,7 @@ All tests monkeypatch `tempo.bot.agent.query` with a fake async iterator that yi
 3. **`run_turn` filters non-text blocks; surfaces typed error on missing CLI** — Tests 1, 6, 7 cover.
 4. **`format_for_telegram` HTML-escapes + 4096 cap + `[k/N] ` prefixes** — Tests 8–12 cover.
 5. **Tests are fully offline** — No real `claude_agent_sdk.query`, no Node, no network. 12 tests pass; full suite remains green at 450/450.
-6. **No `telegram` / `faster_whisper` imports in `tempo/bot/agent.py`** — verified by grep; the module imports only stdlib + `claude_agent_sdk`.
+6. **No `telegram` / `faster_whisper` imports in `runos/bot/agent.py`** — verified by grep; the module imports only stdlib + `claude_agent_sdk`.
 
 ## Deviations from Plan
 
@@ -126,29 +126,29 @@ None. Plan executed exactly as written. Minor stylistic note:
 
 ## Worktree Setup Note
 
-Worktree was forked from a commit predating Phases 9, 10, and 11-01. Per the executor preamble, I fast-forward-merged `main` into the worktree branch (`git merge main --ff-only`) before starting any plan work. This brought in `tempo/bot/__init__.py`, `tempo/bot/app.py`, `tempo/bot/handlers.py`, `tempo/bot/sessions.py`, `tempo/bot/transcribe.py`, migration `0005_bot_sessions.sql`, and 11-01-SUMMARY.md. No conflicts.
+Worktree was forked from a commit predating Phases 9, 10, and 11-01. Per the executor preamble, I fast-forward-merged `main` into the worktree branch (`git merge main --ff-only`) before starting any plan work. This brought in `runos/bot/__init__.py`, `runos/bot/app.py`, `runos/bot/handlers.py`, `runos/bot/sessions.py`, `runos/bot/transcribe.py`, migration `0005_bot_sessions.sql`, and 11-01-SUMMARY.md. No conflicts.
 
 ## Commits
 
 | Hash      | Type    | Message                                                       |
 | --------- | ------- | ------------------------------------------------------------- |
 | 2619c76   | chore   | chore(11-02): add claude-agent-sdk runtime dependency         |
-| a5d0a14   | test    | test(11-02): add failing tests for tempo.bot.agent (RED)      |
-| dd2de53   | feat    | feat(11-02): implement tempo.bot.agent Claude Agent SDK wrapper (GREEN) |
+| a5d0a14   | test    | test(11-02): add failing tests for runos.bot.agent (RED)      |
+| dd2de53   | feat    | feat(11-02): implement runos.bot.agent Claude Agent SDK wrapper (GREEN) |
 
 ## TDD Gate Compliance
 
-- RED gate (test commit): `a5d0a14 test(11-02): add failing tests for tempo.bot.agent (RED)` — `ModuleNotFoundError: No module named 'tempo.bot.agent'` confirmed before GREEN.
-- GREEN gate (feat commit): `dd2de53 feat(11-02): implement tempo.bot.agent Claude Agent SDK wrapper (GREEN)` — all 12 tests pass.
+- RED gate (test commit): `a5d0a14 test(11-02): add failing tests for runos.bot.agent (RED)` — `ModuleNotFoundError: No module named 'runos.bot.agent'` confirmed before GREEN.
+- GREEN gate (feat commit): `dd2de53 feat(11-02): implement runos.bot.agent Claude Agent SDK wrapper (GREEN)` — all 12 tests pass.
 - REFACTOR gate: not required (implementation was clean; ruff auto-format applied within the same GREEN commit).
 
 ## Known Stubs
 
-None. Every public name in `tempo/bot/agent.py` is fully implemented with tests proving behaviour. The module does not stub UI surfaces — it is a pure library used by Plan 11-03's handlers.
+None. Every public name in `runos/bot/agent.py` is fully implemented with tests proving behaviour. The module does not stub UI surfaces — it is a pure library used by Plan 11-03's handlers.
 
 ## Self-Check: PASSED
 
-- `tempo/bot/agent.py` exists: FOUND
+- `runos/bot/agent.py` exists: FOUND
 - `tests/test_bot_agent.py` exists: FOUND
 - Commit `2619c76` (chore): FOUND in git log
 - Commit `a5d0a14` (test/RED): FOUND in git log

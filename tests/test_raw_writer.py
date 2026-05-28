@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from tempo.connectors.base import Connector, RawWriter
+from runos.connectors.base import Connector, RawWriter
 
 
 def _count(conn: sqlite3.Connection) -> int:

@@ -5,9 +5,9 @@ from __future__ import annotations
 import sqlite3
 from datetime import date
 
-from tempo.connectors.base import RawWriter
-from tempo.connectors.garmin import SOURCE as GARMIN
-from tempo.transforms.runner import run_transform
+from runos.connectors.base import RawWriter
+from runos.connectors.garmin import SOURCE as GARMIN
+from runos.transforms.runner import run_transform
 from tests.garmin_fakes import make_hrv, make_sleep, make_stats
 from tests.strava_fakes import make_run
 

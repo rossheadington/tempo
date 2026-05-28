@@ -18,11 +18,11 @@
 ## Units-import choice
 
 **Option A (preferred per the plan).** The `Units` type from
-`tempo.analysis.preferences` (built by Wave 17-01) is imported only under
+`runos.analysis.preferences` (built by Wave 17-01) is imported only under
 `TYPE_CHECKING` for type hints; at runtime the formatters duck-type the
 value, reading only `units.distance` and `units.pace`. This keeps the wave
 testable in isolation and avoids any circular-import risk between
-`tempo.units` (called by report renderers) and `tempo.analysis.preferences`
+`runos.units` (called by report renderers) and `runos.analysis.preferences`
 (part of the analysis layer).
 
 `tests/test_units.py` defines a minimal local `Units` dataclass with the
@@ -87,7 +87,7 @@ check). All cover behaviour that the plan explicitly locks down.
 
 ```
 uv run pytest tests/test_units.py -x       # 13 passed in 3.93s
-uv run ruff check tempo/units.py tests/test_units.py   # All checks passed!
+uv run ruff check runos/units.py tests/test_units.py   # All checks passed!
 ```
 
 Both green. Did NOT commit (per executor instructions); parent agent will

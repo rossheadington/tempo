@@ -1,4 +1,4 @@
-"""Tests for tempo.sync.pipeline.fetch_recent_streams.
+"""Tests for runos.sync.pipeline.fetch_recent_streams.
 
 Covers the query that picks candidate activities (recent + HR-recorded +
 missing streams), the per-activity isolation when a fetch fails, the
@@ -10,13 +10,13 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
-from tempo import db
-from tempo.sync import pipeline
+from runos import db
+from runos.sync import pipeline
 
 
 def _conn_with_seed(tmp_path):
     """Open an initialised DB and seed date_spine for the last 30 days."""
-    conn = db.init_db(tmp_path / "tempo.db")
+    conn = db.init_db(tmp_path / "runos.db")
     today = date.today()
     days = [(today - timedelta(days=i)).isoformat() for i in range(30, -1, -1)]
     conn.executemany("INSERT OR IGNORE INTO date_spine (day) VALUES (?)", [(d,) for d in days])
@@ -53,8 +53,8 @@ class _FakeConnector:
 
 def test_no_candidates_returns_empty_result(tmp_path, monkeypatch) -> None:
     """No recent HR-recorded activities -> no connector build, no candidates."""
-    monkeypatch.setenv("TEMPO_DATA_DIR", str(tmp_path))
-    from tempo.config import Settings
+    monkeypatch.setenv("RUNOS_DATA_DIR", str(tmp_path))
+    from runos.config import Settings
 
     settings = Settings(_env_file=None)
     conn = _conn_with_seed(tmp_path)
@@ -72,10 +72,10 @@ def test_picks_recent_hr_recorded_activities_missing_streams(
     tmp_path, monkeypatch
 ) -> None:
     """Query restricts to (day >= cutoff) AND (avg_hr > 0) AND (no stream rows)."""
-    monkeypatch.setenv("TEMPO_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_ID", "1")
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_SECRET", "s")
-    from tempo.config import Settings
+    monkeypatch.setenv("RUNOS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_ID", "1")
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_SECRET", "s")
+    from runos.config import Settings
 
     settings = Settings(_env_file=None)
     conn = _conn_with_seed(tmp_path)
@@ -100,7 +100,7 @@ def test_picks_recent_hr_recorded_activities_missing_streams(
 
     fake = _FakeConnector()
     monkeypatch.setattr(
-        "tempo.sync.pipeline.build_strava_connector", lambda s: fake
+        "runos.sync.pipeline.build_strava_connector", lambda s: fake
     )
 
     try:
@@ -117,10 +117,10 @@ def test_picks_recent_hr_recorded_activities_missing_streams(
 
 def test_lookback_days_widens_window(tmp_path, monkeypatch) -> None:
     """lookback_days=7 pulls in the older HR-recorded activity that day=1 wouldn't."""
-    monkeypatch.setenv("TEMPO_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_ID", "1")
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_SECRET", "s")
-    from tempo.config import Settings
+    monkeypatch.setenv("RUNOS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_ID", "1")
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_SECRET", "s")
+    from runos.config import Settings
 
     settings = Settings(_env_file=None)
     conn = _conn_with_seed(tmp_path)
@@ -130,7 +130,7 @@ def test_lookback_days_widens_window(tmp_path, monkeypatch) -> None:
     _insert_activity(conn, activity_id=200, day=five_days_ago, avg_hr=150.0)
 
     fake = _FakeConnector()
-    monkeypatch.setattr("tempo.sync.pipeline.build_strava_connector", lambda s: fake)
+    monkeypatch.setattr("runos.sync.pipeline.build_strava_connector", lambda s: fake)
 
     try:
         result_1d = pipeline.fetch_recent_streams(conn, settings, lookback_days=1)
@@ -146,8 +146,8 @@ def test_lookback_days_widens_window(tmp_path, monkeypatch) -> None:
 
 def test_connector_build_failure_is_isolated(tmp_path, monkeypatch) -> None:
     """A connector build failure returns an error string, not a raise."""
-    monkeypatch.setenv("TEMPO_DATA_DIR", str(tmp_path))
-    from tempo.config import Settings
+    monkeypatch.setenv("RUNOS_DATA_DIR", str(tmp_path))
+    from runos.config import Settings
 
     settings = Settings(_env_file=None)
     conn = _conn_with_seed(tmp_path)
@@ -156,7 +156,7 @@ def test_connector_build_failure_is_isolated(tmp_path, monkeypatch) -> None:
     def _boom(s: Settings) -> Any:
         raise RuntimeError("credentials missing")
 
-    monkeypatch.setattr("tempo.sync.pipeline.build_strava_connector", _boom)
+    monkeypatch.setattr("runos.sync.pipeline.build_strava_connector", _boom)
 
     try:
         result = pipeline.fetch_recent_streams(conn, settings)
@@ -172,10 +172,10 @@ def test_connector_build_failure_is_isolated(tmp_path, monkeypatch) -> None:
 
 def test_per_activity_fetch_failure_is_isolated(tmp_path, monkeypatch) -> None:
     """A fetch_streams exception for one activity doesn't stop the rest."""
-    monkeypatch.setenv("TEMPO_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_ID", "1")
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_SECRET", "s")
-    from tempo.config import Settings
+    monkeypatch.setenv("RUNOS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_ID", "1")
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_SECRET", "s")
+    from runos.config import Settings
 
     settings = Settings(_env_file=None)
     conn = _conn_with_seed(tmp_path)
@@ -198,7 +198,7 @@ def test_per_activity_fetch_failure_is_isolated(tmp_path, monkeypatch) -> None:
             return True
 
     fake = _PartialFailureConnector()
-    monkeypatch.setattr("tempo.sync.pipeline.build_strava_connector", lambda s: fake)
+    monkeypatch.setattr("runos.sync.pipeline.build_strava_connector", lambda s: fake)
 
     try:
         result = pipeline.fetch_recent_streams(conn, settings)
@@ -214,10 +214,10 @@ def test_per_activity_fetch_failure_is_isolated(tmp_path, monkeypatch) -> None:
 
 def test_fetch_streams_returning_false_doesnt_count(tmp_path, monkeypatch) -> None:
     """When fetch_streams returns False (already cached), it's not counted as fetched."""
-    monkeypatch.setenv("TEMPO_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_ID", "1")
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_SECRET", "s")
-    from tempo.config import Settings
+    monkeypatch.setenv("RUNOS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_ID", "1")
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_SECRET", "s")
+    from runos.config import Settings
 
     settings = Settings(_env_file=None)
     conn = _conn_with_seed(tmp_path)
@@ -229,7 +229,7 @@ def test_fetch_streams_returning_false_doesnt_count(tmp_path, monkeypatch) -> No
         def fetch_streams(self, raw: Any, activity_id: int, *, force: bool = False) -> bool:
             return False  # "already cached in raw"
 
-    monkeypatch.setattr("tempo.sync.pipeline.build_strava_connector", lambda s: _NoOpConnector())
+    monkeypatch.setattr("runos.sync.pipeline.build_strava_connector", lambda s: _NoOpConnector())
 
     try:
         result = pipeline.fetch_recent_streams(conn, settings)

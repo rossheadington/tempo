@@ -2,7 +2,7 @@
 
 **Status:** Authoritative for Phase 17 (preferences extraction).
 
-Tempo separates two kinds of owner-maintained data: **append-only logs**
+RunOS separates two kinds of owner-maintained data: **append-only logs**
 (food.md, weight.md, races.md, heat.md, strength.md) and a single
 **edit-in-place profile** -- `preferences.md`. The profile carries the
 owner's physiology numbers (threshold pace, max HR, resting HR, optional
@@ -11,7 +11,7 @@ optional nutrition kcal target, and free-form prose sections the coach reads
 when planning (weekly training shape, current focus, recurring niggles).
 
 The owner hand-edits the file in their content dir (default
-`<content_root>/preferences.md`, redirect with `TEMPO_CONTENT_DIR`); Tempo
+`<content_root>/preferences.md`, redirect with `RUNOS_CONTENT_DIR`); RunOS
 reads it once per analysis run via `parse_preferences()` and threads the
 typed sections into the existing analysis modules. The prose sections are
 captured but uninterpreted: the coach reads them via
@@ -28,8 +28,8 @@ only in the gitignored content dir.
 ## Why this file exists (Phase 17 context)
 
 Before Phase 17 the four physiology knobs lived in `.env` as
-`TEMPO_THRESHOLD_PACE_S_PER_KM`, `TEMPO_MAX_HR`, `TEMPO_RESTING_HR`,
-`TEMPO_THRESHOLD_HR`, and the kcal target lived as `TEMPO_TARGET_KCAL`.
+`RUNOS_THRESHOLD_PACE_S_PER_KM`, `RUNOS_MAX_HR`, `RUNOS_RESTING_HR`,
+`RUNOS_THRESHOLD_HR`, and the kcal target lived as `RUNOS_TARGET_KCAL`.
 This made them awkward to edit (open `.env`, find the line, edit, restart
 nothing because settings re-read on each call), and it forced the coach to
 infer the owner's training shape from the data alone.
@@ -46,7 +46,7 @@ human-readable markdown file, and adds two new affordances:
   without having to re-explain his weekly shape every time.
 
 This is an **architectural refactor**, not a new user-facing feature. The
-old `TEMPO_*` env vars are GONE from `Settings`; the example `.env`
+old `RUNOS_*` env vars are GONE from `Settings`; the example `.env`
 documents the move with a brief comment.
 
 ---
@@ -160,7 +160,7 @@ sees one type. The `mi` form converts via the NIST constant
 Malformed input leaves `Physiology.threshold_pace_s_per_km` at `None` and
 the line number lands in `malformed_lines`. Valid sibling keys still apply.
 
-The helper is `tempo.analysis.preferences._parse_threshold_pace`; it's
+The helper is `runos.analysis.preferences._parse_threshold_pace`; it's
 private but the conversion rules above are stable across Phase 17.
 
 ---
@@ -253,7 +253,7 @@ rather than relying on `parse_preferences` -- the prose sections are the
 point, and the parser deliberately doesn't surface them in a structured
 way.
 
-There is intentionally **no `tempo preferences add` / `edit` CLI** in
+There is intentionally **no `runos preferences add` / `edit` CLI** in
 Phase 17. The file is short, hand-editable, and the bot's `Edit` tool is
 enough.
 
@@ -263,13 +263,13 @@ enough.
 
 | `.env` var (pre-Phase-17)         | New home (post-Phase-17)                       |
 |-----------------------------------|------------------------------------------------|
-| `TEMPO_THRESHOLD_PACE_S_PER_KM`   | `Physiology.threshold_pace_s_per_km` (via `## Physiology` `threshold_pace:`) |
-| `TEMPO_MAX_HR`                    | `Physiology.max_hr`                            |
-| `TEMPO_RESTING_HR`                | `Physiology.resting_hr`                        |
-| `TEMPO_THRESHOLD_HR`              | `Physiology.threshold_hr`                      |
-| `TEMPO_TARGET_KCAL`               | `Nutrition.target_kcal` (via `## Nutrition` `target_kcal:`) |
+| `RUNOS_THRESHOLD_PACE_S_PER_KM`   | `Physiology.threshold_pace_s_per_km` (via `## Physiology` `threshold_pace:`) |
+| `RUNOS_MAX_HR`                    | `Physiology.max_hr`                            |
+| `RUNOS_RESTING_HR`                | `Physiology.resting_hr`                        |
+| `RUNOS_THRESHOLD_HR`              | `Physiology.threshold_hr`                      |
+| `RUNOS_TARGET_KCAL`               | `Nutrition.target_kcal` (via `## Nutrition` `target_kcal:`) |
 
-The example `.env` (`tempo/.env.example`) keeps a brief comment trail at
+The example `.env` (`runos/.env.example`) keeps a brief comment trail at
 the load-and-analysis-settings section documenting the move and pointing
 at `preferences.md.example`. There is intentionally NO backward-compat
 fallback that reads the old env vars when the section is missing -- this
@@ -278,7 +278,7 @@ is a single-cut-over, solo-user project, and the comment trail in
 
 DB columns and analysis-layer math all stay SI (metres, m/s, s/km). The
 `Units` preference flows ONLY through the rendering layer; nothing
-upstream of `tempo.units.format_distance` / `format_pace` ever sees the
+upstream of `runos.units.format_distance` / `format_pace` ever sees the
 imperial choice.
 
 ---
@@ -286,7 +286,7 @@ imperial choice.
 ## Storage location & privacy
 
 - `preferences.md` lives in the **gitignored content dir** (default
-  `<content_root>/preferences.md`, configurable via `TEMPO_CONTENT_DIR`).
+  `<content_root>/preferences.md`, configurable via `RUNOS_CONTENT_DIR`).
   It MUST NOT be committed -- physiology numbers are personal.
 - The committed `preferences.md.example` at the repo root uses placeholder
   textbook values (`threshold_pace: 4:00/km`, `max_hr: 190`, `resting_hr:
@@ -308,10 +308,10 @@ Deferred (per Phase 17 CONTEXT):
   the coach always has it in context without an explicit `Read`. Phase 18
   polish; the coach can `Read training/preferences.md` reactively in any
   planning conversation today.
-- **`tempo preferences edit` / `tempo preferences show` CLI** -- the file
+- **`runos preferences edit` / `runos preferences show` CLI** -- the file
   is meant to be hand-edited; a structured pretty-printer is nice debug
   surface but out of scope for now.
-- **Backward-compat fallback** that reads the old `TEMPO_*` env vars when
+- **Backward-compat fallback** that reads the old `RUNOS_*` env vars when
   the section is missing. Single cut-over; the old vars are gone from
   `Settings`.
 - **Units beyond miles/km and min/km / min/mile.** No nautical miles, no

@@ -1,12 +1,12 @@
-"""Tests for the ``tempo setup`` wizard (Plan 14-02).
+"""Tests for the ``runos setup`` wizard (Plan 14-02).
 
 Pattern: every test runs in a per-test ``tmp_path`` cwd so the wizard's
 ``.env`` writes don't touch the real project root. ``HOME`` is redirected to a
-tmp dir so the wizard's plist-presence checks and ``~/.tempo/`` defaults look
+tmp dir so the wizard's plist-presence checks and ``~/.runos/`` defaults look
 at fake locations. Every delegated helper (``_init``, ``build_strava_connector``,
 ``garmin_login``, ``install_plist``, ``install_telegram_bot_plist``,
 ``run_full_sync``) is monkeypatched at its origin module so the wizard's lazy
-``from tempo.x import y`` resolves to the mock. ``typer.prompt`` /
+``from runos.x import y`` resolves to the mock. ``typer.prompt`` /
 ``typer.confirm`` are patched once per test to feed scripted answers.
 
 No test touches the network, the real ``~/Library/LaunchAgents/``, or
@@ -23,11 +23,11 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from tempo.cli import app
-from tempo.config import Settings
-from tempo.setup.env_io import read_env
-from tempo.setup.wizard import STEP_IDS, run_wizard
-from tempo.sync.pipeline import SourceResult
+from runos.cli import app
+from runos.config import Settings
+from runos.setup.env_io import read_env
+from runos.setup.wizard import STEP_IDS, run_wizard
+from runos.sync.pipeline import SourceResult
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -61,7 +61,7 @@ def fresh_settings(tmp_path: Path, fake_home: Path, fresh_cwd: Path) -> Settings
 
 @pytest.fixture
 def patched_get_settings(monkeypatch: pytest.MonkeyPatch, fresh_settings: Settings):
-    """Patch tempo.setup.wizard.get_settings to return our fresh_settings.
+    """Patch runos.setup.wizard.get_settings to return our fresh_settings.
 
     The wizard re-reads settings after writing creds (Strava / Garmin steps)
     so pydantic-settings sees the new env keys. In tests we don't want it to
@@ -74,7 +74,7 @@ def patched_get_settings(monkeypatch: pytest.MonkeyPatch, fresh_settings: Settin
         calls.append(1)
         return fresh_settings
 
-    monkeypatch.setattr("tempo.setup.wizard.get_settings", _fake_get_settings)
+    monkeypatch.setattr("runos.setup.wizard.get_settings", _fake_get_settings)
     return calls
 
 
@@ -86,7 +86,7 @@ def _no_real_browser_open(monkeypatch: pytest.MonkeyPatch) -> None:
     this, `webbrowser.open` would actually open it in the user's default
     browser on each test run.
     """
-    monkeypatch.setattr("tempo.setup.wizard._can_open_browser", lambda: False)
+    monkeypatch.setattr("runos.setup.wizard._can_open_browser", lambda: False)
 
 
 @pytest.fixture
@@ -95,7 +95,7 @@ def all_delegated_mocks(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
     Returns a dict with call counts (and captured args where useful). Each
     helper is patched at its ORIGIN module path so the wizard's lazy
-    ``from tempo.x import y`` picks up the patched attribute.
+    ``from runos.x import y`` picks up the patched attribute.
     """
     state: dict[str, Any] = {
         "init": 0,
@@ -136,21 +136,21 @@ def all_delegated_mocks(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     def _fake_install_plist(**kwargs) -> SimpleNamespace:
         state["install_plist"] += 1
         return SimpleNamespace(
-            plist_path=Path("/fake/com.tempo.daily.plist"),
+            plist_path=Path("/fake/com.runos.daily.plist"),
             installed_to_launch_agents=True,
-            load_command="launchctl load -w /fake/com.tempo.daily.plist",
-            unload_command="launchctl unload -w /fake/com.tempo.daily.plist",
+            load_command="launchctl load -w /fake/com.runos.daily.plist",
+            unload_command="launchctl unload -w /fake/com.runos.daily.plist",
         )
 
     def _fake_install_bot_plist(**kwargs) -> SimpleNamespace:
         state["install_bot_plist"] += 1
         return SimpleNamespace(
-            plist_path=Path("/fake/com.tempo.telegram-bot.plist"),
+            plist_path=Path("/fake/com.runos.telegram-bot.plist"),
             installed_to_launch_agents=True,
             plutil_lint_ok=True,
-            load_command="launchctl load -w /fake/com.tempo.telegram-bot.plist",
-            start_command="launchctl start com.tempo.telegram-bot",
-            unload_command="launchctl unload -w /fake/com.tempo.telegram-bot.plist",
+            load_command="launchctl load -w /fake/com.runos.telegram-bot.plist",
+            start_command="launchctl start com.runos.telegram-bot",
+            unload_command="launchctl unload -w /fake/com.runos.telegram-bot.plist",
             logs_dir=Path("/fake/logs"),
         )
 
@@ -158,19 +158,19 @@ def all_delegated_mocks(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         state["run_full_sync"] += 1
         return state["run_full_sync_return"]
 
-    monkeypatch.setattr("tempo.cli._init", _fake_init, raising=True)
+    monkeypatch.setattr("runos.cli._init", _fake_init, raising=True)
     monkeypatch.setattr(
-        "tempo.connectors.factory.build_strava_connector", _fake_build_strava, raising=True
+        "runos.connectors.factory.build_strava_connector", _fake_build_strava, raising=True
     )
     monkeypatch.setattr(
-        "tempo.connectors.factory.garmin_login", _fake_garmin_login, raising=True
+        "runos.connectors.factory.garmin_login", _fake_garmin_login, raising=True
     )
-    monkeypatch.setattr("tempo.scheduler.install_plist", _fake_install_plist, raising=True)
+    monkeypatch.setattr("runos.scheduler.install_plist", _fake_install_plist, raising=True)
     monkeypatch.setattr(
-        "tempo.scheduler.install_telegram_bot_plist", _fake_install_bot_plist, raising=True
+        "runos.scheduler.install_telegram_bot_plist", _fake_install_bot_plist, raising=True
     )
     monkeypatch.setattr(
-        "tempo.sync.pipeline.run_full_sync", _fake_run_full_sync, raising=True
+        "runos.sync.pipeline.run_full_sync", _fake_run_full_sync, raising=True
     )
 
     return state
@@ -399,7 +399,7 @@ def test_wizard_step_skipped_when_install_state_done(
     all_delegated_mocks: dict[str, Any],
 ) -> None:
     """Fully configured install: every delegated mock NEVER called; exit 0."""
-    from tempo import db as _db
+    from runos import db as _db
 
     # Build a Settings with everything configured.
     settings = Settings(
@@ -422,17 +422,17 @@ def test_wizard_step_skipped_when_install_state_done(
     # Garmin token dir present.
     (settings.tokens_dir / "garmin").mkdir(parents=True, exist_ok=True)
     # Both plists present in fake_home.
-    (fake_home / "Library" / "LaunchAgents" / "com.tempo.daily.plist").write_text(
+    (fake_home / "Library" / "LaunchAgents" / "com.runos.daily.plist").write_text(
         "<plist/>", encoding="utf-8"
     )
-    (fake_home / "Library" / "LaunchAgents" / "com.tempo.telegram-bot.plist").write_text(
+    (fake_home / "Library" / "LaunchAgents" / "com.runos.telegram-bot.plist").write_text(
         "<plist/>", encoding="utf-8"
     )
 
     # Patch get_settings to return this fully-configured Settings.
-    monkeypatch.setattr("tempo.setup.wizard.get_settings", lambda: settings)
-    # Pre-write .env so step_content sees TEMPO_CONTENT_DIR as already set.
-    Path(".env").write_text(f"TEMPO_CONTENT_DIR={settings.content_dir}\n", encoding="utf-8")
+    monkeypatch.setattr("runos.setup.wizard.get_settings", lambda: settings)
+    # Pre-write .env so step_content sees RUNOS_CONTENT_DIR as already set.
+    Path(".env").write_text(f"RUNOS_CONTENT_DIR={settings.content_dir}\n", encoding="utf-8")
 
     # Prompts that record they were never called.
     prompt_calls: list[str] = []
@@ -484,8 +484,8 @@ def test_wizard_strava_writes_creds_before_oauth(
     assert exit_code == 0
     snapshot = all_delegated_mocks["exchange_code_env_snapshot"]
     assert snapshot is not None
-    assert snapshot.get("TEMPO_STRAVA_CLIENT_ID") == "12345"
-    assert snapshot.get("TEMPO_STRAVA_CLIENT_SECRET") == "topsecret"
+    assert snapshot.get("RUNOS_STRAVA_CLIENT_ID") == "12345"
+    assert snapshot.get("RUNOS_STRAVA_CLIENT_SECRET") == "topsecret"
 
 
 def test_wizard_strava_oauth_failure_returns_failed(
@@ -507,7 +507,7 @@ def test_wizard_strava_oauth_failure_returns_failed(
         )
 
     monkeypatch.setattr(
-        "tempo.connectors.factory.build_strava_connector", _fake_build_strava, raising=True
+        "runos.connectors.factory.build_strava_connector", _fake_build_strava, raising=True
     )
     _all_yes_prompts(
         monkeypatch,
@@ -520,8 +520,8 @@ def test_wizard_strava_oauth_failure_returns_failed(
     exit_code = run_wizard(fresh_settings, only={"strava"})
     assert exit_code == 1
     env_after = read_env(Path(".env"))
-    assert env_after.get("TEMPO_STRAVA_CLIENT_ID") == "12345"
-    assert env_after.get("TEMPO_STRAVA_CLIENT_SECRET") == "topsecret"
+    assert env_after.get("RUNOS_STRAVA_CLIENT_ID") == "12345"
+    assert env_after.get("RUNOS_STRAVA_CLIENT_SECRET") == "topsecret"
 
 
 def test_wizard_smoke_reports_per_source_status(
@@ -563,7 +563,7 @@ def test_wizard_smoke_strava_terminal_failure_exits_1(
     exit_code = run_wizard(fresh_settings, only={"smoke"})
     out = capsys.readouterr().out
     assert exit_code == 1
-    assert "tempo setup --only=strava" in out
+    assert "runos setup --only=strava" in out
 
 
 def test_wizard_exit_code_2_on_ctrl_c(
@@ -658,7 +658,7 @@ def test_bot_scheduler_offered_only_when_telegram_configured_in_this_run(
 def test_setup_cmd_via_clirunner_unknown_only_step_exits_2(
     fake_home: Path, fresh_cwd: Path
 ) -> None:
-    """`tempo setup --only=banana` → exit 2 + helpful error listing valid steps."""
+    """`runos setup --only=banana` → exit 2 + helpful error listing valid steps."""
     runner = CliRunner()
     result = runner.invoke(app, ["setup", "--only=banana"])
     assert result.exit_code == 2
@@ -671,7 +671,7 @@ def test_setup_cmd_via_clirunner_unknown_only_step_exits_2(
 def test_setup_cmd_via_clirunner_help_lists_all_flags(
     fake_home: Path, fresh_cwd: Path
 ) -> None:
-    """`tempo setup --help` lists all 7 locked flags."""
+    """`runos setup --help` lists all 7 locked flags."""
     runner = CliRunner()
     result = runner.invoke(app, ["setup", "--help"])
     assert result.exit_code == 0

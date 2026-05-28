@@ -20,12 +20,12 @@ from pathlib import Path
 
 import pytest
 
-from tempo.analysis import runner
-from tempo.analysis.fitness import evaluate_guardrail
-from tempo.analysis.load import LoadConfig, LoadMethod
-from tempo.connectors.base import RawWriter
-from tempo.sync import state
-from tempo.transforms.runner import run_transform
+from runos.analysis import runner
+from runos.analysis.fitness import evaluate_guardrail
+from runos.analysis.load import LoadConfig, LoadMethod
+from runos.connectors.base import RawWriter
+from runos.sync import state
+from runos.transforms.runner import run_transform
 from tests.strava_fakes import make_run
 
 START = date(2026, 1, 1)
@@ -218,8 +218,8 @@ def test_best_recent_effort_picks_highest_vdot(conn: sqlite3.Connection) -> None
 
 def _render_with_links(race, link) -> str:
     """Render a one-race readiness section through render_race_readiness directly."""
-    from tempo.analysis.races import RacesContext
-    from tempo.analysis.report import RaceReadiness, render_race_readiness
+    from runos.analysis.races import RacesContext
+    from runos.analysis.report import RaceReadiness, render_race_readiness
 
     races_ctx = RacesContext(present=True, races=[race])
     readiness = [
@@ -245,8 +245,8 @@ def _render_with_links(race, link) -> str:
 
 def test_race_readiness_renders_result_when_linked() -> None:
     """A linked race with a result string surfaces the result + activity id."""
-    from tempo.analysis.race_link import RaceLink
-    from tempo.analysis.races import Race
+    from runos.analysis.race_link import RaceLink
+    from runos.analysis.races import Race
 
     race = Race(
         name="Local Half",
@@ -262,8 +262,8 @@ def test_race_readiness_renders_result_when_linked() -> None:
 
 def test_race_readiness_renders_no_activity_when_unlinked_no_match() -> None:
     """An unlinked-no-match race surfaces the explicit 'no activity' marker."""
-    from tempo.analysis.race_link import RaceLink
-    from tempo.analysis.races import Race
+    from runos.analysis.race_link import RaceLink
+    from runos.analysis.races import Race
 
     race = Race(name="Past 10k", race_date=date(2026, 3, 22), distance_label="10k")
     link = RaceLink(race=race, activity_id=None, link_status="unlinked_no_match")
@@ -273,8 +273,8 @@ def test_race_readiness_renders_no_activity_when_unlinked_no_match() -> None:
 
 def test_race_readiness_renders_ambiguous_when_multiple() -> None:
     """A race with 2+ activities on day surfaces the 'multiple activities' marker."""
-    from tempo.analysis.race_link import RaceLink
-    from tempo.analysis.races import Race
+    from runos.analysis.race_link import RaceLink
+    from runos.analysis.races import Race
 
     race = Race(name="Crit", race_date=date(2026, 3, 22), distance_label="40km")
     link = RaceLink(race=race, activity_id=None, link_status="unlinked_ambiguous")
@@ -284,8 +284,8 @@ def test_race_readiness_renders_ambiguous_when_multiple() -> None:
 
 def test_race_readiness_renders_nothing_when_unlinked_no_date() -> None:
     """A race without a date emits no link line (the missing date is its own marker)."""
-    from tempo.analysis.race_link import RaceLink
-    from tempo.analysis.races import Race
+    from runos.analysis.race_link import RaceLink
+    from runos.analysis.races import Race
 
     race = Race(name="Someday Marathon", race_date=None, distance_label="marathon")
     link = RaceLink(race=race, activity_id=None, link_status="unlinked_no_date")

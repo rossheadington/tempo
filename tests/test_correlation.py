@@ -14,7 +14,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, timedelta
 
-from tempo.analysis import correlation as corr
+from runos.analysis import correlation as corr
 
 # ---- Pearson math (hand-verified) ------------------------------------------
 
@@ -122,8 +122,8 @@ def test_norm_cdf_sanity() -> None:
 
 def _seed(conn: sqlite3.Connection, n: int) -> dict[str, float]:
     """Seed n days of activities (with HR) + wellness with VARYING sleep/HRV."""
-    from tempo.connectors.base import RawWriter
-    from tempo.transforms.runner import run_transform
+    from runos.connectors.base import RawWriter
+    from runos.transforms.runner import run_transform
     from tests.garmin_fakes import make_hrv, make_sleep, make_stats
     from tests.strava_fakes import make_run
 
@@ -151,8 +151,8 @@ def _seed(conn: sqlite3.Connection, n: int) -> dict[str, float]:
 
 
 def test_read_observations_and_build(conn: sqlite3.Connection) -> None:
-    from tempo.analysis.load import LoadConfig
-    from tempo.analysis.runner import build_load_series
+    from runos.analysis.load import LoadConfig
+    from runos.analysis.runner import build_load_series
 
     _seed(conn, 40)
     cfg = LoadConfig(threshold_pace_s_per_km=240.0)
@@ -170,8 +170,8 @@ def test_read_observations_and_build(conn: sqlite3.Connection) -> None:
 
 def test_build_correlations_excludes_rest_days_from_load(conn: sqlite3.Connection) -> None:
     """Zero-load rest days are excluded from *->load correlations."""
-    from tempo.analysis.load import LoadConfig
-    from tempo.analysis.runner import build_load_series
+    from runos.analysis.load import LoadConfig
+    from runos.analysis.runner import build_load_series
 
     _seed(conn, 30)
     cfg = LoadConfig(threshold_pace_s_per_km=240.0)
@@ -185,9 +185,9 @@ def test_build_correlations_excludes_rest_days_from_load(conn: sqlite3.Connectio
 
 
 def test_render_correlations_reports_insufficient_when_sparse(conn: sqlite3.Connection) -> None:
-    from tempo.analysis import data as dataread
-    from tempo.analysis.load import LoadConfig
-    from tempo.analysis.runner import build_load_series
+    from runos.analysis import data as dataread
+    from runos.analysis.load import LoadConfig
+    from runos.analysis.runner import build_load_series
 
     _seed(conn, 10)  # too few days for the 20-floor
     cfg = LoadConfig(threshold_pace_s_per_km=240.0)

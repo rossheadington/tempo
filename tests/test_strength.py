@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tempo.analysis.strength import (
+from runos.analysis.strength import (
     StrengthContext,
     StrengthExercise,
     StrengthRollup,

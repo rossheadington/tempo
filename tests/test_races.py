@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tempo.analysis.races import parse_distance, parse_goal_time, parse_races
+from runos.analysis.races import parse_distance, parse_goal_time, parse_races
 
 # ---- races.md -------------------------------------------------------------
 

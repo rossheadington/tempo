@@ -6,8 +6,8 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from tempo import db
-from tempo.cli import app
+from runos import db
+from runos.cli import app
 
 runner = CliRunner()
 
@@ -25,36 +25,36 @@ def test_strava_subcommands_listed() -> None:
         assert cmd in result.output
 
 
-def test_sync_without_credentials_exits_nonzero(tempo_data_dir: Path) -> None:
+def test_sync_without_credentials_exits_nonzero(runos_data_dir: Path) -> None:
     result = runner.invoke(app, ["sync"])
     assert result.exit_code == 1
     assert "Strava credentials missing" in result.output
 
 
-def test_strava_sync_without_credentials_exits_nonzero(tempo_data_dir: Path) -> None:
+def test_strava_sync_without_credentials_exits_nonzero(runos_data_dir: Path) -> None:
     result = runner.invoke(app, ["strava", "sync"])
     assert result.exit_code == 1
     assert "credentials missing" in result.output.lower()
 
 
-def test_strava_backfill_without_credentials_exits_nonzero(tempo_data_dir: Path) -> None:
+def test_strava_backfill_without_credentials_exits_nonzero(runos_data_dir: Path) -> None:
     result = runner.invoke(app, ["strava", "backfill"])
     assert result.exit_code == 1
 
 
-def test_strava_auth_prints_url_with_credentials(tempo_data_dir: Path, monkeypatch) -> None:
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_ID", "424242")
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_SECRET", "shhh-not-real")
+def test_strava_auth_prints_url_with_credentials(runos_data_dir: Path, monkeypatch) -> None:
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_ID", "424242")
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_SECRET", "shhh-not-real")
     result = runner.invoke(app, ["strava", "auth"])
     assert result.exit_code == 0, result.output
     assert "https://www.strava.com/oauth/authorize" in result.output
     assert "client_id=424242" in result.output
 
 
-def test_strava_auth_with_code_stores_tokens(tempo_data_dir: Path, monkeypatch) -> None:
+def test_strava_auth_with_code_stores_tokens(runos_data_dir: Path, monkeypatch) -> None:
     """The full handshake completion path, with stravalib mocked at the source."""
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_ID", "424242")
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_SECRET", "shhh-not-real")
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_ID", "424242")
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_SECRET", "shhh-not-real")
 
     from tests.strava_fakes import FakeStravaClient
 
@@ -62,25 +62,25 @@ def test_strava_auth_with_code_stores_tokens(tempo_data_dir: Path, monkeypatch) 
         exchange_result={"access_token": "A", "refresh_token": "R", "expires_at": 1234}
     )
     # Patch the real stravalib Client so build_strava_connector wires the fake.
-    monkeypatch.setattr("tempo.connectors.strava.Client", lambda *a, **k: fake)
+    monkeypatch.setattr("runos.connectors.strava.Client", lambda *a, **k: fake)
 
     result = runner.invoke(app, ["strava", "auth", "--code", "the-code"])
     assert result.exit_code == 0, result.output
     assert "Strava authorised" in result.output
     # Token file landed in the temp tokens dir.
-    assert (tempo_data_dir / "tokens" / "strava_tokens.json").exists()
+    assert (runos_data_dir / "tokens" / "strava_tokens.json").exists()
 
 
-def test_sync_runs_with_mocked_client(tempo_data_dir: Path, monkeypatch) -> None:
-    """tempo sync end-to-end against a mocked stravalib client + seeded tokens."""
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_ID", "424242")
-    monkeypatch.setenv("TEMPO_STRAVA_CLIENT_SECRET", "shhh-not-real")
+def test_sync_runs_with_mocked_client(runos_data_dir: Path, monkeypatch) -> None:
+    """runos sync end-to-end against a mocked stravalib client + seeded tokens."""
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_ID", "424242")
+    monkeypatch.setenv("RUNOS_STRAVA_CLIENT_SECRET", "shhh-not-real")
 
-    from tempo.connectors.tokens import TokenSet, TokenStore
+    from runos.connectors.tokens import TokenSet, TokenStore
     from tests.strava_fakes import FakeStravaClient, make_activity
 
     # Seed valid tokens so no refresh/network is needed.
-    store = TokenStore(tempo_data_dir / "tokens", "strava")
+    store = TokenStore(runos_data_dir / "tokens", "strava")
     store.save(TokenSet("access", "refresh", 9_999_999_999))
 
     fake = FakeStravaClient(
@@ -93,16 +93,16 @@ def test_sync_runs_with_mocked_client(tempo_data_dir: Path, monkeypatch) -> None
             2: [],
         }
     )
-    monkeypatch.setattr("tempo.connectors.strava.Client", lambda *a, **k: fake)
+    monkeypatch.setattr("runos.connectors.strava.Client", lambda *a, **k: fake)
 
     result = runner.invoke(app, ["sync"])
     assert result.exit_code == 0, result.output
-    # `tempo sync` now reports per-source status; Strava succeeds and the
+    # `runos sync` now reports per-source status; Strava succeeds and the
     # (unauthenticated) Garmin source is isolated -- skipped, never blocking.
     assert "strava: ok" in result.output
     assert "garmin: skipped" in result.output
 
-    conn = db.connect(tempo_data_dir / "tempo.db")
+    conn = db.connect(runos_data_dir / "runos.db")
     try:
         count = conn.execute("SELECT COUNT(*) FROM raw_response WHERE source='strava'").fetchone()[
             0

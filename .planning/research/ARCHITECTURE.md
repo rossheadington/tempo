@@ -6,7 +6,7 @@
 
 ## Standard Architecture
 
-Tempo is a small, single-user **batch ELT pipeline** with a **medallion (raw → structured → summary) layering** collapsed into one SQLite file, plus a thin analysis/report layer. The well-trodden pattern for this class of tool:
+RunOS is a small, single-user **batch ELT pipeline** with a **medallion (raw → structured → summary) layering** collapsed into one SQLite file, plus a thin analysis/report layer. The well-trodden pattern for this class of tool:
 
 - **Connectors (extract)** own all I/O with external APIs and write *verbatim* responses.
 - **Raw layer (bronze)** stores every payload as JSON, immutable, append-only.
@@ -22,8 +22,8 @@ This mirrors the medallion architecture (bronze=raw, silver=validated/structured
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                         CLI / Scheduler                            │
-│   tempo sync · tempo backfill · tempo analyze · tempo journal      │
-│   (cron / launchd triggers `tempo sync && tempo analyze` daily)    │
+│   runos sync · runos backfill · runos analyze · runos journal      │
+│   (cron / launchd triggers `runos sync && runos analyze` daily)    │
 └───────────────┬──────────────────────────────┬───────────────────┘
                 │ orchestrates                  │
 ┌───────────────▼──────────────┐   ┌────────────▼──────────────────┐
@@ -36,7 +36,7 @@ This mirrors the medallion architecture (bronze=raw, silver=validated/structured
 └───────┼─────────────┼─────────┘                │
         │ writes verbatim                         │
 ┌───────▼─────────────▼──────────────────────────┴───────────────────┐
-│                      SQLite single file (tempo.db)                   │
+│                      SQLite single file (runos.db)                   │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │ RAW (bronze): raw_response  (source,endpoint,key,payload,ts)  │   │
 │  └───────────────────────────┬─────────────────────────────────┘   │
@@ -64,14 +64,14 @@ This mirrors the medallion architecture (bronze=raw, silver=validated/structured
 | **Summary store (gold)** | `daily_summary` — one row per day joining activity rollups + wellness + journal, ready for analysis. | A `VIEW` first; promote to a materialised table if analysis gets slow. |
 | **Analysis** | Read gold/silver (+ markdown plan/race context), produce findings. | Functions returning structured findings; Claude invoked for narrative reports. |
 | **Report writer** | Render analysis to dated markdown in `reports/`. | Jinja/templated markdown writer. |
-| **Journal capture** | Claude writes structured journal rows linked to an activity. | `tempo journal` / MCP/tool call → validated insert into `journal`. |
-| **CLI / scheduler** | Orchestrate sync → transform → analyze; entrypoint `tempo`. | `typer`/`click` app; cron or launchd. |
+| **Journal capture** | Claude writes structured journal rows linked to an activity. | `runos journal` / MCP/tool call → validated insert into `journal`. |
+| **CLI / scheduler** | Orchestrate sync → transform → analyze; entrypoint `runos`. | `typer`/`click` app; cron or launchd. |
 
 ## Recommended Project Structure
 
 ```
 tempo/
-├── src/tempo/
+├── src/runos/
 │   ├── __init__.py
 │   ├── cli.py                # typer app: sync, backfill, analyze, journal, rederive
 │   ├── config.py             # paths, env, settings (db path, reports dir)
@@ -105,13 +105,13 @@ tempo/
 ├── plan.md                   # user-maintained training plan (read for context)
 ├── races.md                  # user-maintained race calendar
 ├── reports/                  # generated markdown analyses (gitignored if private)
-├── data/tempo.db             # SQLite store (gitignored)
+├── data/runos.db             # SQLite store (gitignored)
 └── pyproject.toml            # uv-managed
 ```
 
 ### Structure Rationale
 
-- **`connectors/` vs `transforms/` are strictly separated.** This is the single most important boundary: connectors do network I/O and write *only* raw; transforms read *only* the DB and write structured. This is what makes "re-derive structured from raw without re-fetching" trivial — `tempo rederive` runs transforms over existing `raw_response` rows with zero network calls. It also isolates the fragile Garmin dependency: if garminconnect breaks, transforms and analysis still work on already-stored raw.
+- **`connectors/` vs `transforms/` are strictly separated.** This is the single most important boundary: connectors do network I/O and write *only* raw; transforms read *only* the DB and write structured. This is what makes "re-derive structured from raw without re-fetching" trivial — `runos rederive` runs transforms over existing `raw_response` rows with zero network calls. It also isolates the fragile Garmin dependency: if garminconnect breaks, transforms and analysis still work on already-stored raw.
 - **`migrations/` as ordered SQL** keeps schema evolution honest in a long-lived personal DB; raw is append-only so re-deriving after a schema change is safe.
 - **`sync/` holds watermark + pipeline** so incremental logic lives in one place, not smeared across connectors.
 - **`analysis/` is read-only over gold/silver** and stays independent of how data arrived — analyses don't care whether a number came from Strava or a backfill three months ago.
@@ -145,8 +145,8 @@ class StravaConnector:
 ### Pattern 2: Raw-first ELT (store verbatim, transform later)
 
 **What:** Persist the exact API payload before any parsing. Structured tables are a *projection* of raw, produced by deterministic transforms. Never let a connector write a structured table directly.
-**When to use:** Whenever the source schema is rich/unstable or you may want metrics you haven't thought of yet — exactly Tempo's case (Strava streams, Garmin's deeply nested DTOs).
-**Trade-offs:** Storage duplication (negligible for one person's history; raw is small JSON). Buys total replayability: discover you want a new metric? Add a column + transform, run `tempo rederive`, done — no API calls, no rate-limit risk.
+**When to use:** Whenever the source schema is rich/unstable or you may want metrics you haven't thought of yet — exactly RunOS's case (Strava streams, Garmin's deeply nested DTOs).
+**Trade-offs:** Storage duplication (negligible for one person's history; raw is small JSON). Buys total replayability: discover you want a new metric? Add a column + transform, run `runos rederive`, done — no API calls, no rate-limit risk.
 
 **Example:**
 ```python
@@ -202,7 +202,7 @@ def run_sync(conn, connector):
 
 ### Pattern 5: Claude-as-writer with a validated insert boundary
 
-**What:** Claude is the journaling UI, but it does not write SQL freely. It calls a single typed entrypoint (`tempo journal add` / an MCP tool) that validates fields (RPE 1–10, links to a real `activity_id`) before inserting. Same boundary used by analysis: Claude reads `daily_summary` + plan/race markdown, writes prose to `reports/`, but structured rows go through validated functions.
+**What:** Claude is the journaling UI, but it does not write SQL freely. It calls a single typed entrypoint (`runos journal add` / an MCP tool) that validates fields (RPE 1–10, links to a real `activity_id`) before inserting. Same boundary used by analysis: Claude reads `daily_summary` + plan/race markdown, writes prose to `reports/`, but structured rows go through validated functions.
 **When to use:** Any time an LLM mutates the store. Keeps the DB trustworthy ("trustworthy structured signal" is the stated core value).
 **Trade-offs:** Slightly less flexible than free-form SQL; far safer. Resolve "which activity?" by date + sport before insert so journal rows reliably link to activities.
 
@@ -213,7 +213,7 @@ def run_sync(conn, connector):
 ```
 cron/launchd (daily)
     ↓
-tempo sync
+runos sync
     Strava.sync(since=watermark) ─┐
     Garmin.sync(since=watermark) ─┤→ raw_response (verbatim JSON, idempotent upsert)
                                   ↓
@@ -221,7 +221,7 @@ tempo sync
                                   ↓
     spine.ensure(today) ; daily_summary refreshed (view = automatic)
     ↓
-tempo analyze
+runos analyze
     read daily_summary + plan.md + races.md
     recovery / load / readiness / correlation  → findings
     Claude renders → reports/2026-05-26-recovery.md
@@ -230,7 +230,7 @@ tempo analyze
 ### Re-derivation flow (no network)
 
 ```
-tempo rederive [--source strava]
+runos rederive [--source strava]
     SELECT payload FROM raw_response WHERE source=? 
     → run transforms → upsert structured tables
     (zero API calls; safe after schema/transform changes)
@@ -239,7 +239,7 @@ tempo rederive [--source strava]
 ### Journaling flow
 
 ```
-user → "tell Claude" → Claude calls tempo journal add
+user → "tell Claude" → Claude calls runos journal add
     validate (rpe, feel, notes) + resolve activity_id (by date+sport)
     → INSERT journal (FK activity_id)  → flows into daily_summary
 ```
@@ -350,7 +350,7 @@ LEFT JOIN (SELECT day, MAX(rpe) rpe, MAX(feel) feel FROM journal GROUP BY day) j
 |-------|--------------------------|
 | 1 user, ~years of history | Current design is ideal. SQLite single file, view-based gold, JSON-in-TEXT raw. Nothing to change. |
 | Streams get large (GPS/HR per second × thousands of runs) | `activity_stream` JSON can grow. Lazily fetch/transform streams (on demand, not every sync); consider compressing stream JSON or storing only derived series you actually analyse. Raw stream payloads can be fetched only for activities you'll analyse. |
-| If ever multi-user (out of scope) | Add a `user_id` column; or one DB file per user. Not a concern for Tempo. |
+| If ever multi-user (out of scope) | Add a `user_id` column; or one DB file per user. Not a concern for RunOS. |
 
 ### Scaling Priorities
 
@@ -381,7 +381,7 @@ LEFT JOIN (SELECT day, MAX(rpe) rpe, MAX(feel) feel FROM journal GROUP BY day) j
 
 **What people do:** Hand the LLM raw DB access to "just insert the journal."
 **Why it's wrong:** Undermines the trustworthy-signal core value; bad RPE values, orphaned rows, accidental writes.
-**Do this instead:** A single validated entrypoint (`tempo journal add` / MCP tool) with field checks and activity-id resolution. Claude reads freely, writes through a typed boundary.
+**Do this instead:** A single validated entrypoint (`runos journal add` / MCP tool) with field checks and activity-id resolution. Claude reads freely, writes through a typed boundary.
 
 ### Anti-Pattern 5: Hard-failing the whole sync when Garmin breaks
 
@@ -414,7 +414,7 @@ LEFT JOIN (SELECT day, MAX(rpe) rpe, MAX(feel) feel FROM journal GROUP BY day) j
 
 Honours the Strava-first decision and the raw→structured→summary dependency chain. Each step is shippable.
 
-1. **DB + raw layer + CLI skeleton.** `db.py`, migrations (`raw_response`, `date_spine`, `sync_state`), `tempo` CLI shell, credential handling. *Foundation for everything; no source logic yet.*
+1. **DB + raw layer + CLI skeleton.** `db.py`, migrations (`raw_response`, `date_spine`, `sync_state`), `runos` CLI shell, credential handling. *Foundation for everything; no source logic yet.*
 2. **Strava connector → raw (backfill + incremental).** OAuth, paged resumable backfill, watermark sync. Proves extract + idempotent raw store under real rate limits. *Depends on 1.*
 3. **Strava transforms → `activity` (+ spine).** raw → structured; `date_spine` ensure; `rederive` command. Proves re-derivation without re-fetch. *Depends on 2.*
 4. **`daily_summary` view + first analysis + markdown report.** Build gold view; ship one analysis (training load/trend) end-to-end to `reports/`. **This completes Strava end-to-end (pull → store → analyse) — the validating milestone.** *Depends on 3.*
@@ -436,5 +436,5 @@ Honours the Strava-first decision and the raw→structured→summary dependency 
 - SQLite JSON1 extension (query JSON in TEXT columns): https://www.sqlite.org/json1.html (HIGH, training+docs)
 
 ---
-*Architecture research for: local-first personal training/health data pipeline (Tempo)*
+*Architecture research for: local-first personal training/health data pipeline (RunOS)*
 *Researched: 2026-05-26*

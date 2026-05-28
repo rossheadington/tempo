@@ -1,4 +1,4 @@
-"""Tests for the tempo CLI: init + every wired subcommand invokes without error."""
+"""Tests for the runos CLI: init + every wired subcommand invokes without error."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from tempo import __version__, db
-from tempo.cli import app
+from runos import __version__, db
+from runos.cli import app
 
 runner = CliRunner()
 
@@ -20,12 +20,12 @@ def test_help_lists_all_subcommands() -> None:
         assert cmd in result.output
 
 
-def test_bare_invocation_initialises_db(tempo_data_dir: Path) -> None:
+def test_bare_invocation_initialises_db(runos_data_dir: Path) -> None:
     result = runner.invoke(app, [])
     assert result.exit_code == 0, result.output
     assert "Foundation initialised." in result.output
     # DB file actually created in the temp data dir with WAL + foundation tables.
-    db_path = tempo_data_dir / "tempo.db"
+    db_path = runos_data_dir / "runos.db"
     assert db_path.exists()
     conn = db.connect(db_path)
     try:
@@ -35,12 +35,12 @@ def test_bare_invocation_initialises_db(tempo_data_dir: Path) -> None:
         conn.close()
 
 
-def test_init_command(tempo_data_dir: Path) -> None:
+def test_init_command(runos_data_dir: Path) -> None:
     result = runner.invoke(app, ["init"])
     assert result.exit_code == 0, result.output
-    assert (tempo_data_dir / "tempo.db").exists()
-    assert (tempo_data_dir / "tokens").is_dir()
-    assert (tempo_data_dir / "reports").is_dir()
+    assert (runos_data_dir / "runos.db").exists()
+    assert (runos_data_dir / "tokens").is_dir()
+    assert (runos_data_dir / "reports").is_dir()
 
 
 def test_version_command() -> None:
@@ -49,7 +49,7 @@ def test_version_command() -> None:
     assert __version__ in result.output
 
 
-def test_analyze_runs_on_empty_db(tempo_data_dir: Path) -> None:
+def test_analyze_runs_on_empty_db(runos_data_dir: Path) -> None:
     # `analyze` is wired to real analyses in Phase 4 (see test_analyze_cli).
     # On an empty DB it degrades gracefully and still writes both reports.
     result = runner.invoke(app, ["analyze"])
@@ -58,26 +58,26 @@ def test_analyze_runs_on_empty_db(tempo_data_dir: Path) -> None:
 
 
 @pytest.mark.parametrize("cmd", ["transform", "rederive"])
-def test_transform_commands_run_on_empty_db(cmd: str, tempo_data_dir: Path) -> None:
+def test_transform_commands_run_on_empty_db(cmd: str, runos_data_dir: Path) -> None:
     # With no raw data they run cleanly (no network) and report zero counts.
     result = runner.invoke(app, [cmd])
     assert result.exit_code == 0, result.output
     assert "0 activities" in result.output
 
 
-def test_journal_group_runs(tempo_data_dir: Path) -> None:
+def test_journal_group_runs(runos_data_dir: Path) -> None:
     result = runner.invoke(app, ["journal"])
     assert result.exit_code == 0, result.output
-    assert "tempo journal" in result.output
+    assert "runos journal" in result.output
 
 
-def test_journal_add_requires_rpe(tempo_data_dir: Path) -> None:
+def test_journal_add_requires_rpe(runos_data_dir: Path) -> None:
     # --rpe is required; invoking without it is a usage error (exit code 2).
     result = runner.invoke(app, ["journal", "add"])
     assert result.exit_code != 0
 
 
-def test_journal_add_records_entry(tempo_data_dir: Path) -> None:
+def test_journal_add_records_entry(runos_data_dir: Path) -> None:
     result = runner.invoke(
         app, ["journal", "add", "--rpe", "7", "--feel", "strong", "--duration-min", "60"]
     )

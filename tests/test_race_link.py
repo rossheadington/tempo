@@ -18,13 +18,13 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, timedelta
 
-from tempo.analysis.race_link import RaceLink, link_races_to_activities
-from tempo.analysis.races import Race
+from runos.analysis.race_link import RaceLink, link_races_to_activities
+from runos.analysis.races import Race
 
 # Minimal subset of the activity columns the linker reads (day + activity_id),
 # plus `sport` so the no-sport-filter test (L5) can assert a Ride row links
 # just as readily as a Run row. The real schema is in
-# tempo/migrations/0002_structured.sql; this is a hand-rolled stand-in that
+# runos/migrations/0002_structured.sql; this is a hand-rolled stand-in that
 # avoids the date_spine FK requirement.
 _ACTIVITY_DDL = """
 CREATE TABLE activity (

@@ -40,7 +40,7 @@ end-to-end `docs/WEIGHT.md`, and a one-paragraph README tracker-list update.
 - Day 22 entry (`72.4 kg | notes: hotel scale | feels close to home scale`)
   exercises the embedded-pipe-in-notes contract: only the FIRST `| notes:` is
   the split point; subsequent `|` pipes stay verbatim in the notes.
-- Parses cleanly through `tempo.analysis.weight.parse_weight`:
+- Parses cleanly through `runos.analysis.weight.parse_weight`:
   `present=True`, `entries=14`, `malformed_lines=()`.
 - Format-section sample lines are shown inline with backticks, NOT in fenced
   code blocks — the parser scans every line for the `- ` bullet prefix and
@@ -77,8 +77,8 @@ Mirrors `docs/STRENGTH.md` shape and tone. Sections in order:
    parse-then-rewrite), `cat >> weight.md` is safe, latest-wins enables
    append-only corrections, agent SHOULD NOT modify existing lines.
 7. **`## What's NOT in this layer`** — deferred features (structured DB
-   tables, `tempo weight add` CLI, body composition, scale auto-import,
-   `tempo analyze weight` standalone report, goal tracking).
+   tables, `runos weight add` CLI, body composition, scale auto-import,
+   `runos analyze weight` standalone report, goal tracking).
 
 ### `README.md` (1 paragraph rewritten, net +1 line)
 

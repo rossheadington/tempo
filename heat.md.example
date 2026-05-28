@@ -1,7 +1,7 @@
 # Heat sessions -- EXAMPLE / TEMPLATE
 
-Copy this file to your Tempo content dir as `heat.md` (default
-`~/.tempo/heat.md`) and edit it. Tempo reads it for heat-adaptation context in
+Copy this file to your RunOS content dir as `heat.md` (default
+`~/.runos/heat.md`) and edit it. RunOS reads it for heat-adaptation context in
 the recovery report (TRACK-04/05); it is never committed (the content dir lives
 outside the repo tree).
 
@@ -11,7 +11,7 @@ One session per markdown list item. Each entry leads with the date, then
 `key: value` pairs separated by `|` (or commas), in any order. Parsing is
 lenient: unknown keys are ignored and a malformed line is skipped, so you can't
 break analysis by editing this file. Append new sessions to the bottom -- the
-file is treated as append-only by convention (Tempo never edits it).
+file is treated as append-only by convention (RunOS never edits it).
 
 Recognised keys:
 

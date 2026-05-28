@@ -5,21 +5,21 @@ subsystem: analysis
 tags: [strength, parser, recovery, layer-1]
 requires: []
 provides:
-  - tempo.analysis.strength module (5 frozen+slots dataclasses + parser + rollup)
+  - runos.analysis.strength module (5 frozen+slots dataclasses + parser + rollup)
   - Settings.strength_path derived property
 affects:
-  - tempo/config.py (one new property)
-  - tempo/analysis/__init__.py (module-index bullet)
+  - runos/config.py (one new property)
+  - runos/analysis/__init__.py (module-index bullet)
 tech_stack:
   added: []
   patterns: [lenient-parser, frozen-slots-dataclasses, closed-interval-rollup]
 key_files:
   created:
-    - tempo/analysis/strength.py
+    - runos/analysis/strength.py
     - tests/test_strength.py
   modified:
-    - tempo/config.py
-    - tempo/analysis/__init__.py
+    - runos/config.py
+    - runos/analysis/__init__.py
 decisions: []
 metrics:
   duration_min: ~15
@@ -31,13 +31,13 @@ metrics:
 # Phase 13 Plan 01: Strength Parser + Rollup Summary
 
 Self-contained Layer-1 module for the strength & conditioning tracker:
-`tempo/analysis/strength.py` mirrors `tempo/analysis/heat.py` exactly. 5
+`runos/analysis/strength.py` mirrors `runos/analysis/heat.py` exactly. 5
 frozen+slots dataclasses, a lenient `parse_strength`, and a closed-interval
 `strength_rollup`. No recovery integration yet — that lands in Plan 13-02.
 
 ## What shipped
 
-- **`tempo/analysis/strength.py`** (399 LoC, within the 200-280 target zone if
+- **`runos/analysis/strength.py`** (399 LoC, within the 200-280 target zone if
   you exclude blank/doc lines; raw line count includes a generous module
   docstring and clear dataclass-per-block layout). Contents:
   - `StrengthSet`, `StrengthExercise`, `StrengthSession`, `StrengthContext`,
@@ -60,10 +60,10 @@ frozen+slots dataclasses, a lenient `parse_strength`, and a closed-interval
     a None name.
   - `_session_tonnage` helper keeps the rollup loop readable.
 
-- **`tempo/config.py`** — added `strength_path` property immediately after
+- **`runos/config.py`** — added `strength_path` property immediately after
   `heat_path`. Body and docstring mirror heat_path's shape.
 
-- **`tempo/analysis/__init__.py`** — added a `strength` bullet to the module
+- **`runos/analysis/__init__.py`** — added a `strength` bullet to the module
   index alongside heat.
 
 - **`tests/test_strength.py`** (436 LoC, 26 tests):
@@ -85,8 +85,8 @@ frozen+slots dataclasses, a lenient `parse_strength`, and a closed-interval
 
 - `uv run pytest tests/test_strength.py -v` → **26 passed**.
 - `uv run pytest tests/ --deselect tests/test_bot_transcribe.py::test_transcribe_file_real_fixture_returns_nonempty` → **523 passed, 1 deselected** (498 baseline + 26 new − the 1 slow Whisper test that's always deselected).
-- `uv run ruff check tempo/ tests/` → All checks passed.
-- Smoke: `Settings().strength_path` → `~/.tempo/strength.md` (parent =
+- `uv run ruff check runos/ tests/` → All checks passed.
+- Smoke: `Settings().strength_path` → `~/.runos/strength.md` (parent =
   `content_root`, name = `strength.md`).
 - Goal-backward: owner's Tuesday session parses to 1 session with 7 exercises,
   `last_7d_tonnage_kg == 9835.0`, `last_session_name == "Lower body"`.
@@ -103,11 +103,11 @@ executor ("planner's call").
 
 ## Commit
 
-- `73aefa7` — `feat(13-01): add tempo/analysis/strength.py parser + rollup + Settings.strength_path`
+- `73aefa7` — `feat(13-01): add runos/analysis/strength.py parser + rollup + Settings.strength_path`
 
 ## Self-Check: PASSED
 
-- `tempo/analysis/strength.py` exists.
+- `runos/analysis/strength.py` exists.
 - `tests/test_strength.py` exists (26 tests, all green).
 - `Settings.strength_path` returns `<content_root>/strength.md`.
 - Commit `73aefa7` exists in `git log`.

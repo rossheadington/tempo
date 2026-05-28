@@ -1,26 +1,26 @@
 ---
 name: generate-report
-description: Use when Ross asks for a specific named report. Trigger phrases include "recovery report", "load trend", "race readiness", "correlations", "nutrition report", "today's recovery", "how's my CTL", "show me the report". Runs `tempo analyze <type>` and returns the rendered markdown.
+description: Use when Ross asks for a specific named report. Trigger phrases include "recovery report", "load trend", "race readiness", "correlations", "nutrition report", "today's recovery", "how's my CTL", "show me the report". Runs `runos analyze <type>` and returns the rendered markdown.
 ---
 
 # generate-report
 
-When Ross asks for a specific report, run the right `tempo analyze` subcommand and show him the result.
+When Ross asks for a specific report, run the right `runos analyze` subcommand and show him the result.
 
 ## The five reports
 
 | Report | Command | What it shows |
 |---|---|---|
-| Recovery | `tempo analyze recovery` | Today's verdict (elevated risk / monitor / clear), load drivers (CTL ramp + ACWR), recovery markers (HRV / resting HR / sleep vs baseline), tracker sections (heat / strength / weight / nutrition where data exists) |
-| Load trend | `tempo analyze load-trend` | Daily load series, CTL / ATL / TSB / ACWR over time, ramp rate guardrail |
-| Race readiness | `tempo analyze race-readiness` | Goal race + projected fitness on race day, target pace feasibility (Riegel + VDOT), training-load posture |
-| Correlations | `tempo analyze correlations` | Pairwise Pearson correlations across HRV, sleep, resting HR, training load — what's actually moving together in Ross's data |
-| Nutrition | `tempo analyze nutrition` | Today's totals, per-meal breakdown, 7-day rolling P/C/F/cal, 28-day kcal mean, goal delta (if `TEMPO_TARGET_KCAL` set) |
+| Recovery | `runos analyze recovery` | Today's verdict (elevated risk / monitor / clear), load drivers (CTL ramp + ACWR), recovery markers (HRV / resting HR / sleep vs baseline), tracker sections (heat / strength / weight / nutrition where data exists) |
+| Load trend | `runos analyze load-trend` | Daily load series, CTL / ATL / TSB / ACWR over time, ramp rate guardrail |
+| Race readiness | `runos analyze race-readiness` | Goal race + projected fitness on race day, target pace feasibility (Riegel + VDOT), training-load posture |
+| Correlations | `runos analyze correlations` | Pairwise Pearson correlations across HRV, sleep, resting HR, training load — what's actually moving together in Ross's data |
+| Nutrition | `runos analyze nutrition` | Today's totals, per-meal breakdown, 7-day rolling P/C/F/cal, 28-day kcal mean, goal delta (if `RUNOS_TARGET_KCAL` set) |
 
 ## How to run it
 
 ```bash
-TEMPO_CONTENT_DIR=$(pwd)/training uv run tempo analyze recovery
+RUNOS_CONTENT_DIR=$(pwd)/training uv run runos analyze recovery
 ```
 
 The CLI writes the report to `<reports_dir>/<YYYY-MM-DD>-<type>.md` and prints the path. Read that file with the Read tool and return its content (or the relevant section) to Ross.
@@ -28,7 +28,7 @@ The CLI writes the report to `<reports_dir>/<YYYY-MM-DD>-<type>.md` and prints t
 For all five at once:
 
 ```bash
-TEMPO_CONTENT_DIR=$(pwd)/training uv run tempo analyze
+RUNOS_CONTENT_DIR=$(pwd)/training uv run runos analyze
 ```
 
 ## What to reply

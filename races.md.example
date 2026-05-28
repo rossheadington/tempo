@@ -1,7 +1,7 @@
 # Races — EXAMPLE / TEMPLATE
 
-Copy this file to your Tempo data dir as `races.md` (default
-`~/.tempo/races.md`) and edit it. Tempo reads it for race-readiness context
+Copy this file to your RunOS data dir as `races.md` (default
+`~/.runos/races.md`) and edit it. RunOS reads it for race-readiness context
 (PLAN-01); it is never committed (the data dir lives outside the repo tree).
 
 ## Format

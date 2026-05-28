@@ -5,7 +5,7 @@ milestone_name: preferences-extraction
 status: shipped
 stopped_at: v1.6 (Phase 17) complete on `main`; v1.5 + Phase-16 nutrition tracker still in place underneath. Ready for next iteration.
 last_updated: "2026-05-28T20:00:00.000Z"
-last_activity: 2026-05-28 — Phase 17 (Preferences Extraction, v1.6) shipped end-to-end. New `tempo/analysis/preferences.py` (4 frozen+slots dataclasses — `Physiology`/`Units`/`Nutrition`/`PreferencesContext`; lenient parser with H2-section grammar, threshold-pace M:SS/mi + M:SS/km + bare s/km parsing, units alias normalisation, prose sections captured verbatim, malformed lines captured) + `tempo/units.py` formatter (`format_distance`/`format_pace`, NIST-exact `KM_PER_MILE = 1.609344`, en-dash sentinel for None/<=0/NaN). Five `.env`-sourced knobs DELETED from `Settings`: `TEMPO_THRESHOLD_PACE_S_PER_KM` / `TEMPO_MAX_HR` / `TEMPO_RESTING_HR` / `TEMPO_THRESHOLD_HR` / `TEMPO_TARGET_KCAL`. New `Settings.preferences_path` derived property. `runner.py` + `cli.py` + `sync/daily.py` now load `prefs = parse_preferences(settings.preferences_path)` once per invocation and pass typed values (`prefs.physiology.*`, `prefs.nutrition.target_kcal`, `prefs.units`) into the analysis seam (which preserved its existing `LoadConfig` / `target_kcal` / `units` typed parameters — smaller diff than threading `prefs` everywhere). `render_load_trend` now takes `units: Units` and switches column header `"Distance (km)"` ↔ `"Distance (mi)"` + cell value via `format_distance` (storage stays SI throughout). `preferences.md.example` (75 lines, placeholder values) + `docs/PREFERENCES.md` (325 lines) + `.env.example` updated with the Phase-17 migration comment trail. 716 tests green (+30 from Phase 16's 655 + ~31 new — 17 preferences parser + 9 units formatter + 2 CLI honour-preferences + 2 config — minus a few rewritten fixtures), ruff clean, `grep settings.<deleted>` returns empty. Verifier PASS 3/3.
+last_activity: 2026-05-28 — Phase 17 (Preferences Extraction, v1.6) shipped end-to-end. New `runos/analysis/preferences.py` (4 frozen+slots dataclasses — `Physiology`/`Units`/`Nutrition`/`PreferencesContext`; lenient parser with H2-section grammar, threshold-pace M:SS/mi + M:SS/km + bare s/km parsing, units alias normalisation, prose sections captured verbatim, malformed lines captured) + `tempo/units.py` formatter (`format_distance`/`format_pace`, NIST-exact `KM_PER_MILE = 1.609344`, en-dash sentinel for None/<=0/NaN). Five `.env`-sourced knobs DELETED from `Settings`: `RUNOS_THRESHOLD_PACE_S_PER_KM` / `RUNOS_MAX_HR` / `RUNOS_RESTING_HR` / `RUNOS_THRESHOLD_HR` / `RUNOS_TARGET_KCAL`. New `Settings.preferences_path` derived property. `runner.py` + `cli.py` + `sync/daily.py` now load `prefs = parse_preferences(settings.preferences_path)` once per invocation and pass typed values (`prefs.physiology.*`, `prefs.nutrition.target_kcal`, `prefs.units`) into the analysis seam (which preserved its existing `LoadConfig` / `target_kcal` / `units` typed parameters — smaller diff than threading `prefs` everywhere). `render_load_trend` now takes `units: Units` and switches column header `"Distance (km)"` ↔ `"Distance (mi)"` + cell value via `format_distance` (storage stays SI throughout). `preferences.md.example` (75 lines, placeholder values) + `docs/PREFERENCES.md` (325 lines) + `.env.example` updated with the Phase-17 migration comment trail. 716 tests green (+30 from Phase 16's 655 + ~31 new — 17 preferences parser + 9 units formatter + 2 CLI honour-preferences + 2 config — minus a few rewritten fixtures), ruff clean, `grep settings.<deleted>` returns empty. Verifier PASS 3/3.
 progress:
   total_phases: 1
   completed_phases: 1
@@ -29,17 +29,17 @@ See: .planning/PROJECT.md (updated 2026-05-26)
 These changes ship on `main` but have NO `phases/` folder. Captured here so a fresh future session knows what's in the code beyond Phase 16.
 
 - **Stash integration of the long-parked bot WIP.** Eight discrete improvements landed in one commit: SDK 0.2.x message-shape robustness (`AssistantMessage` class-name check, `TextBlock.text` fallback); SQLite cross-thread fix in `bot/app.py::_post_init`; empty-reply guard in `_run_agent_turn`; `/new` → `/clear` rename; indefinite session lifetime (no 4hr window); new `/sync` command in the bot; `setMyCommands` menu publish; voice transcript echoed back as `<i>📝 Heard: …</i>`; Markdown-tables → `<pre>` block rendering in `agent.py`.
-- **Orphan-journal-link auto-hook.** `tempo/journal/service.py::link_orphan_entries` + post-transform hook in `transforms/runner.py` + `tempo journal link-orphans` CLI. Journal entries captured before Strava sync now auto-link once the activity arrives.
+- **Orphan-journal-link auto-hook.** `runos/journal/service.py::link_orphan_entries` + post-transform hook in `transforms/runner.py` + `runos journal link-orphans` CLI. Journal entries captured before Strava sync now auto-link once the activity arrives.
 - **Code-review simplify pass.** 15 HIGH-severity findings actioned across the codebase: strength header bug (`## YYYY-MM-DD Name` without separator no longer drops the session); voice cleanup leak (single try/finally guarantees `_cleanup_voice_file` runs even on download failure); 5 Py2-style `except` clauses parenthesised; Garmin commands catch `ValueError` (missing creds → red remediation, not traceback); symmetric pipeline isolation (Strava now wrapped like Garmin); nutrition `blocks` ↔ `entries` dedup mismatch fixed; setup wizard `--only` + `--skip` precedence validated.
 - **Operational model simplification.**
-  - Dropped the daily-report schedule. `tempo run-daily` is kept as a manual command but the launchd plist is gone.
-  - New hourly `tempo sync --notify-on-failure --with-recent-streams` via `com.tempo.hourly-sync.plist` (launchd `StartInterval=3600`). Silent on success, Telegram message on any source failure or crash.
-  - New `tempo install-hourly-sync` CLI command renders the plist and prints bootout commands for the old daily plist.
-  - Reports are now generated on-demand via the bot (`generate-report` skill) or directly via `tempo analyze <type>`.
-- **HR stream backfill targeting.** `tempo strava streams --prefer-with-hr --limit N` filters the lazy-fetch queue to activities with `avg_hr > 0`, most-recent first. Plus `--with-recent-streams` opportunistically pulls HR streams for activities in the last 24h as part of every hourly sync (1-3 extra Strava requests, well under rate limit).
+  - Dropped the daily-report schedule. `runos run-daily` is kept as a manual command but the launchd plist is gone.
+  - New hourly `runos sync --notify-on-failure --with-recent-streams` via `com.runos.hourly-sync.plist` (launchd `StartInterval=3600`). Silent on success, Telegram message on any source failure or crash.
+  - New `runos install-hourly-sync` CLI command renders the plist and prints bootout commands for the old daily plist.
+  - Reports are now generated on-demand via the bot (`generate-report` skill) or directly via `runos analyze <type>`.
+- **HR stream backfill targeting.** `runos strava streams --prefer-with-hr --limit N` filters the lazy-fetch queue to activities with `avg_hr > 0`, most-recent first. Plus `--with-recent-streams` opportunistically pulls HR streams for activities in the last 24h as part of every hourly sync (1-3 extra Strava requests, well under rate limit).
 - **Documentation split: `CLAUDE.md` = coach, `ENGINEERING.md` = engineering reference.** The bot's Claude Code session loads CLAUDE.md by default (coach persona, available skills, how to talk to Ross). When the session recognises an engineering task, it reads ENGINEERING.md (the technical content that previously lived in CLAUDE.md plus the simplify-pass updates).
 - **Eight `.claude/skills/*` SKILL.md files** backing the coach persona: `log-run-journal`, `log-strength-session`, `log-heat-session`, `log-weight`, `log-food`, `update-race-result`, `generate-report`, `coach-readout`. Each has trigger phrases, exact CLI/file operations, edge cases, and example replies in the coaching voice.
-- **`tempo/sync/notify.py`** — stdlib-only Telegram notifier (urllib, no python-telegram-bot dependency) for unattended jobs.
+- **`runos/sync/notify.py`** — stdlib-only Telegram notifier (urllib, no python-telegram-bot dependency) for unattended jobs.
 
 **Total test count after hardening:** 686 passing, 1 deselected (the slow Whisper integration test), ruff clean.
 
@@ -49,22 +49,22 @@ These changes ship on `main` but have NO `phases/` folder. Captured here so a fr
 
 Phase: Phase 16 (Nutrition Tracker, v1.5) — COMPLETE; post-v1.5 hardening also on `main`
 Plans: 16-01 + 16-02 + 16-03 + 16-04 — all COMPLETE
-Status: v1.5 SHIPPED. New `food.md` markdown tracker accepts TWO interchangeable formats — inline single-line (`- YYYY-MM-DD <meal>: <food> | p:<g> c:<g> f:<g> cal:<n>`) AND block-per-meal (`## YYYY-MM-DD <meal>` header + nested `- <food>: <macros>` bullets) — parsed by one lenient regex pipeline (case-insensitive macro keys, unordered, unknown keys silently ignored, missing required keys → entry skipped + line recorded in `malformed_lines`, never raises). Daily P/C/F/cal rollup with macro-% split (kcal-share formula, zero-kcal degenerate → 0.0 not crash). 7d trailing rollup averaged across days WITH entries only (a partial log doesn't drag the average down); 28d scalar kcal mean; optional `target_kcal` deficit/surplus when `TEMPO_TARGET_KCAL` is set in `.env`. Plan 16-01 added the parser + rollup + `Settings.food_path` + `Settings.target_kcal_default` + 22 unit tests. Plan 16-02 added `tempo analyze nutrition` CLI + `nutrition_report.render_nutrition` with header banner + 5 sections (today's totals / per-meal breakdown / 7d rolling / 28d kcal / optional goal) + 6 report tests + aggregate `tempo analyze` integration. Plan 16-03 wired the rollup into `RecoveryAssessment` + `_render_nutrition_section` (3-state rule mirroring weight, threshold 3d not 14d since food is daily) + `runner.generate_recovery`/`generate_all` + CLI; added 7 recovery-integration tests; section placed after `## Weight` so the non-running-context cluster reads Heat → Strength → Weight → Nutrition. Plan 16-04 shipped `food.md.example` (14 entries, both formats side-by-side, 0 malformed), `docs/NUTRITION.md` (394 lines), `.env.example` (`TEMPO_TARGET_KCAL` opt-in knob), and a README mention. 655 tests green (+36 from Phase 15), ruff clean. NUTR-03 / NUTR-04 / NUTR-05 all satisfied; NUTR-01 / NUTR-02 explicitly reclassified to v2 (`NUTR-CSV-01` / `NUTR-CSV-02`) — CSV importer becomes a Layer-2 follow-up once the markdown surface proves itself. Verifier PASS 3/3.
-Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The recovery report now carries Heat → Strength → Weight → Nutrition as its non-running-context cluster, and `tempo run-daily` automatically renders a dated nutrition report alongside the other four.
+Status: v1.5 SHIPPED. New `food.md` markdown tracker accepts TWO interchangeable formats — inline single-line (`- YYYY-MM-DD <meal>: <food> | p:<g> c:<g> f:<g> cal:<n>`) AND block-per-meal (`## YYYY-MM-DD <meal>` header + nested `- <food>: <macros>` bullets) — parsed by one lenient regex pipeline (case-insensitive macro keys, unordered, unknown keys silently ignored, missing required keys → entry skipped + line recorded in `malformed_lines`, never raises). Daily P/C/F/cal rollup with macro-% split (kcal-share formula, zero-kcal degenerate → 0.0 not crash). 7d trailing rollup averaged across days WITH entries only (a partial log doesn't drag the average down); 28d scalar kcal mean; optional `target_kcal` deficit/surplus when `RUNOS_TARGET_KCAL` is set in `.env`. Plan 16-01 added the parser + rollup + `Settings.food_path` + `Settings.target_kcal_default` + 22 unit tests. Plan 16-02 added `runos analyze nutrition` CLI + `nutrition_report.render_nutrition` with header banner + 5 sections (today's totals / per-meal breakdown / 7d rolling / 28d kcal / optional goal) + 6 report tests + aggregate `runos analyze` integration. Plan 16-03 wired the rollup into `RecoveryAssessment` + `_render_nutrition_section` (3-state rule mirroring weight, threshold 3d not 14d since food is daily) + `runner.generate_recovery`/`generate_all` + CLI; added 7 recovery-integration tests; section placed after `## Weight` so the non-running-context cluster reads Heat → Strength → Weight → Nutrition. Plan 16-04 shipped `food.md.example` (14 entries, both formats side-by-side, 0 malformed), `docs/NUTRITION.md` (394 lines), `.env.example` (`RUNOS_TARGET_KCAL` opt-in knob), and a README mention. 655 tests green (+36 from Phase 15), ruff clean. NUTR-03 / NUTR-04 / NUTR-05 all satisfied; NUTR-01 / NUTR-02 explicitly reclassified to v2 (`NUTR-CSV-01` / `NUTR-CSV-02`) — CSV importer becomes a Layer-2 follow-up once the markdown surface proves itself. Verifier PASS 3/3.
+Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The recovery report now carries Heat → Strength → Weight → Nutrition as its non-running-context cluster, and `runos run-daily` automatically renders a dated nutrition report alongside the other four.
 
 ## What's Done (Phase 16: Nutrition Tracker — v1.5 milestone)
 
-- `tempo/analysis/nutrition.py` (558 LoC) — five `@dataclass(frozen=True, slots=True)` types (`FoodEntry`, `MealBlock`, `FoodContext`, `DailyNutrition`, `NutritionRollup`), three regex grammars (`_INLINE_RE` for Format A, `_BLOCK_HEADER_RE` + `_BLOCK_BULLET_RE` for Format B), the `_parse_macros` extractor (case-insensitive, unordered, `cal:` rounded via `int(round(float(...)))`, missing-required → `None`), and the public `parse_food(path)` / `daily_nutrition(entries, day)` / `nutrition_rollup(entries, today, *, target_kcal=None)` functions. Missing file → `present=False`. Both formats freely intermix in the same file. Latest-wins dedup on `(date, meal_name, food_label)`. Block with a malformed `##` header → whole block skipped (header + bullets all recorded as malformed). Never raises. Lenient throughout. (NUTR-03, NUTR-04)
+- `runos/analysis/nutrition.py` (558 LoC) — five `@dataclass(frozen=True, slots=True)` types (`FoodEntry`, `MealBlock`, `FoodContext`, `DailyNutrition`, `NutritionRollup`), three regex grammars (`_INLINE_RE` for Format A, `_BLOCK_HEADER_RE` + `_BLOCK_BULLET_RE` for Format B), the `_parse_macros` extractor (case-insensitive, unordered, `cal:` rounded via `int(round(float(...)))`, missing-required → `None`), and the public `parse_food(path)` / `daily_nutrition(entries, day)` / `nutrition_rollup(entries, today, *, target_kcal=None)` functions. Missing file → `present=False`. Both formats freely intermix in the same file. Latest-wins dedup on `(date, meal_name, food_label)`. Block with a malformed `##` header → whole block skipped (header + bullets all recorded as malformed). Never raises. Lenient throughout. (NUTR-03, NUTR-04)
 
 - `daily_nutrition` math: sums P/C/F/kcal across all entries with `entry.date == day`; macro percentages computed AFTER summation via the kcal-share formula `(protein_g * 4) / kcal * 100` etc.; zero-kcal degenerate → all three percentages = `0.0` (no `ZeroDivisionError`). `entry_count` exposes the per-day count for transparency. (NUTR-04)
 
 - `nutrition_rollup` math: windows are left-open right-closed `(today - N, today]` so a same-day log always counts; averages across DAYS with entries (a day without entries is NOT in the denominator) — `days_logged_7d` exposes the day-count; `avg_28d_kcal` is a single scalar int (deeper 28d trend lives in v2); `deficit_surplus_7d = avg_7d.kcal - target_kcal` when both are available, else `None`. Empty/all-future `entries` → all-None / zero-counts rollup. (NUTR-04)
 
-- `Settings.food_path` derived property in `tempo/config.py` (mirrors `weight_path` exactly): returns `content_root / "food.md"`. `Settings.target_kcal_default: int | None` with `validation_alias="TEMPO_TARGET_KCAL"`, default `None`, silently absent when unset. (NUTR-04)
+- `Settings.food_path` derived property in `runos/config.py` (mirrors `weight_path` exactly): returns `content_root / "food.md"`. `Settings.target_kcal_default: int | None` with `validation_alias="RUNOS_TARGET_KCAL"`, default `None`, silently absent when unset. (NUTR-04)
 
-- `tempo/analysis/nutrition_report.py` (192 LoC) — `render_nutrition(today, rollup, today_breakdown, blocks_today, context)` builds the standalone-report markdown body: header `# Nutrition — YYYY-MM-DD` + `Data:` freshness line + 5 sections in fixed order: `## Today's totals` (P/C/F/cal + macro % or `_No entries logged for today yet._`), `## Per-meal breakdown` (subheaders per `(today, meal_name)`, omitted when today has zero entries), `## 7-day rolling average` (mean P/C/F/cal + `(D days logged of 7)` + macro-split second line, or `_No entries in the last 7 days._`), `## 28-day kcal mean` (scalar or `_Insufficient history._`), `## Goal` (only when `rollup.target_kcal is not None`; Unicode `+` / `−` (U+2212) / `±` (U+00B1) sign). Absent-file short-circuit emits a single-paragraph "Create food.md" body, no sections. (NUTR-05)
+- `runos/analysis/nutrition_report.py` (192 LoC) — `render_nutrition(today, rollup, today_breakdown, blocks_today, context)` builds the standalone-report markdown body: header `# Nutrition — YYYY-MM-DD` + `Data:` freshness line + 5 sections in fixed order: `## Today's totals` (P/C/F/cal + macro % or `_No entries logged for today yet._`), `## Per-meal breakdown` (subheaders per `(today, meal_name)`, omitted when today has zero entries), `## 7-day rolling average` (mean P/C/F/cal + `(D days logged of 7)` + macro-split second line, or `_No entries in the last 7 days._`), `## 28-day kcal mean` (scalar or `_Insufficient history._`), `## Goal` (only when `rollup.target_kcal is not None`; Unicode `+` / `−` (U+2212) / `±` (U+00B1) sign). Absent-file short-circuit emits a single-paragraph "Create food.md" body, no sections. (NUTR-05)
 
-- `tempo analyze nutrition` CLI (`tempo/cli.py:722-754`) — new typer command mirroring the existing per-report commands. Reads `food.md` via `settings.food_path`, threads `settings.target_kcal_default`, calls `runner.generate_nutrition`, writes `reports/<YYYY-MM-DD>-nutrition.md`. `runner.generate_all` accepts both new params and emits the nutrition report when `food_path is not None`. `cli.py` passes them at both the top-level `tempo analyze` and `tempo analyze recovery` call sites. `tempo/sync/daily.py:111-112` threads them into the daily launchd pipeline so `tempo run-daily` automatically renders nutrition. (NUTR-05)
+- `runos analyze nutrition` CLI (`runos/cli.py:722-754`) — new typer command mirroring the existing per-report commands. Reads `food.md` via `settings.food_path`, threads `settings.target_kcal_default`, calls `runner.generate_nutrition`, writes `reports/<YYYY-MM-DD>-nutrition.md`. `runner.generate_all` accepts both new params and emits the nutrition report when `food_path is not None`. `cli.py` passes them at both the top-level `runos analyze` and `runos analyze recovery` call sites. `runos/sync/daily.py:111-112` threads them into the daily launchd pipeline so `runos run-daily` automatically renders nutrition. (NUTR-05)
 
 - `RecoveryAssessment` gains `nutrition: NutritionRollup | None = None` and `nutrition_present: bool = False` (defaults preserve back-compat). `assess_recovery_from_db` accepts `food_path: Path | None = None` and `target_kcal: int | None = None`, threads them through the same single-reconstruction pattern that carries heat + strength + weight. `_render_nutrition_section` enforces the 3-state rule: `nutrition_present is False` OR `nutrition is None` OR `latest_day is None` → omit; `days_since_last > 3` → `_Last food entry N days ago — log today's meals to keep the rollup live._`; current → `7d avg P:<g> · C:<g> · F:<g> · cal:<n> (D days logged of 7)`. When `target_kcal` is set AND `deficit_surplus_7d is not None`, a second line `Target N kcal/day · 7d Δ ±X kcal/day` is appended (Unicode minus / plus-minus / plain plus). Section is placed AFTER `_render_weight_section` so the non-running-context cluster reads Heat → Strength → Weight → Nutrition. (NUTR-05)
 
@@ -72,7 +72,7 @@ Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The reco
 
 - `docs/NUTRITION.md` (394 lines) — end-to-end format documentation. Sections: `## Two interchangeable formats` (Format A inline grammar + Format B block grammar + worked examples + equivalence guarantee), `## Lenient parsing` (missing-file → `present=False`, malformed lines captured by number, never logs entry contents, never raises), `## Rollup semantics` (left-open-right-closed windows, days-with-entries-only averaging, optional kcal-goal opt-in), `## Recovery report integration` (3-state rule, 3-day staleness threshold, section ordering), `## Agent-append guidance` (single-line inline appends are safe; corrections via append + latest-wins), `## Future MFP CSV importer relationship` (the inline format is the natural CSV output shape; `NUTR-CSV-01` Layer-2 follow-up). (NUTR-05)
 
-- `.env.example:131` — `# TEMPO_TARGET_KCAL=2200   # optional, enables goal tracking in nutrition + recovery reports` documented as a commented opt-in knob.
+- `.env.example:131` — `# RUNOS_TARGET_KCAL=2200   # optional, enables goal tracking in nutrition + recovery reports` documented as a commented opt-in knob.
 
 - `README.md` (L424-431) — Tracker-files paragraph updated to include `food.md.example` / `food.md` alongside `races.md` / `heat.md` / `strength.md` / `weight.md` with a link to `docs/NUTRITION.md`.
 
@@ -82,7 +82,7 @@ Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The reco
 
 - `tests/test_recovery.py` — 7+ new tests under `# ---- Nutrition section ----` divider: `omits_nutrition_section_when_absent`, `omits_nutrition_when_present_but_empty`, `emits_stale_nudge_when_last_entry_over_3d`, `emits_7d_trailing_rollup_when_current`, `appends_goal_line_when_target_set` (covering both surplus and deficit signs), `nutrition_section_follows_weight`, plus an end-to-end fixture-driven render.
 
-- **Test totals:** 655 tests green (was 619 after Phase 15; +36 from this phase). `ruff check tempo/ tests/` clean. Zero `TODO` / `FIXME` / `XXX` / `TBD` / `HACK` / `PLACEHOLDER` markers in `tempo/analysis/nutrition.py` or `tempo/analysis/nutrition_report.py`. The one slow Whisper test stays deselected per project convention.
+- **Test totals:** 655 tests green (was 619 after Phase 15; +36 from this phase). `ruff check runos/ tests/` clean. Zero `TODO` / `FIXME` / `XXX` / `TBD` / `HACK` / `PLACEHOLDER` markers in `runos/analysis/nutrition.py` or `runos/analysis/nutrition_report.py`. The one slow Whisper test stays deselected per project convention.
 
 - **Verifier outcome:** PASS 3/3 success criteria. See `.planning/phases/16-nutrition-tracker/16-VERIFICATION.md`.
 
@@ -90,23 +90,23 @@ Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The reco
 
 - **A markdown tracker can accept multiple interchangeable formats parsed by one lenient pipeline.** Nutrition is the first tracker to ship with two equivalent grammars (inline + block) — the choice is purely ergonomic (inline for quick agent-append; block when logging a multi-item meal). Both formats produce identical `FoodEntry` records modulo `source_line` / `source_format`. The equivalence is asserted by a dedicated test. This pattern unlocks future trackers where the natural agent-typed form differs from the natural human-typed form.
 
-- **Optional opt-in knobs stay silent when unset.** `TEMPO_TARGET_KCAL` is the first user-facing env var that activates a per-report feature (goal-delta line). When unset, the rollup's `target_kcal` and `deficit_surplus_7d` are `None` and the renderer omits the goal section entirely with no warning. Pattern: silent absence > warning noise for optional features.
+- **Optional opt-in knobs stay silent when unset.** `RUNOS_TARGET_KCAL` is the first user-facing env var that activates a per-report feature (goal-delta line). When unset, the rollup's `target_kcal` and `deficit_surplus_7d` are `None` and the renderer omits the goal section entirely with no warning. Pattern: silent absence > warning noise for optional features.
 
 - **Markdown-first, structured-table-later still applies.** Nutrition is the FIFTH tracker (races / heat / strength / weight / food) to ship as a lenient markdown-only Layer-1 surface. `NUTR-01` / `NUTR-02` (the original MFP-CSV-import requirements) are explicitly reclassified to v2 as `NUTR-CSV-01` / `NUTR-CSV-02` — the inline format was deliberately designed to be the natural output of a future CSV importer, so the Layer-2 work becomes mechanical once the markdown surface proves itself.
 
 ## What's Done (Phase 15: Weight Tracker — v1.4 milestone)
 
-- `tempo/analysis/weight.py` (303 LoC) — three `@dataclass(frozen=True, slots=True)` types (`WeightEntry`, `WeightContext`, `WeightRollup`), the `_to_kg` + `_parse_entry_line` helpers, the lenient `parse_weight(path)` reader, and the `weight_rollup(entries, today)` function. Single regex grammar `- YYYY-MM-DD: <weight> [kg|lb|lbs] [| notes: ...]`; `lbs` normalises to `lb`; missing unit defaults to `kg`. Out-of-range guard: kg-equivalent must satisfy `20 < kg < 500` (catches `7.24 kg`, `724 kg`, `1600 lb`). Latest-wins on duplicate dates via `dict[date, WeightEntry]`. Lenient throughout: missing file → `present=False`, malformed lines recorded in `malformed_lines`, never raises. (WEIGHT-01, WEIGHT-02)
+- `runos/analysis/weight.py` (303 LoC) — three `@dataclass(frozen=True, slots=True)` types (`WeightEntry`, `WeightContext`, `WeightRollup`), the `_to_kg` + `_parse_entry_line` helpers, the lenient `parse_weight(path)` reader, and the `weight_rollup(entries, today)` function. Single regex grammar `- YYYY-MM-DD: <weight> [kg|lb|lbs] [| notes: ...]`; `lbs` normalises to `lb`; missing unit defaults to `kg`. Out-of-range guard: kg-equivalent must satisfy `20 < kg < 500` (catches `7.24 kg`, `724 kg`, `1600 lb`). Latest-wins on duplicate dates via `dict[date, WeightEntry]`. Lenient throughout: missing file → `present=False`, malformed lines recorded in `malformed_lines`, never raises. (WEIGHT-01, WEIGHT-02)
 
 - `weight_rollup` math: windows `(today - N, today]` left-open right-closed (same-day weigh-in always counts; `today - N` itself excluded); every numeric output kg-normalised via `_to_kg` (lb × 0.453592); EWMA `alpha=0.1` seeded from the FIRST entry's kg-converted weight, iterated forward; `latest_entry` preserves original unit; `unit_mixed=True` iff both `kg` and `lb` appear. Hand-computed EWMA `[70, 80, 90] → 72.9` proven by test. (WEIGHT-03)
 
-- `Settings.weight_path` derived property in `tempo/config.py` (mirrors `strength_path` exactly): returns `content_root / "weight.md"`. No new env var. (WEIGHT-01)
+- `Settings.weight_path` derived property in `runos/config.py` (mirrors `strength_path` exactly): returns `content_root / "weight.md"`. No new env var. (WEIGHT-01)
 
 - `RecoveryAssessment` gains `weight: WeightRollup | None = None` and `weight_present: bool = False` (defaults preserve back-compat). `assess_recovery_from_db` accepts `weight_path: Path | None = None` and threads it through the same single-reconstruction pattern that already carries heat + strength. `_render_weight_section` enforces the 3-state rule: absent OR `latest_entry is None` → omit; `days_since_last > 14` → `_Last weigh-in N days ago — log a current reading to keep the rollup live._`; current → `{latest} kg today · 7d avg {a7} kg · 28d avg {a28} kg · trend {ewma} kg · {±X.X} kg vs 28d baseline`. `_fmt_weight_delta` uses Unicode minus (U+2212) for negatives, plus-minus (U+00B1) for near-zero, plain `+` for positives, one decimal throughout. When `unit_mixed=True`, trailing ` _(mixed kg/lb in log — normalised to kg)_` caveat is appended. Section is placed AFTER `## Strength & conditioning` so the recovery report's non-running-context cluster reads Heat → Strength → Weight. (WEIGHT-04)
 
-- `runner.generate_recovery` + `runner.generate_all` accept `weight_path: Path | None = None` and thread it through `assess_recovery_from_db` alongside heat + strength. CLI: `tempo analyze` (L613) and `tempo analyze recovery` (L684) both pass `weight_path=settings.weight_path` next to `settings.strength_path`. (WEIGHT-04)
+- `runner.generate_recovery` + `runner.generate_all` accept `weight_path: Path | None = None` and thread it through `assess_recovery_from_db` alongside heat + strength. CLI: `runos analyze` (L613) and `runos analyze recovery` (L684) both pass `weight_path=settings.weight_path` next to `settings.strength_path`. (WEIGHT-04)
 
-- `weight.md.example` (71 lines) — committed worked example with 14 entries spanning 2026-05-15→2026-05-28 (2 weeks). 12 × `kg`, 1 × `lb`, 1 × `lbs` (demonstrating the normalisation contract); 4 entries carry `| notes: ...` annotations; one entry's notes contain an embedded `|` pipe (proving only the FIRST `| notes:` is the split point). Numbers are synthetic. Parses cleanly through `tempo.analysis.weight.parse_weight`: `present=True`, 14 entries, `malformed_lines=()`. Doubles as a parser regression fixture. (WEIGHT-05)
+- `weight.md.example` (71 lines) — committed worked example with 14 entries spanning 2026-05-15→2026-05-28 (2 weeks). 12 × `kg`, 1 × `lb`, 1 × `lbs` (demonstrating the normalisation contract); 4 entries carry `| notes: ...` annotations; one entry's notes contain an embedded `|` pipe (proving only the FIRST `| notes:` is the split point). Numbers are synthetic. Parses cleanly through `runos.analysis.weight.parse_weight`: `present=True`, 14 entries, `malformed_lines=()`. Doubles as a parser regression fixture. (WEIGHT-05)
 
 - `docs/WEIGHT.md` (199 lines) — end-to-end format documentation mirroring `docs/STRENGTH.md`: `## Format` (entry grammar + 4-entry CONTEXT example as fenced code), `## Lenient parsing` (missing-file degradation, malformed-line recording, out-of-range guard, never-logs-values privacy guarantee), `## Rollup semantics` (windows, kg-normalisation, EWMA alpha=0.1 + ~7-entry half-life), `## Recovery report integration` (3-state rule, placement, mixed-unit caveat), `## Agent-append guidance` (single-line append at EOF, `cat >> weight.md` is safe, latest-wins enables append-only corrections), `## What's NOT in this layer` (deferred features). (WEIGHT-05)
 
@@ -116,7 +116,7 @@ Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The reco
 
 - `tests/test_recovery.py` — 7 new tests under `# ---- Weight section ----` divider: `test_recovery_renderer_omits_weight_section_when_absent`, `test_recovery_renderer_omits_weight_when_present_but_empty`, `test_recovery_renderer_emits_stale_nudge_when_last_weigh_in_over_14d`, `test_recovery_renderer_emits_full_rollup_when_current`, `test_recovery_renderer_appends_mixed_unit_caveat`, `test_recovery_renderer_weight_section_follows_strength`, `test_fmt_weight_delta_signs`.
 
-- **Test totals:** 619 tests green (was 593 after Phase 14; +26 from this phase). `ruff check tempo/ tests/` clean. Zero `TODO` / `FIXME` / `XXX` / `TBD` / `HACK` / `placeholder` markers in any `tempo/analysis/weight.py` or `tests/test_weight.py`. The one slow Whisper test stays deselected per project convention.
+- **Test totals:** 619 tests green (was 593 after Phase 14; +26 from this phase). `ruff check runos/ tests/` clean. Zero `TODO` / `FIXME` / `XXX` / `TBD` / `HACK` / `placeholder` markers in any `runos/analysis/weight.py` or `tests/test_weight.py`. The one slow Whisper test stays deselected per project convention.
 
 - **Verifier outcome:** PASS 5/5 success criteria. See `.planning/phases/15-weight-tracker/15-VERIFICATION.md`.
 
@@ -128,31 +128,31 @@ Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The reco
 
 ## What's Done (Phase 14: First-Run Setup Wizard — v1.3 milestone)
 
-- `tempo/setup/env_io.py` — `read_env(path) -> dict[str, str]` (lenient: missing → `{}`, blank/comment lines skipped, duplicate keys last-wins, surrounding double-quotes stripped) and `atomic_write_env(path, updates, delete_keys)`. The write template mirrors `tempo/connectors/tokens.py` exactly: `tempfile.mkstemp` in destination dir → `os.fchmod(fd, 0o600)` → write + `flush` + `fsync` → `os.replace(tmp, path)` → best-effort `fsync` on the parent dir → final `chmod 0o600`. Crash mid-write leaves either the prior complete `.env` or the new one, never a torn file. Comments + untouched key ordering preserved byte-identically; values with spaces / `$` / `#` / tab are double-quoted on write. Module never logs / echoes a value. (SETUP-03)
+- `runos/setup/env_io.py` — `read_env(path) -> dict[str, str]` (lenient: missing → `{}`, blank/comment lines skipped, duplicate keys last-wins, surrounding double-quotes stripped) and `atomic_write_env(path, updates, delete_keys)`. The write template mirrors `runos/connectors/tokens.py` exactly: `tempfile.mkstemp` in destination dir → `os.fchmod(fd, 0o600)` → write + `flush` + `fsync` → `os.replace(tmp, path)` → best-effort `fsync` on the parent dir → final `chmod 0o600`. Crash mid-write leaves either the prior complete `.env` or the new one, never a torn file. Comments + untouched key ordering preserved byte-identically; values with spaces / `$` / `#` / tab are double-quoted on write. Module never logs / echoes a value. (SETUP-03)
 
-- `tempo/setup/state.py` — `@dataclass(frozen=True, slots=True) class InstallState` with 7 bool fields (`db_initialised`, `content_dir_set`, `strava_configured`, `garmin_configured`, `telegram_configured`, `daily_scheduler_installed`, `bot_scheduler_installed`); `detect_install_state(settings)` is pure read-only over filesystem + a single read-only SQLite connection (closed in `finally`) for the schema-version check. No network, no `launchctl`. Plist presence at `~/Library/LaunchAgents/com.tempo.{daily,telegram-bot}.plist` is the contract. (SETUP-02)
+- `runos/setup/state.py` — `@dataclass(frozen=True, slots=True) class InstallState` with 7 bool fields (`db_initialised`, `content_dir_set`, `strava_configured`, `garmin_configured`, `telegram_configured`, `daily_scheduler_installed`, `bot_scheduler_installed`); `detect_install_state(settings)` is pure read-only over filesystem + a single read-only SQLite connection (closed in `finally`) for the schema-version check. No network, no `launchctl`. Plist presence at `~/Library/LaunchAgents/com.runos.{daily,telegram-bot}.plist` is the contract. (SETUP-02)
 
-- `tempo/setup/prompts.py` — thin `typer.prompt` / `typer.confirm` / `typer.secho` wrappers with `[set]` / `[done]` / `[fresh]` / `[skip]` coloured indicators. `prompt_secret(label)` always passes `hide_input=True, confirmation_prompt=False`. Single mockable surface for tests. (SETUP-03)
+- `runos/setup/prompts.py` — thin `typer.prompt` / `typer.confirm` / `typer.secho` wrappers with `[set]` / `[done]` / `[fresh]` / `[skip]` coloured indicators. `prompt_secret(label)` always passes `hide_input=True, confirmation_prompt=False`. Single mockable surface for tests. (SETUP-03)
 
-- `tempo/setup/wizard.py` (~670 LOC) — the 10-step orchestrator. `STEP_IDS = ("welcome", "db", "content", "strava", "garmin", "telegram", "scheduler", "bot-scheduler", "smoke", "finish")`. One function per step; each starts with a state check and returns `[done]`+skipped when the corresponding `InstallState` bool is True. `run_wizard(settings, *, only, skip_garmin, skip_telegram, skip_scheduler, skip_bot_scheduler, skip_smoke, non_interactive)` iterates the dispatch list, re-detects state after every step (cheap), and returns the exit code (0 = ok / 1 = a non-skipped step failed terminally / 2 = `typer.Abort` from Ctrl-C or `--non-interactive` hitting a required prompt). `--skip-telegram` implies `--skip-bot-scheduler`. The bot-scheduler step is only offered if Telegram is configured (either already-state or completed-this-run). Credentials are always written to `.env` BEFORE the downstream delegated call, so a partial failure leaves creds in place for retry. (SETUP-01, SETUP-02, SETUP-05)
+- `runos/setup/wizard.py` (~670 LOC) — the 10-step orchestrator. `STEP_IDS = ("welcome", "db", "content", "strava", "garmin", "telegram", "scheduler", "bot-scheduler", "smoke", "finish")`. One function per step; each starts with a state check and returns `[done]`+skipped when the corresponding `InstallState` bool is True. `run_wizard(settings, *, only, skip_garmin, skip_telegram, skip_scheduler, skip_bot_scheduler, skip_smoke, non_interactive)` iterates the dispatch list, re-detects state after every step (cheap), and returns the exit code (0 = ok / 1 = a non-skipped step failed terminally / 2 = `typer.Abort` from Ctrl-C or `--non-interactive` hitting a required prompt). `--skip-telegram` implies `--skip-bot-scheduler`. The bot-scheduler step is only offered if Telegram is configured (either already-state or completed-this-run). Credentials are always written to `.env` BEFORE the downstream delegated call, so a partial failure leaves creds in place for retry. (SETUP-01, SETUP-02, SETUP-05)
 
-- **Delegation (SETUP-04, LOCKED)** — every credentialed step calls into the existing helper directly: DB → `tempo.cli._init`; Strava → `tempo.connectors.factory.build_strava_connector` + `connector.authorization_url` + `connector.exchange_code` (same triple `tempo strava auth` makes); Garmin → `tempo.connectors.factory.garmin_login(settings, prompt_mfa=…)`; daily scheduler → `tempo.scheduler.install_plist(...)`; bot scheduler → `tempo.scheduler.install_telegram_bot_plist(...)`; smoke → `tempo.sync.pipeline.run_full_sync(conn, settings)`. Zero subprocess calls; zero duplicated handshake / plist render / MFA prompt code.
+- **Delegation (SETUP-04, LOCKED)** — every credentialed step calls into the existing helper directly: DB → `runos.cli._init`; Strava → `runos.connectors.factory.build_strava_connector` + `connector.authorization_url` + `connector.exchange_code` (same triple `runos strava auth` makes); Garmin → `runos.connectors.factory.garmin_login(settings, prompt_mfa=…)`; daily scheduler → `runos.scheduler.install_plist(...)`; bot scheduler → `runos.scheduler.install_telegram_bot_plist(...)`; smoke → `runos.sync.pipeline.run_full_sync(conn, settings)`. Zero subprocess calls; zero duplicated handshake / plist render / MFA prompt code.
 
-- `tempo/cli.py` — `@app.command("setup")` thin wrapper that parses `--only` / `--skip-*` / `--non-interactive`, validates `--only` against `STEP_IDS - {welcome, finish}` (unknown → `typer.Exit(2)`), calls `run_wizard(settings, …)`, raises `typer.Exit(exit_code)` on non-zero return.
+- `runos/cli.py` — `@app.command("setup")` thin wrapper that parses `--only` / `--skip-*` / `--non-interactive`, validates `--only` against `STEP_IDS - {welcome, finish}` (unknown → `typer.Exit(2)`), calls `run_wizard(settings, …)`, raises `typer.Exit(exit_code)` on non-zero return.
 
 - `docs/SETUP.md` — end-to-end walkthrough. Two paths (one-command + manual). All 10 steps documented in the locked order with *What it does* / *Wizard prompts* / *Files written* / *Manual equivalent* / *Skip* / *Recover* subsections.
 
-- `README.md` — "Getting Started" rewritten to lead with the 4-line `git clone / cd / uv sync / uv run tempo setup` path.
+- `README.md` — "Getting Started" rewritten to lead with the 4-line `git clone / cd / uv sync / uv run runos setup` path.
 
 - 593 tests green (+63 from Phase 13). Verifier PASS 5/5.
 
 ## What's Done (Phase 13: Strength & Conditioning Tracker — v1.2 milestone)
 
-- `tempo/analysis/strength.py` — frozen+slots `StrengthSet` / `StrengthExercise` / `StrengthSession` / `StrengthContext` / `StrengthRollup` dataclasses + `parse_strength(path)` + `strength_rollup(sessions, today)`. Lenient parser modelled directly on `tempo/analysis/heat.py`: missing file → `present=False`, malformed lines skipped, unknown keys ignored, never raises. Handles weighted sets (`55x8`), bare-rep sets (`15`), timed holds (`1:00`), supersets (`[A]`/`[B]`), equipment / notes / rest metadata. (SC-01, SC-02)
+- `runos/analysis/strength.py` — frozen+slots `StrengthSet` / `StrengthExercise` / `StrengthSession` / `StrengthContext` / `StrengthRollup` dataclasses + `parse_strength(path)` + `strength_rollup(sessions, today)`. Lenient parser modelled directly on `runos/analysis/heat.py`: missing file → `present=False`, malformed lines skipped, unknown keys ignored, never raises. Handles weighted sets (`55x8`), bare-rep sets (`15`), timed holds (`1:00`), supersets (`[A]`/`[B]`), equipment / notes / rest metadata. (SC-01, SC-02)
 
-- `tempo/config.py` — `Settings.strength_path` returns `<content_root>/strength.md` (mirrors `heat_path`). (SC-03)
+- `runos/config.py` — `Settings.strength_path` returns `<content_root>/strength.md` (mirrors `heat_path`). (SC-03)
 
-- `tempo/analysis/recovery.py` + `tempo/analysis/runner.py` + `tempo/analysis/report.py` — recovery report gains a `## Strength & conditioning` section with the same 3-state degradation as the heat section (absent → omit / lapsed → one-line nudge / active → rollup with session count, total tonnage, last-session age). (SC-04, SC-05)
+- `runos/analysis/recovery.py` + `runos/analysis/runner.py` + `runos/analysis/report.py` — recovery report gains a `## Strength & conditioning` section with the same 3-state degradation as the heat section (absent → omit / lapsed → one-line nudge / active → rollup with session count, total tonnage, last-session age). (SC-04, SC-05)
 
 - `strength.md.example` + `docs/STRENGTH.md` — committed format reference + operational doc.
 
@@ -160,7 +160,7 @@ Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The reco
 
 ## What's Done (Phase 12: lifecycle / hardening / privacy — v1.1 closing milestone)
 
-- Plan 12-01: `tempo bot install-scheduler` + launchd `com.tempo.telegram-bot.plist` with `KeepAlive=true` so a crash / sleep / network blip auto-restarts the bot. `VOICE_RETENTION_DAYS` startup sweep + per-handler immediate-delete + `tempo bot purge-voice` manual hatch. Agent cwd + data_dir logged at startup.
+- Plan 12-01: `runos bot install-scheduler` + launchd `com.runos.telegram-bot.plist` with `KeepAlive=true` so a crash / sleep / network blip auto-restarts the bot. `VOICE_RETENTION_DAYS` startup sweep + per-handler immediate-delete + `runos bot purge-voice` manual hatch. Agent cwd + data_dir logged at startup.
 
 - Plan 12-02: top-level `telegram_error_handler` (logs traceback, sends a fixed "something went wrong" reply, never re-raises). `docs/PRIVACY.md` is the single-source user-facing privacy contract. README + `docs/TELEGRAM_BOT.md` updated with launchd lifecycle, voice retention, and error-handler sections.
 
@@ -168,17 +168,17 @@ Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The reco
 
 ## What's Done (Phase 11: Claude Code agent via SDK)
 
-- `tempo/bot/agent.py` — wraps `claude-agent-sdk` (uses the user's Claude Code subscription, no `ANTHROPIC_API_KEY`). Per-chat `--resume` over a 4hr rolling window. Final assistant text → HTML reply, split at 4096 chars. Detects `AssistantMessage` by class name (the SDK 0.2.x message shapes have no `.role` / `.type` attrs). Empty assistant text → `"(agent finished without a reply)"` so Telegram doesn't reject an empty message.
+- `runos/bot/agent.py` — wraps `claude-agent-sdk` (uses the user's Claude Code subscription, no `ANTHROPIC_API_KEY`). Per-chat `--resume` over a 4hr rolling window. Final assistant text → HTML reply, split at 4096 chars. Detects `AssistantMessage` by class name (the SDK 0.2.x message shapes have no `.role` / `.type` attrs). Empty assistant text → `"(agent finished without a reply)"` so Telegram doesn't reject an empty message.
 
-- `tempo/bot/sessions.py` — per-chat session-id store with a 4-hour idle window; `/new` resets.
+- `runos/bot/sessions.py` — per-chat session-id store with a 4-hour idle window; `/new` resets.
 
 ## What's Done (Phase 10: Telegram bot worker)
 
-- `tempo/bot/app.py` — Telegram Application builder + handler registration + Whisper warmup + cwd log + voice sweep. Defensive `delete_webhook` in `post_init` to avoid 409 Conflicts.
+- `runos/bot/app.py` — Telegram Application builder + handler registration + Whisper warmup + cwd log + voice sweep. Defensive `delete_webhook` in `post_init` to avoid 409 Conflicts.
 
-- `tempo/bot/handlers.py` — `start`, `voice`, `text`, `/new` handlers. Owner-chat-id allowlist; the bot ignores everything else silently.
+- `runos/bot/handlers.py` — `start`, `voice`, `text`, `/new` handlers. Owner-chat-id allowlist; the bot ignores everything else silently.
 
-- `tempo/bot/transcribe.py` — `faster-whisper` singleton on CPU (no Metal/GPU on Mac). `small.en` int8 default. Eager `list(segments)` because the iterator is lazy.
+- `runos/bot/transcribe.py` — `faster-whisper` singleton on CPU (no Metal/GPU on Mac). `small.en` int8 default. Eager `list(segments)` because the iterator is lazy.
 
 ## What's Done (Phase 9: Telegram + Whisper foundations)
 
@@ -188,17 +188,17 @@ Last activity: 2026-05-28 — Phase 16 verified. v1.5 milestone closed. The reco
 
 ## What's Done (Phase 8: Modular Trackers + Heat Adaptation)
 
-- `races.md` gains a `result:` field + auto-link from race → matching Strava activity (`tempo/analysis/race_link.py`).
+- `races.md` gains a `result:` field + auto-link from race → matching Strava activity (`runos/analysis/race_link.py`).
 
-- New `heat.md` tracker — appendable session log; `tempo/analysis/heat.py` lenient parser + 3-state rollup surfaced in recovery report.
+- New `heat.md` tracker — appendable session log; `runos/analysis/heat.py` lenient parser + 3-state rollup surfaced in recovery report.
 
 - `plan.md` retired (training plan moved to whichever format the owner prefers; no more parser).
 
-- `tempo/analysis/context.py` deleted; per-tracker modules now own their own parse + render shape.
+- `runos/analysis/context.py` deleted; per-tracker modules now own their own parse + render shape.
 
 ## What's Done (Phases 1-7: v1.0 — Strava + Garmin → SQLite → analyses → daily launchd job)
 
-- See `.planning/phases/01-foundation/` through `.planning/phases/07-recovery-correlation/` for the full per-phase shipped list. Summary: Strava OAuth + paged resumable backfill → raw store; Garmin (isolated failure domain, no-retry-on-429) → raw store; pure-stdlib transforms → structured layer + `daily_summary` view; `tempo/analysis/{load,fitness,race,recovery,correlation,noteworthy}.py` produce dated markdown reports; `tempo run-daily` launchd job runs the lot at 05:30 local time. 235 → 288 → 339 → 497 tests across phases.
+- See `.planning/phases/01-foundation/` through `.planning/phases/07-recovery-correlation/` for the full per-phase shipped list. Summary: Strava OAuth + paged resumable backfill → raw store; Garmin (isolated failure domain, no-retry-on-429) → raw store; pure-stdlib transforms → structured layer + `daily_summary` view; `runos/analysis/{load,fitness,race,recovery,correlation,noteworthy}.py` produce dated markdown reports; `runos run-daily` launchd job runs the lot at 05:30 local time. 235 → 288 → 339 → 497 tests across phases.
 
 ## Performance Metrics
 
@@ -232,7 +232,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
 - Strava-first milestone: prove pull → store → analyse end-to-end on the clean source before the fragile Garmin connector
-- Two-layer raw → structured storage: connectors write only to `raw_response`; transforms read raw and write structured, enabling `tempo rederive` with no network
+- Two-layer raw → structured storage: connectors write only to `raw_response`; transforms read raw and write structured, enabling `runos rederive` with no network
 - Date spine in Phase 3 (not later): CTL/ATL EWMAs and ACWR windows are silently wrong without a zero-filled spine
 - Journaling early (Phase 5): correlation analysis is data-hungry, so paired subjective history must start accumulating before Garmin
 - **(Phase 14, 2026-05-28)** First-run setup is orchestration-only — every credentialed step delegates in-process to the existing helper. No subprocess; no duplicated OAuth handshake, MFA prompt, or plist render. `.env` writes go through a single atomic helper modelled on `tokens.py`.
@@ -241,18 +241,18 @@ Recent decisions affecting current work:
 ### Roadmap Evolution
 
 - Phase 8 added: Modular Trackers + Heat Adaptation — split plan.md into focused tracker files (`races.md` w/ result + auto-link, new `heat.md`); retire `plan.md`. (2026-05-27)
-- Phase 14 added + shipped: First-Run Setup Wizard (v1.3) — `tempo setup` reduces clone-to-working-daily-sync from a multi-step README walkthrough to a single idempotent command. (2026-05-28)
+- Phase 14 added + shipped: First-Run Setup Wizard (v1.3) — `runos setup` reduces clone-to-working-daily-sync from a multi-step README walkthrough to a single idempotent command. (2026-05-28)
 - Phase 15 added + shipped: Weight Tracker (v1.4) — `weight.md` markdown tracker with kg/lb normalisation + EWMA trend; surfaced in the recovery report as the third tracker section (Heat → Strength → Weight). (2026-05-28)
 
 ### Pending Todos
 
-- **Live `tempo setup` smoke** against real Strava + Garmin + Telegram (the wizard is verified against mocked delegated symbols; this is a follow-up session task carried over from Phase 14).
-- **Phase 16 (Nutrition Tracker, v1.5)** is the next planned phase: `food.md` markdown tracker (two interchangeable formats — inline single-line and block-per-meal), daily P/C/F/cal rollup, new `tempo analyze nutrition` standalone report, recovery-report 7-day-trailing nutrition mini-section.
+- **Live `runos setup` smoke** against real Strava + Garmin + Telegram (the wizard is verified against mocked delegated symbols; this is a follow-up session task carried over from Phase 14).
+- **Phase 16 (Nutrition Tracker, v1.5)** is the next planned phase: `food.md` markdown tracker (two interchangeable formats — inline single-line and block-per-meal), daily P/C/F/cal rollup, new `runos analyze nutrition` standalone report, recovery-report 7-day-trailing nutrition mini-section.
 
 ### Blockers/Concerns
 
 - [Phase 2 — RESOLVED] Strava API Agreement conflict documented as accepted (README + REQUIREMENTS Known Accepted Conflicts); private self-data, never shared.
-- [Phase 2 — pending user] Live Strava pull needs the user's own API app: create at https://www.strava.com/settings/api, set TEMPO_STRAVA_CLIENT_ID/SECRET in .env, run `tempo strava auth`, then `tempo strava backfill`. All machinery (incl. Phase-4 analysis) proven against mocks/seeded data; this is the only remaining step before live reports.
+- [Phase 2 — pending user] Live Strava pull needs the user's own API app: create at https://www.strava.com/settings/api, set RUNOS_STRAVA_CLIENT_ID/SECRET in .env, run `runos strava auth`, then `runos strava backfill`. All machinery (incl. Phase-4 analysis) proven against mocks/seeded data; this is the only remaining step before live reports.
 - [Phase 4 — RESOLVED] rTSS uses `avg_pace_s_km` directly (no grade-adjusted/normalised pace in v1; NGP/GAP is a documented future refinement). hrTSS fallback uses HR-reserve anchored on threshold HR. Threshold pace is a configurable pydantic setting. Insufficient days are flagged, not invented.
 - [Phase 6] `garminconnect` is the single fragile dependency (garth deprecated 2026-03-27); pin version, monitor upstream, budget for a version bump
 - [Phase 7] HRV baseline cold-start and multi-signal recovery weighting may need a brief planning-time research pass; first weeks of Garmin data will be low-quality and must be flagged honestly
@@ -263,22 +263,22 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| Setup | `tempo doctor` (diagnose-only health check; separable from setup) | Deferred to follow-up phase | 2026-05-28 (Phase 14 CONTEXT) |
-| Setup | `tempo setup --uninstall` reverse path (3-line manual `rm` documented in `docs/SETUP.md`) | Deferred; manual is fine | 2026-05-28 (Phase 14 CONTEXT) |
+| Setup | `runos doctor` (diagnose-only health check; separable from setup) | Deferred to follow-up phase | 2026-05-28 (Phase 14 CONTEXT) |
+| Setup | `runos setup --uninstall` reverse path (3-line manual `rm` documented in `docs/SETUP.md`) | Deferred; manual is fine | 2026-05-28 (Phase 14 CONTEXT) |
 | Setup | Pi / Linux systemd-equivalent of the launchd steps | Deferred until Pi-port milestone | 2026-05-28 (Phase 14 CONTEXT) |
 | Setup | Auto-detect optimal Whisper model / threshold pace / max HR / resting HR | Deferred (cross-cuts Phase 4) | 2026-05-28 (Phase 14 CONTEXT) |
 | Weight | Structured `weight_entry` DB table (markdown layer proves itself first) | Deferred | 2026-05-28 (Phase 15 CONTEXT) |
-| Weight | `tempo weight add --kg 72.4` CLI (symmetric with `tempo journal add`) | Deferred to Layer 2 | 2026-05-28 (Phase 15 CONTEXT) |
+| Weight | `runos weight add --kg 72.4` CLI (symmetric with `runos journal add`) | Deferred to Layer 2 | 2026-05-28 (Phase 15 CONTEXT) |
 | Weight | Body composition (body-fat %, lean mass) | Deferred / out of scope | 2026-05-28 (Phase 15 CONTEXT) |
 | Weight | Withings / Fitbit / Garmin weight auto-import | Deferred (separate phase if ever) | 2026-05-28 (Phase 15 CONTEXT) |
-| Weight | Standalone `tempo analyze weight` trend report | Deferred (recovery section is enough) | 2026-05-28 (Phase 15 CONTEXT) |
+| Weight | Standalone `runos analyze weight` trend report | Deferred (recovery section is enough) | 2026-05-28 (Phase 15 CONTEXT) |
 | Weight | Goal tracking (target weight + ETA from trend) | Deferred | 2026-05-28 (Phase 15 CONTEXT) |
 
 ## Session Continuity
 
 Last session: 2026-05-28T11:15:00.000Z
 Stopped at: v1.4 SHIPPED. Phase 15 (Weight Tracker) verified PASS 5/5. New
-`tempo/analysis/weight.py` (lenient parser + kg/lb normalisation +
+`runos/analysis/weight.py` (lenient parser + kg/lb normalisation +
 7d/28d windows + EWMA alpha=0.1 trend + unit_mixed flag);
 `Settings.weight_path`; `RecoveryAssessment` gains `weight` / `weight_present`;
 `_render_weight_section` enforces the 3-state degradation rule (absent /
@@ -291,10 +291,10 @@ WEIGHT-* requirements satisfied. Next planned: Phase 16 (Nutrition
 Tracker, v1.5).
 
 Previous session: 2026-05-28T10:30:00.000Z. Stopped at: v1.3 SHIPPED. Phase 14
-(First-Run Setup Wizard) verified PASS 5/5. New `tempo setup` command walks 10
+(First-Run Setup Wizard) verified PASS 5/5. New `runos setup` command walks 10
 locked steps in order (welcome → db → content → strava → garmin → telegram →
 scheduler → bot-scheduler → smoke → finish); every credentialed step delegates
-in-process to the existing `tempo` helper. Atomic `.env` writes at 0600 perms
-mirror `tempo/connectors/tokens.py`. 593 tests green (+63), ruff clean.
+in-process to the existing `runos` helper. Atomic `.env` writes at 0600 perms
+mirror `runos/connectors/tokens.py`. 593 tests green (+63), ruff clean.
 
 Resume file: None

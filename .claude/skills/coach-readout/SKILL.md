@@ -10,11 +10,11 @@ When Ross asks an open coaching question, do the synthesis a real coach would. T
 ## What to actually do
 
 1. **Pull the current state from multiple sources:**
-   - Recent activities (last 7-14 days) — `tempo analyze load-trend` OR query `activity` table directly
-   - Recovery markers — `tempo analyze recovery`
+   - Recent activities (last 7-14 days) — `runos analyze load-trend` OR query `activity` table directly
+   - Recovery markers — `runos analyze recovery`
    - Strength/heat/weight/nutrition rollups — read the trackers
    - Upcoming races + their priority — read `training/races.md`
-   - Recent journal entries (RPE + feel) — `tempo journal list --limit 14`
+   - Recent journal entries (RPE + feel) — `runos journal list --limit 14`
 
 2. **Form a view**, considering:
    - What's the training phase? (Base, build, peak, taper, recovery)
@@ -74,19 +74,19 @@ Sometimes Ross will ask for confirmation he's right ("I'm thinking of doing inte
 
 ```bash
 # Recent journal entries with feel
-TEMPO_CONTENT_DIR=$(pwd)/training uv run tempo journal list --limit 14
+RUNOS_CONTENT_DIR=$(pwd)/training uv run runos journal list --limit 14
 
 # Recent activities with load
-TEMPO_CONTENT_DIR=$(pwd)/training uv run python -c "
+RUNOS_CONTENT_DIR=$(pwd)/training uv run python -c "
 import sqlite3
-conn = sqlite3.connect('$HOME/.tempo/tempo.db')
+conn = sqlite3.connect('$HOME/.runos/runos.db')
 conn.row_factory = sqlite3.Row
 for r in conn.execute('SELECT day, sport, distance_m/1000.0 as km, avg_hr, name FROM activity ORDER BY day DESC LIMIT 14'):
     print(f'{r[\"day\"]} | {r[\"sport\"]} | {r[\"km\"]:.1f} km | hr={r[\"avg_hr\"]} | {r[\"name\"]}')
 "
 
 # Latest recovery + load + race-readiness reports
-TEMPO_CONTENT_DIR=$(pwd)/training uv run tempo analyze
+RUNOS_CONTENT_DIR=$(pwd)/training uv run runos analyze
 ```
 
 Synthesise — don't just dump.

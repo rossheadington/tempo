@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tempo.analysis.heat import (
+from runos.analysis.heat import (
     HeatContext,
     HeatRollup,
     HeatSession,

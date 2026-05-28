@@ -53,7 +53,7 @@ Three flavours, parsed in this order:
 
 ## How to log it
 
-1. **Read the existing `training/strength.md`** so you see what's already there. The content_dir is at `~/Projects/tempo/training/` (or wherever `TEMPO_CONTENT_DIR` points).
+1. **Read the existing `training/strength.md`** so you see what's already there. The content_dir is at `~/Projects/RunOS/training/` (or wherever `RUNOS_CONTENT_DIR` points).
 
 2. **Append the new block at the end of the file.** Never edit existing blocks — corrections happen by appending a new block with the same date (latest-wins).
 
@@ -62,9 +62,9 @@ Three flavours, parsed in this order:
 4. **Verify by running** `parse_strength` after the write:
 
 ```bash
-TEMPO_CONTENT_DIR=$(pwd)/training uv run python -c "
+RUNOS_CONTENT_DIR=$(pwd)/training uv run python -c "
 from pathlib import Path
-from tempo.analysis.strength import parse_strength
+from runos.analysis.strength import parse_strength
 ctx = parse_strength(Path('training/strength.md'))
 last = ctx.sessions[-1]
 print(f'{last.date} {last.start_local or \"\"} — {last.name or \"\"}: {len(last.exercises)} exercises, {sum(len(e.sets) for e in last.exercises)} sets')
@@ -84,7 +84,7 @@ Romanian Deadlift (Barbell)
 ...
 ```
 
-Convert that to the Tempo format. The exercise name (with equipment in parens) stays the same; reduce each set to `WxR` and join with `, `. Drop the leading `1:`, `2:` set numbers.
+Convert that to the RunOS format. The exercise name (with equipment in parens) stays the same; reduce each set to `WxR` and join with `, `. Drop the leading `1:`, `2:` set numbers.
 
 ## What to reply
 
@@ -99,10 +99,10 @@ Examples:
 You can compute total tonnage from the rollup:
 
 ```bash
-TEMPO_CONTENT_DIR=$(pwd)/training uv run python -c "
+RUNOS_CONTENT_DIR=$(pwd)/training uv run python -c "
 from pathlib import Path
 from datetime import date
-from tempo.analysis.strength import parse_strength, strength_rollup
+from runos.analysis.strength import parse_strength, strength_rollup
 ctx = parse_strength(Path('training/strength.md'))
 r = strength_rollup(ctx.sessions, date.today())
 print(f'tonnage_7d={r.tonnage_kg_7d}, sessions_7d={r.sessions_7d}, last_session={r.last_session_name}')
@@ -113,7 +113,7 @@ print(f'tonnage_7d={r.tonnage_kg_7d}, sessions_7d={r.sessions_7d}, last_session=
 
 - **Superset labels in `[brackets]`.** Two exercises in the same session sharing a label are understood to be supersetted. Ross labels them explicitly with `[A]` / `[B]` / etc. Preserve his labels verbatim.
 - **Equipment in `(parens)`.** `(Barbell)`, `(Machine)`, `(Cable)`, `(Dumbbell)`, `(Leg Press)`. Stored verbatim. Bodyweight movements typically omit equipment.
-- **Mixed units.** Tempo stores weights verbatim — assumed kg. If Ross says lb, store the number as-is but flag in the notes (`notes: weights in lb`). Don't convert.
+- **Mixed units.** RunOS stores weights verbatim — assumed kg. If Ross says lb, store the number as-is but flag in the notes (`notes: weights in lb`). Don't convert.
 - **Rest period.** `rest: M:SS` is per-session metadata. If he doesn't mention it, omit the line.
 - **Header without separator.** `## 2026-05-26 Lower body` works after the fix. If you're not sure if the version is fixed, use the em-dash anyway: `## 2026-05-26 — Lower body`.
 - **A name-only exercise like `Plank: 1:00, 0:30`** with timed holds: those are M:SS strings, parsed as timed holds. Don't confuse with sets named "1" and "00".

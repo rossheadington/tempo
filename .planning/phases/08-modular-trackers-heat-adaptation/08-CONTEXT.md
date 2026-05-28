@@ -13,7 +13,7 @@
 - A new auto-link layer joins each `races.md` entry to the Strava `activity` on its date (when one exists) — the race-readiness report can then surface "Berlin Marathon: 3:17:42 (2:42 over goal)" or "no activity recorded for race date".
 - A new `heat.md` tracker file lives alongside `races.md` in the content dir. Append-only list of heat-adaptation sessions. Parsed leniently into `HeatContext` (mirror of `RacesContext`).
 - Heat-session context is surfaced in analyses — at minimum a rolling-window count + total minutes (last 7 / 14 / 28 days) appears in the **recovery report** context so Claude knows current heat-adaptation status.
-- `plan.md` is **retired entirely**: parser, `PlanContext` dataclass, config field (`plan_path`), `plan.md.example`, references in `tempo/analysis/report.py`, CLAUDE.md tech-stack section mentions (`plan.md.example` in README), and `tests/test_context.py` plan tests all removed.
+- `plan.md` is **retired entirely**: parser, `PlanContext` dataclass, config field (`plan_path`), `plan.md.example`, references in `runos/analysis/report.py`, CLAUDE.md tech-stack section mentions (`plan.md.example` in README), and `tests/test_context.py` plan tests all removed.
 - Race-readiness report continues to render cleanly without plan.md (the "current focus" section is just dropped — analyses already degrade when `present=False`).
 
 **What this phase does NOT deliver (out of scope):**
@@ -69,21 +69,21 @@
   - `hr_avg` — optional average HR during the session.
   - `notes` — optional free text.
 - **Lenient parser** — unrecognised keys ignored, malformed lines skipped, missing file → `HeatContext(present=False)` (mirrors `parse_races` / `parse_plan` behavior).
-- **HeatSession dataclass** in `tempo/analysis/heat.py` (new module): `date, type, duration_min, temp_c, hr_avg, notes` (all optional except date — entries without a parseable date are dropped, not stored, since they break rollups).
+- **HeatSession dataclass** in `runos/analysis/heat.py` (new module): `date, type, duration_min, temp_c, hr_avg, notes` (all optional except date — entries without a parseable date are dropped, not stored, since they break rollups).
 
 ### Heat rollup surfacing
 
-- New function in `tempo/analysis/heat.py`: `heat_rollup(sessions: list[HeatSession], today: date) -> HeatRollup`.
+- New function in `runos/analysis/heat.py`: `heat_rollup(sessions: list[HeatSession], today: date) -> HeatRollup`.
   - Returns `HeatRollup(last_7d_count, last_7d_minutes, last_14d_count, last_14d_minutes, last_28d_count, last_28d_minutes, last_session_date, last_session_days_ago)`.
-- Wired into the **recovery report** (`tempo/analysis/recovery.py` + `report.py`). Heat status appears as a "Heat adaptation" section that says: `last 7 days: 3 sessions / 78 min · last 14 days: 6 sessions / 154 min · last session: 2 days ago`. When `HeatContext(present=False)` or rollups are zero, the section is omitted entirely (degrade gracefully).
+- Wired into the **recovery report** (`runos/analysis/recovery.py` + `report.py`). Heat status appears as a "Heat adaptation" section that says: `last 7 days: 3 sessions / 78 min · last 14 days: 6 sessions / 154 min · last session: 2 days ago`. When `HeatContext(present=False)` or rollups are zero, the section is omitted entirely (degrade gracefully).
 - **Not yet surfaced in race-readiness or load-trend** — recovery is the natural home (heat is a recovery-domain intervention). Other reports can pick it up later if useful.
 
 ### `plan.md` retirement
 
-- Delete: `parse_plan`, `PlanContext`, `_PLAN_FIELD_RE` from `tempo/analysis/context.py`.
-- Remove `plan_path` derived property + any usage in `tempo/config.py` and `.env.example`.
+- Delete: `parse_plan`, `PlanContext`, `_PLAN_FIELD_RE` from `runos/analysis/context.py`.
+- Remove `plan_path` derived property + any usage in `runos/config.py` and `.env.example`.
 - Delete: `plan.md.example` from repo root.
-- Update: `tempo/analysis/runner.py` and `tempo/analysis/report.py` — remove the plan-context loading + the "Current focus" / `Phase`/`Week`/`Focus`/etc. rendering block from the race-readiness report. Report continues to render without it.
+- Update: `runos/analysis/runner.py` and `runos/analysis/report.py` — remove the plan-context loading + the "Current focus" / `Phase`/`Week`/`Focus`/etc. rendering block from the race-readiness report. Report continues to render without it.
 - Update: any tests in `tests/test_context.py`, `tests/test_analysis_reports.py`, `tests/test_analyze_cli.py` that exercise plan.md — delete plan-specific tests, leave races tests intact.
 - Update: README mentions of plan.md → remove.
 - Update: CLAUDE.md tech-stack section — drop reference to `plan.md` if any. (Spot-check: the bulk of CLAUDE.md is research output, not code reference; user is fine with leaving stale phrasing if it doesn't cause confusion.)
@@ -101,9 +101,9 @@
 
 ### Code-organisation conventions
 
-- New module: `tempo/analysis/heat.py` (parser + dataclasses + rollup function).
-  - Mirrors the structure of `tempo/analysis/context.py` (which currently holds both races and plan parsers). Don't merge heat into `context.py` — `context.py` will become races-only after plan retirement, and a separate `heat.py` is cleaner for future tracker additions (we're already mentally treating each tracker as its own thing, even without the registry).
-- `tempo/analysis/context.py` after this phase: races parsing only. Consider whether to rename to `tempo/analysis/races.py` — **deferred** to avoid churn unless the planner sees a clean reason. (Symmetry with `heat.py` would argue for the rename; the cost is import churn across other modules. Leave to planner's judgement.)
+- New module: `runos/analysis/heat.py` (parser + dataclasses + rollup function).
+  - Mirrors the structure of `runos/analysis/context.py` (which currently holds both races and plan parsers). Don't merge heat into `context.py` — `context.py` will become races-only after plan retirement, and a separate `heat.py` is cleaner for future tracker additions (we're already mentally treating each tracker as its own thing, even without the registry).
+- `runos/analysis/context.py` after this phase: races parsing only. Consider whether to rename to `runos/analysis/races.py` — **deferred** to avoid churn unless the planner sees a clean reason. (Symmetry with `heat.py` would argue for the rename; the cost is import churn across other modules. Leave to planner's judgement.)
 - Auto-link function lives in `analysis/data.py` (extends the existing read-only data layer) OR a new `analysis/race_link.py`. Planner picks based on what reads cleanest.
 
 ### Honesty / failure modes (mirror v1 conventions)
@@ -126,20 +126,20 @@
 **Downstream agents MUST read these before planning or implementing.**
 
 ### Existing parser pattern (the model to follow)
-- `tempo/analysis/context.py` — the current `parse_races` / `parse_plan` / `_parse_race_line` / `_parse_kv` pattern. Both lenient parsers + dataclasses live here today. New heat parser mirrors this style.
+- `runos/analysis/context.py` — the current `parse_races` / `parse_plan` / `_parse_race_line` / `_parse_kv` pattern. Both lenient parsers + dataclasses live here today. New heat parser mirrors this style.
 
 ### Existing config pattern
-- `tempo/config.py:46-150` — `content_dir`, `_content_root`, `races_path`, `plan_path` derived properties; pydantic-settings validators. New `heat_path` follows the `races_path` pattern; `plan_path` is removed.
+- `runos/config.py:46-150` — `content_dir`, `_content_root`, `races_path`, `plan_path` derived properties; pydantic-settings validators. New `heat_path` follows the `races_path` pattern; `plan_path` is removed.
 
 ### Existing report renderer (where heat rollup plugs in)
-- `tempo/analysis/recovery.py` — the recovery analysis builder. Heat rollup is added as another piece of context here.
-- `tempo/analysis/report.py` — markdown rendering. Heat-adaptation section added to recovery report; "current focus" / plan block removed from race-readiness report.
+- `runos/analysis/recovery.py` — the recovery analysis builder. Heat rollup is added as another piece of context here.
+- `runos/analysis/report.py` — markdown rendering. Heat-adaptation section added to recovery report; "current focus" / plan block removed from race-readiness report.
 
 ### Existing read-only data layer
-- `tempo/analysis/data.py` — read-only queries against the structured tables. Race ↔ activity lookup lives here (or a new file in the same layer).
+- `runos/analysis/data.py` — read-only queries against the structured tables. Race ↔ activity lookup lives here (or a new file in the same layer).
 
 ### Existing analysis runner
-- `tempo/analysis/runner.py` — orchestrates inputs → series → reports. Wire in heat parsing + heat rollup + race-link resolution. Remove plan-context loading.
+- `runos/analysis/runner.py` — orchestrates inputs → series → reports. Wire in heat parsing + heat rollup + race-link resolution. Remove plan-context loading.
 
 ### Existing example file convention
 - `races.md.example` and `plan.md.example` (root of repo, committed). Update races, delete plan, add `heat.md.example`.
@@ -149,7 +149,7 @@
 - `tests/test_analysis_reports.py`, `tests/test_analyze_cli.py` — end-to-end render tests; update to drop plan assertions and add heat-section assertions.
 
 ### Race + activity link target table
-- `tempo/migrations/0002_structured.sql` — `activity` table, has `day` column keyed on the date_spine. The auto-link queries `activity.day = race.date`.
+- `runos/migrations/0002_structured.sql` — `activity` table, has `day` column keyed on the date_spine. The auto-link queries `activity.day = race.date`.
 
 </canonical_refs>
 
@@ -158,7 +158,7 @@
 
 - The user uses **Strong** (iOS workout tracker) for strength-and-conditioning work today. The maintainer reverse-engineering effort exists but the official path is CSV export. **Not in scope for Phase 8** — surfaced in conversation as a possible future tracker; explicitly deferred.
 - The user mentioned "saunaing I put in the other day" — there is no existing sauna-tracking code; they likely typed a free-form note into `plan.md` which is currently read as prose. After Phase 8, those notes belong in `heat.md`.
-- The journal system already exists (`tempo/journal/service.py`) and captures per-workout RPE / feel / notes linked to Strava activities — this is the right home for post-run / post-race "how it felt" content. No need to duplicate it in any markdown file.
+- The journal system already exists (`runos/journal/service.py`) and captures per-workout RPE / feel / notes linked to Strava activities — this is the right home for post-run / post-race "how it felt" content. No need to duplicate it in any markdown file.
 - Race auto-link **could** join through to a journal entry on the same date in a follow-up phase, so a race shows: goal, result, RPE, what you said about it. **Phase 8 stops at race → activity link.** Journal join is a small follow-up.
 
 </specifics>
@@ -166,12 +166,12 @@
 <deferred>
 ## Deferred Ideas
 
-- **Modular tracker registry** (`tempo/analysis/trackers/` discovery layer with a `Tracker` protocol). Worth introducing when a third tracker is added. Until then, direct wiring is simpler and clearer.
+- **Modular tracker registry** (`runos/analysis/trackers/` discovery layer with a `Tracker` protocol). Worth introducing when a third tracker is added. Until then, direct wiring is simpler and clearer.
 - **Strength tracker** consuming Strong CSV exports → SQLite `strength_sets` table. Out of scope; surfaced in discussion.
 - **Nutrition tracker** (NUTR-01 / NUTR-02 already in REQUIREMENTS.md v2). Out of scope.
 - **Race result time → seconds parsing** + automated "X seconds over/under goal" rendering. Phase 8 stores `result:` verbatim; structured comparison is a follow-up.
 - **Race → journal → activity join** so race-readiness can quote the post-race journal note. Small follow-up after Phase 8 lands the race → activity link.
-- **Rename `tempo/analysis/context.py` → `tempo/analysis/races.py`** for symmetry with `heat.py`. Planner's call — if low churn, do it; if it cascades through many imports, leave for a future cleanup.
+- **Rename `runos/analysis/context.py` → `runos/analysis/races.py`** for symmetry with `heat.py`. Planner's call — if low churn, do it; if it cascades through many imports, leave for a future cleanup.
 
 </deferred>
 

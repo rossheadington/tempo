@@ -1,8 +1,8 @@
 # Weight log -- EXAMPLE / TEMPLATE
 
-Copy this file to your Tempo content dir as `weight.md` (default
-`<content_root>/weight.md`, redirect with `TEMPO_CONTENT_DIR`) and edit it.
-Tempo reads it for the recovery report's `## Weight` section (WEIGHT-04); it
+Copy this file to your RunOS content dir as `weight.md` (default
+`<content_root>/weight.md`, redirect with `RUNOS_CONTENT_DIR`) and edit it.
+RunOS reads it for the recovery report's `## Weight` section (WEIGHT-04); it
 is never committed (the content dir lives outside the repo tree). The
 numbers below are synthetic.
 

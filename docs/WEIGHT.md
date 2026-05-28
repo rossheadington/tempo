@@ -2,9 +2,9 @@
 
 **Status:** Authoritative for Phase 15 (WEIGHT-01 through WEIGHT-05).
 
-Tempo has no weight-tracking UI by design. The owner maintains a hand-edited
+RunOS has no weight-tracking UI by design. The owner maintains a hand-edited
 `weight.md` markdown file in the content dir (default `<content_root>/weight.md`,
-redirect with `TEMPO_CONTENT_DIR`), and Tempo reads it for body-weight context in
+redirect with `RUNOS_CONTENT_DIR`), and RunOS reads it for body-weight context in
 the recovery report. The markdown layer comes first by intent: the format has to
 prove itself in real use before a structured DB table earns its place (see
 "What's NOT in this layer" at the bottom). The Telegram bot may append entries
@@ -187,13 +187,13 @@ Deferred to later phases (per Phase 15 CONTEXT):
 
 - **Structured DB tables** (`weight_entry`) -- the markdown layer must prove
   useful in real use first.
-- **`tempo weight add --kg 72.4` CLI** -- symmetric with `tempo journal add`;
+- **`runos weight add --kg 72.4` CLI** -- symmetric with `runos journal add`;
   deferred until the markdown layer proves itself.
 - **Body composition** (body-fat %, lean mass, hydration) -- out of scope; a
   single weight metric is the deliberate starting point.
 - **Withings / Fitbit / Garmin Connect auto-import** -- separate phase if it
   ever happens.
-- **Standalone `tempo analyze weight` trend report** -- the recovery-report
+- **Standalone `runos analyze weight` trend report** -- the recovery-report
   section is enough surface for now.
 - **Goal tracking** -- target weight + ETA from EWMA trend; deferred until
   the rollup proves itself.

@@ -5,13 +5,13 @@ subsystem: analysis
 tags: [analysis, race, auto-link, TRACK-03]
 requires: []
 provides: [RaceLink, link_races_to_activities]
-affects: [tempo/analysis/race_link.py (new), tests/test_race_link.py (new)]
+affects: [runos/analysis/race_link.py (new), tests/test_race_link.py (new)]
 tech_stack:
   added: []
   patterns: ["read-only composition layer", "defensive sqlite_master probe", "0/1/N classification (returns instead of raises)"]
 key_files:
   created:
-    - tempo/analysis/race_link.py
+    - runos/analysis/race_link.py
     - tests/test_race_link.py
   modified: []
 decisions:
@@ -29,11 +29,11 @@ commits:
 
 # Phase 8 Plan 03: Race-to-Activity Auto-Link Summary
 
-Added the `tempo/analysis/race_link.py` module: a read-only composition layer that classifies each parsed `Race` against the Strava activities on its local date (TRACK-03), backed by a 9-test edge-case suite.
+Added the `runos/analysis/race_link.py` module: a read-only composition layer that classifies each parsed `Race` against the Strava activities on its local date (TRACK-03), backed by a 9-test edge-case suite.
 
 ## What landed
 
-**`tempo/analysis/race_link.py`** (92 lines) — exports:
+**`runos/analysis/race_link.py`** (92 lines) — exports:
 
 - `RaceLink` (`@dataclass(frozen=True, slots=True)`): `race: Race`, `activity_id: int | None`, `link_status: str` (one of `'linked' | 'unlinked_no_match' | 'unlinked_ambiguous' | 'unlinked_no_date'`).
 - `link_races_to_activities(races: list[Race], conn: sqlite3.Connection) -> list[RaceLink]`: returns a list parallel to `races` (same length, same order).
@@ -59,7 +59,7 @@ Verification commands run:
 ```
 uv run pytest tests/test_race_link.py -x -v   # 9 passed
 uv run pytest tests/ -x                       # 370 passed (was 361, +9 new)
-uv run ruff check tempo/analysis/race_link.py tests/test_race_link.py   # clean
+uv run ruff check runos/analysis/race_link.py tests/test_race_link.py   # clean
 uv run ruff format --check ...                # clean
 ```
 
@@ -87,8 +87,8 @@ if has_activity is not None:
 - **Future-date case (L6) collapses to `unlinked_no_match` (same as L2 past-no-match)**: the linker doesn't know "today". Plan D's renderer decides whether to phrase as "race upcoming, no run yet" vs. "race day passed, no activity recorded".
 - **0/1/N divergence from journal-service**: journal-service raises `MultipleActivitiesError` on N>1; race-link returns `unlinked_ambiguous`. The reason is asymmetric: journal writes need a definite link, but analyses must never crash on a multi-activity race day.
 - **No sport filter (L5)**: a race could be ridden, swum, run, or triathlon — the linker matches by date only. Per CONTEXT.md decision; renderer downstream judges fit.
-- **L7 defensive table-existence probe**: mirrors `srpe_by_day` in `tempo/analysis/data.py`. A fresh pre-Phase-3 DB without an `activity` table returns `unlinked_no_match` for every dated race rather than crashing with `OperationalError: no such table`.
-- **Race import path**: imports `Race` from `tempo.analysis.context` (current home in this worktree, pre-Plan-08-01-rename). When Plan 08-01 lands and moves `Race` to `tempo.analysis.races`, the context shim re-exports keep this import path working until Plan 08-05 sweeps.
+- **L7 defensive table-existence probe**: mirrors `srpe_by_day` in `runos/analysis/data.py`. A fresh pre-Phase-3 DB without an `activity` table returns `unlinked_no_match` for every dated race rather than crashing with `OperationalError: no such table`.
+- **Race import path**: imports `Race` from `runos.analysis.context` (current home in this worktree, pre-Plan-08-01-rename). When Plan 08-01 lands and moves `Race` to `runos.analysis.races`, the context shim re-exports keep this import path working until Plan 08-05 sweeps.
 
 ## Function signature
 
@@ -103,7 +103,7 @@ def link_races_to_activities(
 
 | File | Lines |
 |------|-------|
-| `tempo/analysis/race_link.py` | 92 |
+| `runos/analysis/race_link.py` | 92 |
 | `tests/test_race_link.py` | 241 |
 
 ## Deviations from Plan
@@ -112,7 +112,7 @@ None — plan executed as written. One bonus test (`test_link_races_performs_sin
 
 ## Self-Check: PASSED
 
-- File `tempo/analysis/race_link.py` exists in worktree (verified).
+- File `runos/analysis/race_link.py` exists in worktree (verified).
 - File `tests/test_race_link.py` exists in worktree (verified).
 - Commit `78e3ff9` (`feat(08-03): add race_link module ...`) exists on branch (verified).
 - Commit `b40fdb4` (`test(08-03): cover 7 edge cases ...`) exists on branch (verified).

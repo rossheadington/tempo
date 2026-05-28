@@ -1,9 +1,9 @@
-"""Tests for the standalone ``tempo analyze nutrition`` report (NUTR-05, Phase 16-02).
+"""Tests for the standalone ``runos analyze nutrition`` report (NUTR-05, Phase 16-02).
 
 Covers the four locked tests from 16-CONTEXT.md `### Test scope (LOCKED)`
 lines 230-233:
 
-1. ``tempo analyze nutrition`` writes a dated markdown file under reports_dir.
+1. ``runos analyze nutrition`` writes a dated markdown file under reports_dir.
 2. Today-no-entries case emits the placeholder + omits the per-meal section.
 3. Per-meal breakdown subheaders only appear when today has >=1 entry.
 4. ``## Goal`` section is omitted entirely when ``target_kcal`` is None and
@@ -15,15 +15,15 @@ from __future__ import annotations
 from datetime import date, timedelta
 from pathlib import Path
 
-from tempo.analysis import runner
-from tempo.analysis.load import LoadConfig
-from tempo.analysis.nutrition import (
+from runos.analysis import runner
+from runos.analysis.load import LoadConfig
+from runos.analysis.nutrition import (
     FoodContext,
     FoodEntry,
     daily_nutrition,
     nutrition_rollup,
 )
-from tempo.analysis.nutrition_report import render_nutrition
+from runos.analysis.nutrition_report import render_nutrition
 
 TODAY = date(2026, 5, 28)
 CFG = LoadConfig(threshold_pace_s_per_km=None, max_hr=None, resting_hr=None, threshold_hr=None)
@@ -170,7 +170,7 @@ def test_nutrition_report_included_in_generate_all_aggregate(tmp_path: Path) -> 
     """generate_all should write the nutrition report when food_path is provided."""
     import sqlite3
 
-    from tempo import db
+    from runos import db
 
     food = tmp_path / "food.md"
     food.write_text(
@@ -183,7 +183,7 @@ def test_nutrition_report_included_in_generate_all_aggregate(tmp_path: Path) -> 
     heat.write_text("", encoding="utf-8")
     reports = tmp_path / "reports"
 
-    db_path = tmp_path / "tempo.db"
+    db_path = tmp_path / "runos.db"
     conn: sqlite3.Connection = db.init_db(db_path)
     try:
         result = runner.generate_all(

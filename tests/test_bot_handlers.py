@@ -1,4 +1,4 @@
-"""Tests for ``tempo.bot.handlers`` (Phase 10 + Phase 11 plan 11-03).
+"""Tests for ``runos.bot.handlers`` (Phase 10 + Phase 11 plan 11-03).
 
 Covers the second half of Phase 10 (voice-memo handler ties the warmed
 faster-whisper singleton to the Telegram dispatcher) PLUS Phase 11 plan
@@ -37,10 +37,10 @@ What this file proves:
 Every test:
 
 * deletes ``TELEGRAM_*`` / ``WHISPER_*`` env vars first so a developer's real
-  ``.env`` cannot leak in (the ``tempo_data_dir`` fixture does not touch
-  these because they are intentionally NOT prefixed with ``TEMPO_``),
+  ``.env`` cannot leak in (the ``runos_data_dir`` fixture does not touch
+  these because they are intentionally NOT prefixed with ``RUNOS_``),
 * loads :class:`Settings` with ``_env_file=None`` for the same reason,
-* patches ``tempo.bot.handlers.transcribe_file`` with a ``MagicMock`` (NOT
+* patches ``runos.bot.handlers.transcribe_file`` with a ``MagicMock`` (NOT
   ``AsyncMock`` -- the handler wraps it in :func:`asyncio.to_thread`, which
   awaits a SYNC callable),
 * patches ``telegram.Message.reply_text`` at the class level (PTB v22's
@@ -63,7 +63,7 @@ from telegram import Chat, Message, MessageEntity, Update, User, Voice
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import MessageHandler, filters
 
-from tempo.bot import (
+from runos.bot import (
     MAX_VOICE_BYTES,
     AgentInvocationError,
     AgentTurn,
@@ -71,15 +71,15 @@ from tempo.bot import (
     text_handler,
     voice_handler,
 )
-from tempo.bot.app import build_application
-from tempo.bot.handlers import (
+from runos.bot.app import build_application
+from runos.bot.handlers import (
     CLEAR_SESSION_REPLY,
     EMPTY_TRANSCRIPT_REPLY,
     MISSING_CLI_REPLY,
     OVERSIZED_REPLY,
 )
-from tempo.config import Settings
-from tempo.db import init_db
+from runos.config import Settings
+from runos.db import init_db
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -94,9 +94,9 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "WHISPER_MODEL_NAME",
         "WHISPER_COMPUTE_TYPE",
         "WHISPER_DEVICE",
-        "TEMPO_WHISPER_MODEL_NAME",
-        "TEMPO_WHISPER_COMPUTE_TYPE",
-        "TEMPO_WHISPER_DEVICE",
+        "RUNOS_WHISPER_MODEL_NAME",
+        "RUNOS_WHISPER_COMPUTE_TYPE",
+        "RUNOS_WHISPER_DEVICE",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -198,9 +198,9 @@ def _make_new_command_update(
 
 def _make_bot_data(*, owner_chat_id: int, tmp_path: Path, settings: Settings) -> dict:
     """Construct the ``bot_data`` dict handlers expect, including an inited DB."""
-    db_path = tmp_path / "tempo.db"
+    db_path = tmp_path / "runos.db"
     # Apply migrations so the bot_session table exists -- handlers open
-    # per-call connections via tempo.db.connect(db_path) and assume the
+    # per-call connections via runos.db.connect(db_path) and assume the
     # schema is current.
     conn = init_db(db_path)
     conn.close()
@@ -252,7 +252,7 @@ def _find_voice_handler(app) -> MessageHandler:
 
 
 def test_voice_handler_rejects_oversized_with_no_download(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A voice memo > 20 MB -> fixed rejection reply, no get_file() call.
 
@@ -270,7 +270,7 @@ def test_voice_handler_rejects_oversized_with_no_download(
     no_transcribe = MagicMock(
         side_effect=AssertionError("transcribe_file MUST NOT be called for oversized memos"),
     )
-    monkeypatch.setattr("tempo.bot.handlers.transcribe_file", no_transcribe)
+    monkeypatch.setattr("runos.bot.handlers.transcribe_file", no_transcribe)
 
     # get_file must NEVER be called for an oversized rejection.
     def _boom(*args: object, **kwargs: object) -> None:
@@ -314,7 +314,7 @@ def test_voice_handler_rejects_oversized_with_no_download(
 
 
 def test_voice_handler_filter_drops_non_owner(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`filters.VOICE & filters.Chat(owner)` returns falsy for non-owner voice.
 
@@ -345,7 +345,7 @@ def test_voice_handler_filter_drops_non_owner(
 
 
 def test_voice_handler_happy_path_writes_file_transcribes_and_replies(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A small owner voice memo flows download -> transcribe -> agent -> reply.
 
@@ -364,15 +364,15 @@ def test_voice_handler_happy_path_writes_file_transcribes_and_replies(
     mock_send_action = _stub_typing(monkeypatch)
 
     fake_transcribe = MagicMock(return_value="hello world this is a test")
-    monkeypatch.setattr("tempo.bot.handlers.transcribe_file", fake_transcribe)
+    monkeypatch.setattr("runos.bot.handlers.transcribe_file", fake_transcribe)
 
     fake_run_turn = AsyncMock(
         return_value=_make_agent_turn(text="agent reply", session_id="sess-NEW")
     )
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", fake_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.run_turn", fake_run_turn)
 
     fake_save = MagicMock()
-    monkeypatch.setattr("tempo.bot.handlers.save_session", fake_save)
+    monkeypatch.setattr("runos.bot.handlers.save_session", fake_save)
 
     # Mock voice.get_file -> File-like with an awaitable download_to_drive that
     # actually writes a stub byte to the target path (so the test can assert
@@ -461,7 +461,7 @@ def test_voice_handler_happy_path_writes_file_transcribes_and_replies(
 
 
 def test_voice_handler_escapes_html_in_agent_reply(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Agent reply with HTML-special chars is escaped before sending.
 
@@ -477,13 +477,13 @@ def test_voice_handler_escapes_html_in_agent_reply(
     _stub_typing(monkeypatch)
 
     fake_transcribe = MagicMock(return_value="hello")
-    monkeypatch.setattr("tempo.bot.handlers.transcribe_file", fake_transcribe)
+    monkeypatch.setattr("runos.bot.handlers.transcribe_file", fake_transcribe)
 
     fake_run_turn = AsyncMock(
         return_value=_make_agent_turn(text="3 < 4 & 5 > 4", session_id="sess-X")
     )
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", fake_run_turn)
-    monkeypatch.setattr("tempo.bot.handlers.save_session", MagicMock())
+    monkeypatch.setattr("runos.bot.handlers.run_turn", fake_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.save_session", MagicMock())
 
     async def fake_download(custom_path: object) -> None:
         Path(str(custom_path)).write_bytes(b"\x00")
@@ -525,7 +525,7 @@ def test_voice_handler_escapes_html_in_agent_reply(
 
 
 def test_voice_handler_defensive_check_rejects_mismatched_chat(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Belt-and-braces: an in-handler chat-id mismatch -> silent drop.
 
@@ -540,7 +540,7 @@ def test_voice_handler_defensive_check_rejects_mismatched_chat(
     monkeypatch.setattr(Message, "reply_text", mock_reply)
 
     no_transcribe = MagicMock(side_effect=AssertionError("transcribe must not be called"))
-    monkeypatch.setattr("tempo.bot.handlers.transcribe_file", no_transcribe)
+    monkeypatch.setattr("runos.bot.handlers.transcribe_file", no_transcribe)
 
     def _boom(*args: object, **kwargs: object) -> None:
         raise AssertionError("Voice.get_file must not be called for non-owner")
@@ -569,7 +569,7 @@ def test_voice_handler_defensive_check_rejects_mismatched_chat(
 
 
 def test_voice_handler_creates_cache_dir_with_0700(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """``voice_cache_dir`` is created with mode 0700 on first use.
 
@@ -584,11 +584,11 @@ def test_voice_handler_creates_cache_dir_with_0700(
     _stub_typing(monkeypatch)
 
     fake_transcribe = MagicMock(return_value="ok")
-    monkeypatch.setattr("tempo.bot.handlers.transcribe_file", fake_transcribe)
+    monkeypatch.setattr("runos.bot.handlers.transcribe_file", fake_transcribe)
     # Phase 11: voice_handler now invokes the agent after transcription.
     fake_run_turn = AsyncMock(return_value=_make_agent_turn(text="ok", session_id="sess-X"))
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", fake_run_turn)
-    monkeypatch.setattr("tempo.bot.handlers.save_session", MagicMock())
+    monkeypatch.setattr("runos.bot.handlers.run_turn", fake_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.save_session", MagicMock())
 
     async def fake_download(custom_path: object) -> None:
         Path(str(custom_path)).write_bytes(b"\x00")
@@ -632,7 +632,7 @@ def test_voice_handler_creates_cache_dir_with_0700(
 
 
 def test_build_application_registers_voice_handler(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`build_application` registers a voice ``MessageHandler`` behind
     ``filters.VOICE & filters.Chat(owner)``.
@@ -688,7 +688,7 @@ def _setup_voice_mocks(
     mock_reply = AsyncMock()
     monkeypatch.setattr(Message, "reply_text", mock_reply)
     mock_send_action = _stub_typing(monkeypatch)
-    monkeypatch.setattr("tempo.bot.handlers.transcribe_file", MagicMock(return_value=transcript))
+    monkeypatch.setattr("runos.bot.handlers.transcribe_file", MagicMock(return_value=transcript))
 
     async def fake_download(custom_path: object) -> None:
         Path(str(custom_path)).write_bytes(b"\x00")
@@ -703,12 +703,12 @@ def _setup_voice_mocks(
 
 
 def test_voice_handler_resumes_existing_session_and_saves_new_id(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A stored session id is forwarded to run_turn; the resolved id persists.
 
     The session-store helpers are patched at the handler-module namespace
-    (the handlers do ``from tempo.bot.sessions import ...`` so we patch the
+    (the handlers do ``from runos.bot.sessions import ...`` so we patch the
     rebound names there). ``get_or_create_session`` returns ``sess-OLD``;
     ``run_turn`` must be awaited with that id; the AgentTurn surfaces the
     same id (Claude Code echoes resumed ids back); ``save_session`` is
@@ -718,14 +718,14 @@ def test_voice_handler_resumes_existing_session_and_saves_new_id(
     mocks = _setup_voice_mocks(monkeypatch)
 
     monkeypatch.setattr(
-        "tempo.bot.handlers.get_or_create_session", MagicMock(return_value="sess-OLD")
+        "runos.bot.handlers.get_or_create_session", MagicMock(return_value="sess-OLD")
     )
     fake_run_turn = AsyncMock(
         return_value=_make_agent_turn(text="resumed reply", session_id="sess-OLD")
     )
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", fake_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.run_turn", fake_run_turn)
     fake_save = MagicMock()
-    monkeypatch.setattr("tempo.bot.handlers.save_session", fake_save)
+    monkeypatch.setattr("runos.bot.handlers.save_session", fake_save)
 
     settings = Settings(_env_file=None)
     update = _make_voice_update(chat_id=987654321, file_size=2048, with_bot=False)
@@ -748,19 +748,19 @@ def test_voice_handler_resumes_existing_session_and_saves_new_id(
 
 
 def test_voice_handler_starts_fresh_session_when_window_expired(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`get_or_create_session` returns None -> run_turn called with None."""
     _clear_env(monkeypatch)
     _setup_voice_mocks(monkeypatch)
 
-    monkeypatch.setattr("tempo.bot.handlers.get_or_create_session", MagicMock(return_value=None))
+    monkeypatch.setattr("runos.bot.handlers.get_or_create_session", MagicMock(return_value=None))
     fake_run_turn = AsyncMock(
         return_value=_make_agent_turn(text="fresh reply", session_id="sess-FRESH")
     )
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", fake_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.run_turn", fake_run_turn)
     fake_save = MagicMock()
-    monkeypatch.setattr("tempo.bot.handlers.save_session", fake_save)
+    monkeypatch.setattr("runos.bot.handlers.save_session", fake_save)
 
     settings = Settings(_env_file=None)
     update = _make_voice_update(chat_id=987654321, file_size=2048, with_bot=False)
@@ -779,7 +779,7 @@ def test_voice_handler_starts_fresh_session_when_window_expired(
 
 
 def test_voice_handler_long_reply_is_split_into_chunks_with_prefix(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Agent text > 4096 chars -> multiple reply_text calls, each prefixed [k/N]."""
     _clear_env(monkeypatch)
@@ -792,12 +792,12 @@ def test_voice_handler_long_reply_is_split_into_chunks_with_prefix(
     long_text = "\n\n".join([paragraph] * 4)  # ~6000 chars
     assert len(long_text) > 4096
 
-    monkeypatch.setattr("tempo.bot.handlers.get_or_create_session", MagicMock(return_value=None))
+    monkeypatch.setattr("runos.bot.handlers.get_or_create_session", MagicMock(return_value=None))
     monkeypatch.setattr(
-        "tempo.bot.handlers.run_turn",
+        "runos.bot.handlers.run_turn",
         AsyncMock(return_value=_make_agent_turn(text=long_text, session_id="sess-L")),
     )
-    monkeypatch.setattr("tempo.bot.handlers.save_session", MagicMock())
+    monkeypatch.setattr("runos.bot.handlers.save_session", MagicMock())
 
     settings = Settings(_env_file=None)
     update = _make_voice_update(chat_id=987654321, file_size=2048, with_bot=False)
@@ -828,19 +828,19 @@ def test_voice_handler_long_reply_is_split_into_chunks_with_prefix(
 
 
 def test_voice_handler_missing_cli_replies_with_clear_message(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`AgentInvocationError` -> single MISSING_CLI_REPLY; no exception escapes."""
     _clear_env(monkeypatch)
     mocks = _setup_voice_mocks(monkeypatch)
 
-    monkeypatch.setattr("tempo.bot.handlers.get_or_create_session", MagicMock(return_value=None))
+    monkeypatch.setattr("runos.bot.handlers.get_or_create_session", MagicMock(return_value=None))
     monkeypatch.setattr(
-        "tempo.bot.handlers.run_turn",
+        "runos.bot.handlers.run_turn",
         AsyncMock(side_effect=AgentInvocationError("claude CLI not found")),
     )
     save_mock = MagicMock()
-    monkeypatch.setattr("tempo.bot.handlers.save_session", save_mock)
+    monkeypatch.setattr("runos.bot.handlers.save_session", save_mock)
 
     settings = Settings(_env_file=None)
     update = _make_voice_update(chat_id=987654321, file_size=2048, with_bot=False)
@@ -866,7 +866,7 @@ def test_voice_handler_missing_cli_replies_with_clear_message(
 
 
 def test_voice_handler_echoes_transcript_before_agent_reply(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The transcript is echoed back FIRST so the user can confirm what Whisper heard.
 
@@ -879,12 +879,12 @@ def test_voice_handler_echoes_transcript_before_agent_reply(
     _clear_env(monkeypatch)
     mocks = _setup_voice_mocks(monkeypatch, transcript="hello world this is a test")
 
-    monkeypatch.setattr("tempo.bot.handlers.get_or_create_session", MagicMock(return_value=None))
+    monkeypatch.setattr("runos.bot.handlers.get_or_create_session", MagicMock(return_value=None))
     monkeypatch.setattr(
-        "tempo.bot.handlers.run_turn",
+        "runos.bot.handlers.run_turn",
         AsyncMock(return_value=_make_agent_turn(text="agent reply", session_id="sess-X")),
     )
-    monkeypatch.setattr("tempo.bot.handlers.save_session", MagicMock())
+    monkeypatch.setattr("runos.bot.handlers.save_session", MagicMock())
 
     settings = Settings(_env_file=None)
     update = _make_voice_update(chat_id=987654321, file_size=2048, with_bot=False)
@@ -905,7 +905,7 @@ def test_voice_handler_echoes_transcript_before_agent_reply(
 
 
 def test_voice_handler_empty_transcript_skips_agent(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Empty transcript (no speech) -> (no speech detected) reply, no run_turn."""
     _clear_env(monkeypatch)
@@ -914,7 +914,7 @@ def test_voice_handler_empty_transcript_skips_agent(
     no_run_turn = AsyncMock(
         side_effect=AssertionError("run_turn must not be called for empty transcripts")
     )
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", no_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.run_turn", no_run_turn)
 
     settings = Settings(_env_file=None)
     update = _make_voice_update(chat_id=987654321, file_size=2048, with_bot=False)
@@ -933,7 +933,7 @@ def test_voice_handler_empty_transcript_skips_agent(
 
 
 def test_voice_handler_logs_token_usage_at_info(
-    tempo_data_dir: Path,
+    runos_data_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -942,9 +942,9 @@ def test_voice_handler_logs_token_usage_at_info(
     _clear_env(monkeypatch)
     _setup_voice_mocks(monkeypatch)
 
-    monkeypatch.setattr("tempo.bot.handlers.get_or_create_session", MagicMock(return_value=None))
+    monkeypatch.setattr("runos.bot.handlers.get_or_create_session", MagicMock(return_value=None))
     monkeypatch.setattr(
-        "tempo.bot.handlers.run_turn",
+        "runos.bot.handlers.run_turn",
         AsyncMock(
             return_value=_make_agent_turn(
                 text="agent reply",
@@ -956,7 +956,7 @@ def test_voice_handler_logs_token_usage_at_info(
             )
         ),
     )
-    monkeypatch.setattr("tempo.bot.handlers.save_session", MagicMock())
+    monkeypatch.setattr("runos.bot.handlers.save_session", MagicMock())
 
     settings = Settings(_env_file=None)
     update = _make_voice_update(chat_id=987654321, file_size=2048, with_bot=False)
@@ -966,7 +966,7 @@ def test_voice_handler_logs_token_usage_at_info(
         ),
     )
 
-    with caplog.at_level(logging.INFO, logger="tempo.bot.handlers"):
+    with caplog.at_level(logging.INFO, logger="runos.bot.handlers"):
         asyncio.run(voice_handler(update, context))  # type: ignore[arg-type]
 
     matching = [rec for rec in caplog.records if "agent turn" in rec.getMessage()]
@@ -981,7 +981,7 @@ def test_voice_handler_logs_token_usage_at_info(
 
 
 def test_voice_handler_logs_subscription_when_cost_is_none(
-    tempo_data_dir: Path,
+    runos_data_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -990,12 +990,12 @@ def test_voice_handler_logs_subscription_when_cost_is_none(
     _clear_env(monkeypatch)
     _setup_voice_mocks(monkeypatch)
 
-    monkeypatch.setattr("tempo.bot.handlers.get_or_create_session", MagicMock(return_value=None))
+    monkeypatch.setattr("runos.bot.handlers.get_or_create_session", MagicMock(return_value=None))
     monkeypatch.setattr(
-        "tempo.bot.handlers.run_turn",
+        "runos.bot.handlers.run_turn",
         AsyncMock(return_value=_make_agent_turn(text="reply", session_id="s1", cost_usd=None)),
     )
-    monkeypatch.setattr("tempo.bot.handlers.save_session", MagicMock())
+    monkeypatch.setattr("runos.bot.handlers.save_session", MagicMock())
 
     settings = Settings(_env_file=None)
     update = _make_voice_update(chat_id=987654321, file_size=2048, with_bot=False)
@@ -1005,7 +1005,7 @@ def test_voice_handler_logs_subscription_when_cost_is_none(
         ),
     )
 
-    with caplog.at_level(logging.INFO, logger="tempo.bot.handlers"):
+    with caplog.at_level(logging.INFO, logger="runos.bot.handlers"):
         asyncio.run(voice_handler(update, context))  # type: ignore[arg-type]
 
     matches = [r for r in caplog.records if "agent turn" in r.getMessage()]
@@ -1019,7 +1019,7 @@ def test_voice_handler_logs_subscription_when_cost_is_none(
 
 
 def test_text_handler_runs_agent_with_message_text_as_prompt(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Non-command text -> run_turn called with the message text as the prompt."""
     _clear_env(monkeypatch)
@@ -1028,15 +1028,15 @@ def test_text_handler_runs_agent_with_message_text_as_prompt(
     _stub_typing(monkeypatch)
 
     monkeypatch.setattr(
-        "tempo.bot.handlers.get_or_create_session", MagicMock(return_value="sess-T")
+        "runos.bot.handlers.get_or_create_session", MagicMock(return_value="sess-T")
     )
     fake_run_turn = AsyncMock(return_value=_make_agent_turn(text="text reply", session_id="sess-T"))
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", fake_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.run_turn", fake_run_turn)
     fake_save = MagicMock()
-    monkeypatch.setattr("tempo.bot.handlers.save_session", fake_save)
+    monkeypatch.setattr("runos.bot.handlers.save_session", fake_save)
     # transcribe_file must NEVER be touched on the text path.
     monkeypatch.setattr(
-        "tempo.bot.handlers.transcribe_file",
+        "runos.bot.handlers.transcribe_file",
         MagicMock(side_effect=AssertionError("transcribe must not be called for text")),
     )
 
@@ -1065,7 +1065,7 @@ def test_text_handler_runs_agent_with_message_text_as_prompt(
 
 
 def test_text_handler_empty_text_is_dropped_silently(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Whitespace-only text -> no run_turn, no reply."""
     _clear_env(monkeypatch)
@@ -1074,7 +1074,7 @@ def test_text_handler_empty_text_is_dropped_silently(
     _stub_typing(monkeypatch)
 
     no_run_turn = AsyncMock(side_effect=AssertionError("run_turn must not be called"))
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", no_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.run_turn", no_run_turn)
 
     settings = Settings(_env_file=None)
     update = _make_text_update(chat_id=987654321, text="   \n\t  ")
@@ -1091,7 +1091,7 @@ def test_text_handler_empty_text_is_dropped_silently(
 
 
 def test_text_handler_defensive_check_rejects_mismatched_chat(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """In-handler chat-id mismatch -> silent drop, no agent call."""
     _clear_env(monkeypatch)
@@ -1099,7 +1099,7 @@ def test_text_handler_defensive_check_rejects_mismatched_chat(
     monkeypatch.setattr(Message, "reply_text", mock_reply)
 
     no_run_turn = AsyncMock(side_effect=AssertionError("run_turn must not be called"))
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", no_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.run_turn", no_run_turn)
 
     settings = Settings(_env_file=None)
     update = _make_text_update(chat_id=111, text="hi")  # not owner
@@ -1121,7 +1121,7 @@ def test_text_handler_defensive_check_rejects_mismatched_chat(
 
 
 def test_clear_command_handler_resets_session_and_replies(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`/new` -> reset_session called with the owner chat id; fixed reply sent."""
     _clear_env(monkeypatch)
@@ -1129,7 +1129,7 @@ def test_clear_command_handler_resets_session_and_replies(
     monkeypatch.setattr(Message, "reply_text", mock_reply)
 
     fake_reset = MagicMock()
-    monkeypatch.setattr("tempo.bot.handlers.reset_session", fake_reset)
+    monkeypatch.setattr("runos.bot.handlers.reset_session", fake_reset)
 
     settings = Settings(_env_file=None)
     update = _make_new_command_update(chat_id=987654321)
@@ -1151,7 +1151,7 @@ def test_clear_command_handler_resets_session_and_replies(
 
 
 def test_clear_command_handler_defensive_check_rejects_mismatched_chat(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """In-handler chat-id mismatch -> silent drop, no reset_session call."""
     _clear_env(monkeypatch)
@@ -1159,7 +1159,7 @@ def test_clear_command_handler_defensive_check_rejects_mismatched_chat(
     monkeypatch.setattr(Message, "reply_text", mock_reply)
 
     no_reset = MagicMock(side_effect=AssertionError("reset_session must not be called"))
-    monkeypatch.setattr("tempo.bot.handlers.reset_session", no_reset)
+    monkeypatch.setattr("runos.bot.handlers.reset_session", no_reset)
 
     settings = Settings(_env_file=None)
     update = _make_new_command_update(chat_id=111)  # not owner
@@ -1181,7 +1181,7 @@ def test_clear_command_handler_defensive_check_rejects_mismatched_chat(
 
 def test_cleanup_voice_file_deletes_when_retention_zero(tmp_path: Path) -> None:
     """retention=0 -> the file is unlinked. Privacy-safe default."""
-    from tempo.bot.handlers import _cleanup_voice_file
+    from runos.bot.handlers import _cleanup_voice_file
 
     f = tmp_path / "msg.ogg"
     f.write_bytes(b"\x00\x01")
@@ -1191,7 +1191,7 @@ def test_cleanup_voice_file_deletes_when_retention_zero(tmp_path: Path) -> None:
 
 def test_cleanup_voice_file_keeps_when_retention_nonzero(tmp_path: Path) -> None:
     """retention>0 -> file untouched; startup sweep is responsible later."""
-    from tempo.bot.handlers import _cleanup_voice_file
+    from runos.bot.handlers import _cleanup_voice_file
 
     f = tmp_path / "msg.ogg"
     f.write_bytes(b"\x00\x01")
@@ -1201,24 +1201,24 @@ def test_cleanup_voice_file_keeps_when_retention_nonzero(tmp_path: Path) -> None
 
 def test_cleanup_voice_file_idempotent_on_missing(tmp_path: Path) -> None:
     """retention=0 on a missing file is a no-op (no FileNotFoundError)."""
-    from tempo.bot.handlers import _cleanup_voice_file
+    from runos.bot.handlers import _cleanup_voice_file
 
     # Should not raise.
     _cleanup_voice_file(tmp_path / "does-not-exist.ogg", retention_days=0)
 
 
 def test_voice_handler_keeps_file_when_retention_is_positive(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """With VOICE_RETENTION_DAYS=7 the handler leaves the .ogg on disk."""
     _clear_env(monkeypatch)
     monkeypatch.setenv("VOICE_RETENTION_DAYS", "7")
 
     _setup_voice_mocks(monkeypatch)
-    monkeypatch.setattr("tempo.bot.handlers.get_or_create_session", MagicMock(return_value=None))
+    monkeypatch.setattr("runos.bot.handlers.get_or_create_session", MagicMock(return_value=None))
     fake_run_turn = AsyncMock(return_value=_make_agent_turn(text="ok", session_id="sess-KEEP"))
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", fake_run_turn)
-    monkeypatch.setattr("tempo.bot.handlers.save_session", MagicMock())
+    monkeypatch.setattr("runos.bot.handlers.run_turn", fake_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.save_session", MagicMock())
 
     settings = Settings(_env_file=None)
     assert settings.voice_retention_days == 7
@@ -1244,7 +1244,7 @@ def test_voice_handler_keeps_file_when_retention_is_positive(
 
 
 def test_voice_handler_cleanup_runs_even_when_agent_raises(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """retention=0 + run_turn raising != AgentInvocationError -> file still deleted.
 
@@ -1253,11 +1253,11 @@ def test_voice_handler_cleanup_runs_even_when_agent_raises(
     """
     _clear_env(monkeypatch)
     _setup_voice_mocks(monkeypatch)
-    monkeypatch.setattr("tempo.bot.handlers.get_or_create_session", MagicMock(return_value=None))
+    monkeypatch.setattr("runos.bot.handlers.get_or_create_session", MagicMock(return_value=None))
 
     fake_run_turn = AsyncMock(side_effect=RuntimeError("boom"))
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", fake_run_turn)
-    monkeypatch.setattr("tempo.bot.handlers.save_session", MagicMock())
+    monkeypatch.setattr("runos.bot.handlers.run_turn", fake_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.save_session", MagicMock())
 
     settings = Settings(_env_file=None)
     update = _make_voice_update(
@@ -1282,14 +1282,14 @@ def test_voice_handler_cleanup_runs_even_when_agent_raises(
 
 
 def test_voice_handler_cleans_up_empty_transcript_path(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Empty transcript short-circuits the agent but still honours retention=0."""
     _clear_env(monkeypatch)
 
     mock_reply = AsyncMock()
     monkeypatch.setattr(Message, "reply_text", mock_reply)
-    monkeypatch.setattr("tempo.bot.handlers.transcribe_file", MagicMock(return_value=""))
+    monkeypatch.setattr("runos.bot.handlers.transcribe_file", MagicMock(return_value=""))
 
     async def fake_download(custom_path: object) -> None:
         Path(str(custom_path)).write_bytes(b"\x00")
@@ -1302,7 +1302,7 @@ def test_voice_handler_cleans_up_empty_transcript_path(
     monkeypatch.setattr(Voice, "get_file", fake_get_file)
 
     no_run_turn = AsyncMock(side_effect=AssertionError("run_turn must not be called"))
-    monkeypatch.setattr("tempo.bot.handlers.run_turn", no_run_turn)
+    monkeypatch.setattr("runos.bot.handlers.run_turn", no_run_turn)
 
     settings = Settings(_env_file=None)
     update = _make_voice_update(

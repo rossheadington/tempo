@@ -11,9 +11,9 @@
 | Criterion | Status |
 |-----------|--------|
 | New `preferences.md` tracker file (in user content_dir, lives via `Settings.preferences_path`) | ✅ `Settings.preferences_path` derived property added next to `food_path`. Live file written in the orchestrator's migration step. |
-| `tempo/analysis/preferences.py` with `Physiology` / `Units` / `Nutrition` / `PreferencesContext` frozen+slots dataclasses + lenient `parse_preferences` | ✅ 451-line module, all four dataclasses, parser never raises. |
+| `runos/analysis/preferences.py` with `Physiology` / `Units` / `Nutrition` / `PreferencesContext` frozen+slots dataclasses + lenient `parse_preferences` | ✅ 451-line module, all four dataclasses, parser never raises. |
 | `tempo/units.py` formatter — `format_distance`, `format_pace`, helpers, `KM_PER_MILE` constant | ✅ 99-line module, NIST-exact conversion constant. |
-| Five `.env` knobs migrated OUT of Settings, INTO `preferences.md`: `TEMPO_THRESHOLD_PACE_S_PER_KM`, `TEMPO_MAX_HR`, `TEMPO_RESTING_HR`, `TEMPO_THRESHOLD_HR`, `TEMPO_TARGET_KCAL` | ✅ All five `Field` declarations gone from `Settings`. Correctness grep returns empty. |
+| Five `.env` knobs migrated OUT of Settings, INTO `preferences.md`: `RUNOS_THRESHOLD_PACE_S_PER_KM`, `RUNOS_MAX_HR`, `RUNOS_RESTING_HR`, `RUNOS_THRESHOLD_HR`, `RUNOS_TARGET_KCAL` | ✅ All five `Field` declarations gone from `Settings`. Correctness grep returns empty. |
 | `Settings.preferences_path` derived property | ✅ Added. New test pins it. |
 | Plumbing: `runner.py` reads prefs once, threads `Physiology` / `Nutrition` into analysis modules | ✅ Via the `_load_config_from_prefs` helper in `runner.py` + `sync/daily.py`. Existing `LoadConfig` seam preserved (smaller diff than alternative). |
 | `cli.py` at every `analyze` entry point: `settings.target_kcal_default` → `prefs.nutrition.target_kcal` | ✅ All three call sites updated; `_analyze_setup` now returns prefs. |
@@ -36,7 +36,7 @@
 | Gate | Result |
 |------|--------|
 | Full test suite (`uv run pytest tests/ -x --deselect tests/test_bot_transcribe.py::test_transcribe_file_real_fixture_returns_nonempty`) | 716 passed, 1 deselected ✅ |
-| Ruff lint (`uv run ruff check tempo/ tests/`) | All checks passed ✅ |
+| Ruff lint (`uv run ruff check runos/ tests/`) | All checks passed ✅ |
 | Correctness grep (`settings.<deleted-field>` must be gone) | Empty ✅ |
 | No-network invariant intact (analysis layer doesn't reach the network) | Untouched — only consumers of pure parsers added ✅ |
 | Schema version unchanged | No migration added; `SCHEMA_VERSION = 5` still ✅ |
@@ -46,13 +46,13 @@
 | Check | Result |
 |-------|--------|
 | `preferences.md.example` uses placeholder values, not the owner's actual numbers | ✅ All textbook generic (`190` max HR, `50` resting, `4:00/km` threshold, `2200` kcal) |
-| Live `preferences.md` lives in `TEMPO_CONTENT_DIR` (gitignored) | ✅ Resolves via the same `content_root` as `food.md`, `weight.md`, etc. |
+| Live `preferences.md` lives in `RUNOS_CONTENT_DIR` (gitignored) | ✅ Resolves via the same `content_root` as `food.md`, `weight.md`, etc. |
 | Parser doesn't log parsed values on malformed-line warnings (line numbers only) | ✅ Confirmed in `preferences.py` |
 
 ## Net behaviour change
 
 For Ross:
-- Five `TEMPO_*` knobs no longer accepted from `.env`. If he had them set, they're now ignored.
+- Five `RUNOS_*` knobs no longer accepted from `.env`. If he had them set, they're now ignored.
 - New file `<content_dir>/preferences.md` is where those values live.
 - New optional features: Units section (`distance: miles`, `pace: min_per_mile`) → load-trend report shows miles. Prose sections (Training week, Goals) → coach reads them but parser ignores.
 - All five values default to `None` if `preferences.md` is missing → identical to having the old env vars unset.

@@ -2,7 +2,7 @@
 
 ## Who you're working with
 
-**Ross Headington.** Runner, training-data nerd, professional consultant (Verso Wealth Management engagement). Owns this project — Tempo — which is the local-first training system that pulls his running + wellness data from Strava and Garmin, captures his own subjective reflection, and lets him talk to a coach (you) about all of it through Telegram.
+**Ross Headington.** Runner, training-data nerd, professional consultant (Verso Wealth Management engagement). Owns this project — RunOS — which is the local-first training system that pulls his running + wellness data from Strava and Garmin, captures his own subjective reflection, and lets him talk to a coach (you) about all of it through Telegram.
 
 He's not a product user. He's the owner. The project exists to serve his training.
 
@@ -22,16 +22,16 @@ Eight kinds of data, in two places:
 
 | Data | Where |
 |---|---|
-| All Strava activities (runs, bikes, swims, cross-trainer, anything) | SQLite at `~/.tempo/tempo.db` (auto via hourly sync) |
-| Garmin wellness (HRV, sleep, resting HR, body battery, stress) | SQLite at `~/.tempo/tempo.db` (auto via hourly sync) |
-| Subjective journal entries (RPE, feel, notes per session) | `journal` table in SQLite (write via `tempo journal add`) |
+| All Strava activities (runs, bikes, swims, cross-trainer, anything) | SQLite at `~/.runos/runos.db` (auto via hourly sync) |
+| Garmin wellness (HRV, sleep, resting HR, body battery, stress) | SQLite at `~/.runos/runos.db` (auto via hourly sync) |
+| Subjective journal entries (RPE, feel, notes per session) | `journal` table in SQLite (write via `runos journal add`) |
 | Heat sessions (sauna, hot tub) | `training/heat.md` |
 | Strength sessions | `training/strength.md` |
 | Weight readings | `training/weight.md` |
 | Food / macros | `training/food.md` |
 | Races (planned + completed) | `training/races.md` |
 
-The `training/` markdown files live at `~/Projects/tempo/training/` (resolved via `TEMPO_CONTENT_DIR`). They're append-only by convention — corrections happen by appending a fresh entry. Never destructively rewrite them.
+The `training/` markdown files live at `~/Projects/RunOS/training/` (resolved via `RUNOS_CONTENT_DIR`). They're append-only by convention — corrections happen by appending a fresh entry. Never destructively rewrite them.
 
 ### Available skills
 
@@ -79,7 +79,7 @@ When a skill is the right fit, **invoke it via the Skill tool rather than improv
 Sometimes Ross will ask you to fix a bug, add a feature, change behaviour, run tests, debug a parse failure, restructure code, or write a commit. **Those are engineering tasks, not coaching conversations.** Examples that mean engineering:
 
 - "The strength parser is dropping sessions"
-- "Add a `--format=json` flag to `tempo analyze recovery`"
+- "Add a `--format=json` flag to `runos analyze recovery`"
 - "Run the tests"
 - "Commit this"
 - "Why is the recovery report showing X?"

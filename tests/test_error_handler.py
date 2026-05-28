@@ -30,7 +30,7 @@ import pytest
 from telegram import Chat, Message, Update, User
 from telegram.ext import Application
 
-from tempo.bot.error_handler import (
+from runos.bot.error_handler import (
     ERROR_REPLY,
     telegram_error_handler,
 )
@@ -91,7 +91,7 @@ def test_error_handler_logs_exception_and_sends_canonical_reply(
     context = _make_context_with_error(RuntimeError("boom"), send_message=send_message)
     update = _make_update(chat_id=987654321)
 
-    with caplog.at_level(logging.ERROR, logger="tempo.bot.error_handler"):
+    with caplog.at_level(logging.ERROR, logger="runos.bot.error_handler"):
 
         async def _run() -> None:
             await telegram_error_handler(update, context)
@@ -132,7 +132,7 @@ def test_error_handler_swallows_reply_failure(caplog: pytest.LogCaptureFixture) 
     context = _make_context_with_error(ValueError("orig"), send_message=send_message)
     update = _make_update(chat_id=987654321)
 
-    with caplog.at_level(logging.ERROR, logger="tempo.bot.error_handler"):
+    with caplog.at_level(logging.ERROR, logger="runos.bot.error_handler"):
 
         async def _run() -> None:
             # No pytest.raises -- handler must NOT propagate.
@@ -169,7 +169,7 @@ def test_error_handler_handles_non_update_object(caplog: pytest.LogCaptureFixtur
     # Pass a plain object (could be None, a dict, a JobQueue job, etc.)
     not_an_update: object = "not-an-update-object"
 
-    with caplog.at_level(logging.ERROR, logger="tempo.bot.error_handler"):
+    with caplog.at_level(logging.ERROR, logger="runos.bot.error_handler"):
 
         async def _run() -> None:
             await telegram_error_handler(not_an_update, context)
@@ -198,7 +198,7 @@ def test_error_handler_handles_update_without_effective_chat(
     # Construct an Update with no message/chat fields populated.
     update = Update(update_id=42)
 
-    with caplog.at_level(logging.ERROR, logger="tempo.bot.error_handler"):
+    with caplog.at_level(logging.ERROR, logger="runos.bot.error_handler"):
 
         async def _run() -> None:
             await telegram_error_handler(update, context)
@@ -218,7 +218,7 @@ def test_error_handler_handles_update_without_effective_chat(
 
 
 def test_build_application_registers_error_handler(
-    tempo_data_dir, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`build_application` must call ``app.add_error_handler(telegram_error_handler)``
     so PTB routes uncaught handler exceptions through our boundary.
@@ -227,8 +227,8 @@ def test_build_application_registers_error_handler(
     (a dict keyed by the callback). The check is therefore: our callback
     appears as a key.
     """
-    from tempo.bot.app import build_application
-    from tempo.config import Settings
+    from runos.bot.app import build_application
+    from runos.config import Settings
 
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_OWNER_CHAT_ID", raising=False)

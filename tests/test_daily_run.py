@@ -16,12 +16,12 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, timedelta
 
-from tempo.config import Settings
-from tempo.connectors.base import RawWriter
-from tempo.connectors.garmin import SOURCE as GARMIN
-from tempo.connectors.garmin import GarminConnector
-from tempo.connectors.strava import SOURCE as STRAVA
-from tempo.sync import daily, pipeline, state
+from runos.config import Settings
+from runos.connectors.base import RawWriter
+from runos.connectors.garmin import SOURCE as GARMIN
+from runos.connectors.garmin import GarminConnector
+from runos.connectors.strava import SOURCE as STRAVA
+from runos.sync import daily, pipeline, state
 from tests.garmin_fakes import FakeGarminClient, make_day
 from tests.strava_fakes import make_run
 
@@ -279,7 +279,7 @@ def test_no_marker_when_not_noteworthy(conn: sqlite3.Connection, tmp_path, monke
 
     # Patch source_freshness so the run sees the sources as fresh as-of gen_on
     # (mark_synced stamps wall-clock now, which would otherwise read as stale).
-    from tempo.analysis.data import SourceFreshness
+    from runos.analysis.data import SourceFreshness
 
     def _fresh(c, *, as_of=None):  # type: ignore[no-untyped-def]
         return [

@@ -11,8 +11,8 @@ import sqlite3
 
 import pytest
 
-from tempo.connectors.base import RawWriter
-from tempo.journal import (
+from runos.connectors.base import RawWriter
+from runos.journal import (
     JournalError,
     MultipleActivitiesError,
     add_entry,
@@ -20,8 +20,8 @@ from tempo.journal import (
     list_entries,
     resolve_activity,
 )
-from tempo.journal.service import _validate_rpe
-from tempo.transforms.runner import run_rederive
+from runos.journal.service import _validate_rpe
+from runos.transforms.runner import run_rederive
 from tests.strava_fakes import make_run
 
 

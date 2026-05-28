@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from tempo.connectors import tokens as tokens_mod
-from tempo.connectors.tokens import TokenSet, TokenStore
+from runos.connectors import tokens as tokens_mod
+from runos.connectors.tokens import TokenSet, TokenStore
 
 
 def _store(tmp_path: Path) -> TokenStore:

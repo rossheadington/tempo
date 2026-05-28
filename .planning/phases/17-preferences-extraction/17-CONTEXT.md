@@ -10,29 +10,29 @@
 **What this phase delivers (Layer 1):**
 
 - A new `preferences.md` tracker file in the user's content dir (`<content_root>/preferences.md`). UNLIKE other trackers (food.md, weight.md, races.md, etc.) which are append-only logs, this is an **edit-in-place profile**. The coach reads it as prose; the analysis layer reads typed sections as structured config.
-- A new module `tempo/analysis/preferences.py` defining frozen+slots `Physiology` / `Units` / `Nutrition` / `PreferencesContext` dataclasses plus a lenient `parse_preferences(path)` function. Mirrors `tempo/analysis/races.py` / `weight.py` in shape (lenient, never raises, `present=False` on missing file).
+- A new module `runos/analysis/preferences.py` defining frozen+slots `Physiology` / `Units` / `Nutrition` / `PreferencesContext` dataclasses plus a lenient `parse_preferences(path)` function. Mirrors `runos/analysis/races.py` / `weight.py` in shape (lenient, never raises, `present=False` on missing file).
 - A new module `tempo/units.py` providing `format_distance(metres, units)` / `format_pace(s_per_km, units)` — the single source of truth for unit conversion at the display boundary. Storage stays SI everywhere; conversion happens only when rendering.
 - Migration of four currently-in-`.env` knobs OUT of `Settings` and INTO `preferences.md`:
-  - `TEMPO_THRESHOLD_PACE_S_PER_KM` → `Physiology.threshold_pace_s_per_km`
-  - `TEMPO_MAX_HR` → `Physiology.max_hr`
-  - `TEMPO_RESTING_HR` → `Physiology.resting_hr`
-  - `TEMPO_THRESHOLD_HR` → `Physiology.threshold_hr`
-  - `TEMPO_TARGET_KCAL` → `Nutrition.target_kcal`
+  - `RUNOS_THRESHOLD_PACE_S_PER_KM` → `Physiology.threshold_pace_s_per_km`
+  - `RUNOS_MAX_HR` → `Physiology.max_hr`
+  - `RUNOS_RESTING_HR` → `Physiology.resting_hr`
+  - `RUNOS_THRESHOLD_HR` → `Physiology.threshold_hr`
+  - `RUNOS_TARGET_KCAL` → `Nutrition.target_kcal`
 - A new `Settings.preferences_path` derived property (mirrors `food_path` / `weight_path`).
-- Plumbing: `tempo/analysis/runner.py` reads `parse_preferences(settings.preferences_path)` ONCE per CLI invocation, then threads `Physiology` / `Nutrition` into the existing analysis modules (`load.py` already takes a `LoadConfig` — feed it from `Physiology`; `recovery.py` and `runner.py::generate_*nutrition*` take a `target_kcal: int | None` — feed it from `Nutrition.target_kcal`).
-- `tempo/cli.py` updated at every `analyze` entry point so `settings.target_kcal_default` reads become `prefs.nutrition.target_kcal`. Same for the four physiology knobs.
-- `tempo/sync/daily.py` updated identically.
-- Report renderers updated to use the Units formatter for the user-facing distance column (`tempo/analysis/report.py::render_load_trend` and the noteworthy / race-readiness / recovery renderers wherever km appears). DB columns + math stay in SI (metres, m/s, s/km).
+- Plumbing: `runos/analysis/runner.py` reads `parse_preferences(settings.preferences_path)` ONCE per CLI invocation, then threads `Physiology` / `Nutrition` into the existing analysis modules (`load.py` already takes a `LoadConfig` — feed it from `Physiology`; `recovery.py` and `runner.py::generate_*nutrition*` take a `target_kcal: int | None` — feed it from `Nutrition.target_kcal`).
+- `runos/cli.py` updated at every `analyze` entry point so `settings.target_kcal_default` reads become `prefs.nutrition.target_kcal`. Same for the four physiology knobs.
+- `runos/sync/daily.py` updated identically.
+- Report renderers updated to use the Units formatter for the user-facing distance column (`runos/analysis/report.py::render_load_trend` and the noteworthy / race-readiness / recovery renderers wherever km appears). DB columns + math stay in SI (metres, m/s, s/km).
 - `.env.example` updated — the four migrated knobs deleted, replaced by a short comment pointing to `preferences.md.example`.
 - `docs/PREFERENCES.md` documenting the file format end-to-end (typed sections grammar, lenient-parsing contract, prose section conventions, agent-edit-in-place guidance).
 - `preferences.md.example` committed at repo root (mirrors `weight.md.example` / `food.md.example`).
-- Tests: `tests/test_preferences.py` (parser happy/malformed/missing-file paths, threshold-pace format variants, units enum parsing), `tests/test_units.py` (formatter conversion correctness, edge cases), plus targeted edits to `tests/test_load.py` / `tests/test_recovery.py` / `tests/test_nutrition.py` / `tests/test_cli.py` / `tests/test_runner.py` (any test that currently sets `TEMPO_THRESHOLD_PACE_S_PER_KM` etc. now builds a `Physiology` directly).
+- Tests: `tests/test_preferences.py` (parser happy/malformed/missing-file paths, threshold-pace format variants, units enum parsing), `tests/test_units.py` (formatter conversion correctness, edge cases), plus targeted edits to `tests/test_load.py` / `tests/test_recovery.py` / `tests/test_nutrition.py` / `tests/test_cli.py` / `tests/test_runner.py` (any test that currently sets `RUNOS_THRESHOLD_PACE_S_PER_KM` etc. now builds a `Physiology` directly).
 
 **What this phase does NOT deliver (explicitly out of scope, deferred):**
 
 - **Auto-loading `preferences.md` into the bot's session bootstrap** so the coach always has it in context without an explicit Read. Considered for inclusion but defer: the coach can `Read training/preferences.md` reactively when planning conversations come up; auto-injection is a Phase 18 polish.
-- **A `tempo preferences edit` CLI** (mirror of `tempo journal add`). The file is meant to be hand-edited; no CLI surface for now.
-- **Backward-compat fallback** that reads the old `TEMPO_THRESHOLD_PACE_S_PER_KM` etc. from `.env` if `preferences.md` is missing the section. Solo-user project, single cut-over. The old env vars are GONE from `Settings` after this phase. `.env.example` documents the move with a comment.
+- **A `tempo preferences edit` CLI** (mirror of `runos journal add`). The file is meant to be hand-edited; no CLI surface for now.
+- **Backward-compat fallback** that reads the old `RUNOS_THRESHOLD_PACE_S_PER_KM` etc. from `.env` if `preferences.md` is missing the section. Solo-user project, single cut-over. The old env vars are GONE from `Settings` after this phase. `.env.example` documents the move with a comment.
 - **Units beyond miles/km and min/km / min/mile.** No support for nautical miles, no metric/imperial weight mixing (weight tracker already supports kg/lb normalisation at parse time — orthogonal). Pace formatter handles only the two main options.
 - **Restructuring weight tracker's kg/lb handling** to also flow through `Units`. Weight is normalised at the parser boundary, not at display. Leave it alone.
 - **A structured DB table** for `preferences`. The markdown is the source of truth; rederivable means the file is the artifact.
@@ -45,9 +45,9 @@
 
 ### File layout & locations
 
-- `preferences.md` lives in `config.content_root` (so the user's `~/Projects/tempo/training/preferences.md` resolves naturally via `TEMPO_CONTENT_DIR`).
+- `preferences.md` lives in `config.content_root` (so the user's `~/Projects/RunOS/training/preferences.md` resolves naturally via `RUNOS_CONTENT_DIR`).
 - `preferences.md.example` committed at repo root (sibling of `food.md.example` / `weight.md.example`).
-- New module file: `tempo/analysis/preferences.py`.
+- New module file: `runos/analysis/preferences.py`.
 - New module file: `tempo/units.py` (top-level, NOT under `analysis/` — it's a presentation-layer helper, not an analysis).
 
 ### `preferences.md` format (LOCKED)
@@ -110,7 +110,7 @@ Accept these forms, normalise to `int` seconds-per-km internally:
 | `4 min/mi`    | malformed     | malformed; needs colon for seconds component |
 | `garbage`     | malformed     | caught, field stays None |
 
-Single helper function `_parse_threshold_pace(value: str) -> int | None` lives in `tempo/analysis/preferences.py`. Returns `None` for unparseable input; the caller records the malformed line.
+Single helper function `_parse_threshold_pace(value: str) -> int | None` lives in `runos/analysis/preferences.py`. Returns `None` for unparseable input; the caller records the malformed line.
 
 ### Units parsing (LOCKED)
 
@@ -121,7 +121,7 @@ Defaults when section missing or fields absent: `distance="km"`, `pace="min_per_
 
 ### Dataclasses (LOCKED)
 
-All `@dataclass(frozen=True, slots=True)`, in `tempo/analysis/preferences.py`:
+All `@dataclass(frozen=True, slots=True)`, in `runos/analysis/preferences.py`:
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -179,11 +179,11 @@ Tests cover: round-trip km↔miles, pace 4:00/km → 6:26/mi, edge cases.
 
 | File | Change |
 |------|--------|
-| `tempo/config.py` | DELETE `target_kcal_default`, `threshold_pace_s_per_km`, `max_hr`, `resting_hr`, `threshold_hr` Field declarations. ADD `preferences_path` derived property pointing at `content_root / "preferences.md"`. |
-| `tempo/analysis/runner.py` (~line 217) | Replace `settings.threshold_pace_s_per_km` / `settings.max_hr` / etc. with `prefs.physiology.*`. Each entry point (`generate_load_trend`, `generate_recovery`, `generate_race_readiness`, `generate_correlation`, `generate_nutrition`, `generate_all`) takes an optional `prefs: PreferencesContext` argument; if not provided, calls `parse_preferences(settings.preferences_path)` lazily. |
-| `tempo/cli.py` (lines ~726, 799, 854 and around the `analyze` command group) | Same change — load `prefs` at the top of each analyze command, pass through. |
-| `tempo/sync/daily.py` (lines ~66, 112) | Same. |
-| `tempo/analysis/report.py` (lines 153, 157 — "Distance (km)" column) | Accept `units: Units` parameter on the render functions; column header label switches based on `units.distance` (`"Distance (km)"` vs `"Distance (mi)"`); cell value uses `format_distance(distance_m, units)`. |
+| `runos/config.py` | DELETE `target_kcal_default`, `threshold_pace_s_per_km`, `max_hr`, `resting_hr`, `threshold_hr` Field declarations. ADD `preferences_path` derived property pointing at `content_root / "preferences.md"`. |
+| `runos/analysis/runner.py` (~line 217) | Replace `settings.threshold_pace_s_per_km` / `settings.max_hr` / etc. with `prefs.physiology.*`. Each entry point (`generate_load_trend`, `generate_recovery`, `generate_race_readiness`, `generate_correlation`, `generate_nutrition`, `generate_all`) takes an optional `prefs: PreferencesContext` argument; if not provided, calls `parse_preferences(settings.preferences_path)` lazily. |
+| `runos/cli.py` (lines ~726, 799, 854 and around the `analyze` command group) | Same change — load `prefs` at the top of each analyze command, pass through. |
+| `runos/sync/daily.py` (lines ~66, 112) | Same. |
+| `runos/analysis/report.py` (lines 153, 157 — "Distance (km)" column) | Accept `units: Units` parameter on the render functions; column header label switches based on `units.distance` (`"Distance (km)"` vs `"Distance (mi)"`); cell value uses `format_distance(distance_m, units)`. |
 | `.env.example` | Delete the four moved knobs. Add a short comment block (10 lines) explaining they moved to `preferences.md` and pointing at `preferences.md.example`. |
 | `.env` (live, owner's file) | Owner-managed; handled in the final migration task, not by an executor. |
 
@@ -227,7 +227,7 @@ Tests cover: round-trip km↔miles, pace 4:00/km → 6:26/mi, edge cases.
 - `test_format_pace_none_or_zero_returns_dash`
 - `test_km_to_miles_roundtrip`
 
-Affected existing tests (`test_load.py`, `test_recovery.py`, `test_nutrition.py`, `test_nutrition_report.py`, `test_correlation.py`, `test_cli.py`, `test_runner.py`): any test that currently sets `TEMPO_THRESHOLD_PACE_S_PER_KM` / `TEMPO_MAX_HR` / `TEMPO_RESTING_HR` / `TEMPO_THRESHOLD_HR` / `TEMPO_TARGET_KCAL` via `monkeypatch.setenv` either (a) constructs a `Physiology(...)` / `Nutrition(...)` directly and passes it through, or (b) writes a `preferences.md` to a tmp content dir. Choice per test — direct construction is simpler when not exercising the parser.
+Affected existing tests (`test_load.py`, `test_recovery.py`, `test_nutrition.py`, `test_nutrition_report.py`, `test_correlation.py`, `test_cli.py`, `test_runner.py`): any test that currently sets `RUNOS_THRESHOLD_PACE_S_PER_KM` / `RUNOS_MAX_HR` / `RUNOS_RESTING_HR` / `RUNOS_THRESHOLD_HR` / `RUNOS_TARGET_KCAL` via `monkeypatch.setenv` either (a) constructs a `Physiology(...)` / `Nutrition(...)` directly and passes it through, or (b) writes a `preferences.md` to a tmp content dir. Choice per test — direct construction is simpler when not exercising the parser.
 
 Stdlib + pytest's `tmp_path` only. No new test deps.
 
@@ -239,11 +239,11 @@ Stdlib + pytest's `tmp_path` only. No new test deps.
 
 ### Code organisation conventions
 
-- New module: `tempo/analysis/preferences.py`. Mirror `tempo/analysis/races.py` shape (lenient parser + frozen dataclasses).
+- New module: `runos/analysis/preferences.py`. Mirror `runos/analysis/races.py` shape (lenient parser + frozen dataclasses).
 - New module: `tempo/units.py` (top-level, presentation-layer).
 - Tests: `tests/test_preferences.py`, `tests/test_units.py`. Mirror modules.
-- `Settings.preferences_path` next to `food_path` in `tempo/config.py`.
-- `.env.example` keeps a brief comment trail documenting the move (`# Moved to preferences.md (Phase 17): TEMPO_THRESHOLD_PACE_S_PER_KM, TEMPO_MAX_HR, TEMPO_RESTING_HR, TEMPO_THRESHOLD_HR, TEMPO_TARGET_KCAL — see preferences.md.example`).
+- `Settings.preferences_path` next to `food_path` in `runos/config.py`.
+- `.env.example` keeps a brief comment trail documenting the move (`# Moved to preferences.md (Phase 17): RUNOS_THRESHOLD_PACE_S_PER_KM, RUNOS_MAX_HR, RUNOS_RESTING_HR, RUNOS_THRESHOLD_HR, RUNOS_TARGET_KCAL — see preferences.md.example`).
 
 </decisions>
 
@@ -254,16 +254,16 @@ Stdlib + pytest's `tmp_path` only. No new test deps.
 
 ### Direct-mirror references
 
-- `tempo/analysis/races.py` — primary template for `preferences.py` parser shape (lenient, never raises, `present=False` on missing, malformed-line capture).
-- `tempo/analysis/weight.py` — secondary template; same lenient contract.
-- `tempo/analysis/nutrition.py` — tertiary template; recent (Phase 16), shows the modern lenient-parser shape including `malformed_lines: tuple[int, ...]`.
-- `tempo/config.py:131-184` — current home of the five migrated knobs. DELETE these fields. ADD `preferences_path` next to `food_path` (line 244).
-- `tempo/analysis/runner.py:200-260` — current `LoadConfig` construction from `settings.threshold_pace_s_per_km` etc. This is the central refactor point. Replace with `prefs.physiology` reads.
-- `tempo/analysis/load.py:61-72` — `LoadConfig` dataclass (already takes the four physiology fields). NO CHANGE to this dataclass — just change the construction site in `runner.py` to read from `Physiology` not `Settings`.
-- `tempo/analysis/recovery.py:415, 500, 790` — `target_kcal` flows. Source becomes `prefs.nutrition.target_kcal` instead of `settings.target_kcal_default`.
-- `tempo/cli.py:726, 799, 854` — three sites passing `settings.target_kcal_default`. Replace all with `prefs.nutrition.target_kcal`.
-- `tempo/sync/daily.py:66-69, 112` — symmetric replacement to runner.py/cli.py.
-- `tempo/analysis/report.py:37, 153-157` — distance display points; thread `units` through and use `format_distance`.
+- `runos/analysis/races.py` — primary template for `preferences.py` parser shape (lenient, never raises, `present=False` on missing, malformed-line capture).
+- `runos/analysis/weight.py` — secondary template; same lenient contract.
+- `runos/analysis/nutrition.py` — tertiary template; recent (Phase 16), shows the modern lenient-parser shape including `malformed_lines: tuple[int, ...]`.
+- `runos/config.py:131-184` — current home of the five migrated knobs. DELETE these fields. ADD `preferences_path` next to `food_path` (line 244).
+- `runos/analysis/runner.py:200-260` — current `LoadConfig` construction from `settings.threshold_pace_s_per_km` etc. This is the central refactor point. Replace with `prefs.physiology` reads.
+- `runos/analysis/load.py:61-72` — `LoadConfig` dataclass (already takes the four physiology fields). NO CHANGE to this dataclass — just change the construction site in `runner.py` to read from `Physiology` not `Settings`.
+- `runos/analysis/recovery.py:415, 500, 790` — `target_kcal` flows. Source becomes `prefs.nutrition.target_kcal` instead of `settings.target_kcal_default`.
+- `runos/cli.py:726, 799, 854` — three sites passing `settings.target_kcal_default`. Replace all with `prefs.nutrition.target_kcal`.
+- `runos/sync/daily.py:66-69, 112` — symmetric replacement to runner.py/cli.py.
+- `runos/analysis/report.py:37, 153-157` — distance display points; thread `units` through and use `format_distance`.
 
 ### Format / docs templates
 
@@ -276,7 +276,7 @@ Stdlib + pytest's `tmp_path` only. No new test deps.
 <specifics>
 ## Specific Ideas
 
-- The owner's content dir resolves to `~/Projects/tempo/training/`. The live `preferences.md` lands there. The wizard's content-dir step (Phase 14) already set `TEMPO_CONTENT_DIR`; this phase relies on that.
+- The owner's content dir resolves to `~/Projects/RunOS/training/`. The live `preferences.md` lands there. The wizard's content-dir step (Phase 14) already set `RUNOS_CONTENT_DIR`; this phase relies on that.
 - Threshold-pace parsing accepts both `/mi` and `/km` because the owner thinks in miles but the storage layer is SI. The parser does the conversion at parse time — downstream code only ever sees `int` seconds-per-km.
 - Free-form prose sections are captured but UNINTERPRETED. The coach reads them via `Read training/preferences.md` in conversation; the analysis layer never touches them.
 - This is an architectural refactor, NOT a feature add. User-visible change: one fewer concept in `.env`, one new markdown file, distance/pace render in miles+min/mile if they set the Units section. That's it.

@@ -11,7 +11,7 @@
 ### Locked Decisions
 
 - `races.md` gains optional verbatim `result:` field; `RacesContext.completed(today)` mirror of `upcoming`.
-- New `heat.md` tracker in content_dir, parsed leniently into `HeatContext`; new module `tempo/analysis/heat.py`.
+- New `heat.md` tracker in content_dir, parsed leniently into `HeatContext`; new module `runos/analysis/heat.py`.
 - New `heat_path` derived property on settings; `plan_path` removed.
 - Heat rollup surfaces in **recovery report only** (not race-readiness, not load-trend).
 - Race ↔ activity auto-link by **local date only** (not sport); 0/1/N → `linked` / `unlinked_no_match` / `unlinked_ambiguous` / `unlinked_no_date`. No write-back.
@@ -22,7 +22,7 @@
 ### Claude's Discretion
 
 - Auto-link function placement: extend `data.py` vs. new `race_link.py` (planner's call).
-- Whether to also rename `tempo/analysis/context.py` → `races.py` (deferred unless cheap — see Q7).
+- Whether to also rename `runos/analysis/context.py` → `races.py` (deferred unless cheap — see Q7).
 - Re-implement `_parse_kv` in heat.py vs. import from context.py.
 - Whether to attach `HeatRollup` as a field on `RecoveryAssessment` or pass-through param to `render_recovery`.
 
@@ -161,7 +161,7 @@ def heat_rollup(sessions: list[HeatSession], today: date) -> HeatRollup:
 
 ### Where it renders
 
-In `tempo/analysis/recovery.py:render_recovery`, after the "Recovery markers vs personal baseline" section (line 448) and before the trailing "insufficient" footnote (line 450). It's a **new helper** kept inline at first — `_render_heat_section(out: list[str], rollup: HeatRollup | None) -> None` — pulled out only because the empty-rollup degradation is easier to test in isolation than via the full `render_recovery` pipeline.
+In `runos/analysis/recovery.py:render_recovery`, after the "Recovery markers vs personal baseline" section (line 448) and before the trailing "insufficient" footnote (line 450). It's a **new helper** kept inline at first — `_render_heat_section(out: list[str], rollup: HeatRollup | None) -> None` — pulled out only because the empty-rollup degradation is easier to test in isolation than via the full `render_recovery` pipeline.
 
 ### Data flow — recommended
 
@@ -241,10 +241,10 @@ Greps run: `plan\.md`, `plan_path`, `PlanContext`, `parse_plan`, `_PLAN_FIELD_RE
 
 ### Confirmed already in PATTERNS.md (no action needed beyond what's documented)
 
-- `tempo/analysis/context.py` — module docstring lines 1, 11, 21-23; `PlanContext` dataclass lines 67-75; `_PLAN_FIELD_RE` lines 203-205; `parse_plan` lines 208-227. ✅
-- `tempo/analysis/runner.py` — `plan_path` param + `parse_plan` call + `plan_ctx` pass-through (lines 263, 270, 281). ✅
-- `tempo/analysis/report.py` — `PlanContext` import line 20; `plan_ctx` param line 194; plan-rendering block lines 219-223. ✅
-- `tempo/config.py` — `plan_path` property lines 146-149. ✅
+- `runos/analysis/context.py` — module docstring lines 1, 11, 21-23; `PlanContext` dataclass lines 67-75; `_PLAN_FIELD_RE` lines 203-205; `parse_plan` lines 208-227. ✅
+- `runos/analysis/runner.py` — `plan_path` param + `parse_plan` call + `plan_ctx` pass-through (lines 263, 270, 281). ✅
+- `runos/analysis/report.py` — `PlanContext` import line 20; `plan_ctx` param line 194; plan-rendering block lines 219-223. ✅
+- `runos/config.py` — `plan_path` property lines 146-149. ✅
 - `.env.example` — comment block lines 65-67. ✅
 - `tests/test_context.py` — plan tests lines 98-134. ✅
 - `tests/test_analysis_reports.py` — `_write_context` helper + `plan_path=` arg sites + plan-context assertion. ✅
@@ -257,17 +257,17 @@ Greps run: `plan\.md`, `plan_path`, `PlanContext`, `parse_plan`, `_PLAN_FIELD_RE
 | File | Line | What it is | Action |
 |---|---|---|---|
 | `.env.example` | **line 16** | Comment `# The files you read/edit: plan.md, races.md, and generated reports/.` — separate from the lines 65-67 block PATTERNS.md flagged. | Update comment: drop "plan.md" from the file list. |
-| `tempo/cli.py` | **lines 449, 493** | Two `plan_path=settings.plan_path,` kwarg sites in the `analyze` subcommand wiring (one for `race-readiness`, one for `all`). | Remove both — they pass to `generate_race_readiness` / `generate_all`. |
-| `tempo/sync/daily.py` | **line 110** | `plan_path=settings.plan_path,` kwarg in the daily-sync wrapper that calls `generate_all`. | Remove. |
-| `tempo/analysis/__init__.py` | **lines 5, 16** | Package docstring: line 5 mentions `"races.md / plan.md context"`; line 16 says `parse races.md / plan.md`. | Update both — drop plan.md mentions; consider adding a `tempo.analysis.heat` bullet (PATTERNS.md mentions this for the module index but the docstring at line 5 was missed). |
+| `runos/cli.py` | **lines 449, 493** | Two `plan_path=settings.plan_path,` kwarg sites in the `analyze` subcommand wiring (one for `race-readiness`, one for `all`). | Remove both — they pass to `generate_race_readiness` / `generate_all`. |
+| `runos/sync/daily.py` | **line 110** | `plan_path=settings.plan_path,` kwarg in the daily-sync wrapper that calls `generate_all`. | Remove. |
+| `runos/analysis/__init__.py` | **lines 5, 16** | Package docstring: line 5 mentions `"races.md / plan.md context"`; line 16 says `parse races.md / plan.md`. | Update both — drop plan.md mentions; consider adding a `runos.analysis.heat` bullet (PATTERNS.md mentions this for the module index but the docstring at line 5 was missed). |
 | `tests/test_config.py` | **lines 38, 46** | Two assertions `settings.plan_path == ...` testing the derived path. | Delete both. Optionally add `settings.heat_path == content / "heat.md"` parallel assertions. |
 | `tests/test_analysis_reports.py` | **lines 10, 169, 185** | Module docstring line 10 mentions `"races.md/plan.md context"`. Lines 169 and 185 are two additional `plan_path=` kwarg sites that PATTERNS.md only flagged the first one of (lines 130-132). | Update docstring; remove the additional kwarg sites. |
 | `tests/test_analyze_cli.py` | **line 4** | Module docstring mentions `"races.md/plan.md context"`. | Update — drop plan.md. |
-| `tempo/analysis/runner.py` | **lines 358, 376** | PATTERNS.md flagged line 358 (`generate_all` signature). Line 376 is the internal call's `plan_path=plan_path,` kwarg — already flagged in PATTERNS.md too. | Already covered, just verifying. |
+| `runos/analysis/runner.py` | **lines 358, 376** | PATTERNS.md flagged line 358 (`generate_all` signature). Line 376 is the internal call's `plan_path=plan_path,` kwarg — already flagged in PATTERNS.md too. | Already covered, just verifying. |
 
-**Net new files PATTERNS.md missed:** `tests/test_config.py`, plus the **second mention** in `.env.example` (line 16) and the **multiple kwarg sites** in `tempo/cli.py` and `tempo/sync/daily.py`. These are the highest-risk omissions because they would cause runtime errors after the parser/property is deleted (TypeError: unexpected keyword argument `plan_path`).
+**Net new files PATTERNS.md missed:** `tests/test_config.py`, plus the **second mention** in `.env.example` (line 16) and the **multiple kwarg sites** in `runos/cli.py` and `runos/sync/daily.py`. These are the highest-risk omissions because they would cause runtime errors after the parser/property is deleted (TypeError: unexpected keyword argument `plan_path`).
 
-**`tempo/analysis/race.py`** — grepped explicitly per the question. No matches. Safe.
+**`runos/analysis/race.py`** — grepped explicitly per the question. No matches. Safe.
 **`CLAUDE.md`** — contains long research output describing the v1 stack; no live code reference to `plan.md`. Per CONTEXT.md the user is fine leaving stale phrasing if it doesn't cause confusion. **No action.**
 **`docs/`** — directory exists? Quick check below.
 
@@ -285,8 +285,8 @@ Drop this **verbatim** into `heat.md.example` at the repo root.
 ```markdown
 # Heat sessions -- EXAMPLE / TEMPLATE
 
-Copy this file to your Tempo content dir as `heat.md` (default
-`~/.tempo/heat.md`) and edit it. Tempo reads it for heat-adaptation context in
+Copy this file to your RunOS content dir as `heat.md` (default
+`~/.runos/heat.md`) and edit it. RunOS reads it for heat-adaptation context in
 the recovery report (TRACK-04/05); it is never committed (the content dir lives
 outside the repo tree).
 
@@ -296,7 +296,7 @@ One session per markdown list item. Each entry leads with the date, then
 `key: value` pairs separated by `|` (or commas), in any order. Parsing is
 lenient: unknown keys are ignored and a malformed line is skipped, so you can't
 break analysis by editing this file. Append new sessions to the bottom -- the
-file is treated as append-only by convention (Tempo never edits it).
+file is treated as append-only by convention (RunOS never edits it).
 
 Recognised keys:
 
@@ -322,7 +322,7 @@ Recognised keys:
 
 **Design notes for the planner:**
 
-- The fourth bullet (`hr_max:` key) is **intentional** — it demonstrates the lenient-parser contract by showing an unrecognised key getting silently ignored. The user reads the example and learns "I can add my own keys; Tempo won't choke."
+- The fourth bullet (`hr_max:` key) is **intentional** — it demonstrates the lenient-parser contract by showing an unrecognised key getting silently ignored. The user reads the example and learns "I can add my own keys; RunOS won't choke."
 - The fifth bullet is intentionally minimal (`type + duration_min` only) to show the partial-fields path works.
 - All session dates are within the last ~12 days so a user pasting the example and running the recovery report immediately sees populated 7/14/28 windows.
 - Header style matches `races.md.example` (title → copy instruction → `## Format` → `## Sessions`).
@@ -387,7 +387,7 @@ Recognised keys:
 | # | Test name | Intent |
 |---|---|---|
 | P1 | `test_no_plan_path_attribute_on_settings` | `not hasattr(settings, 'plan_path')`. Defensive — catches an incomplete retirement. |
-| P2 | `test_context_module_does_not_export_parse_plan` | `from tempo.analysis.context import parse_plan` raises `ImportError`. |
+| P2 | `test_context_module_does_not_export_parse_plan` | `from runos.analysis.context import parse_plan` raises `ImportError`. |
 | P3 | `test_race_readiness_report_renders_without_plan` | After plan.md is gone, the race-readiness report renders cleanly with no "Plan context" section and no errors. |
 | P4 | `test_no_plan_md_example_file` | `not (repo_root / "plan.md.example").exists()`. Pin the file deletion. |
 
@@ -400,32 +400,32 @@ Recognised keys:
 ### Import-site inventory (grep results)
 
 ```
-tests/test_noteworthy.py:220:    from tempo.analysis.context import Race, RacesContext
-tests/test_noteworthy.py:233:    from tempo.analysis.context import RacesContext
-tests/test_context.py:14:from tempo.analysis.context import (
-tempo/analysis/__init__.py:16:* :mod:`tempo.analysis.context` -- parse `races.md` / `plan.md`.
-tempo/analysis/runner.py:23:from tempo.analysis import context as ctx
-tempo/analysis/runner.py:29:from tempo.analysis.context import Race
-tempo/sync/daily.py:34:from tempo.analysis import context as ctx
-tempo/analysis/report.py:20:from tempo.analysis.context import PlanContext, Race, RacesContext
+tests/test_noteworthy.py:220:    from runos.analysis.context import Race, RacesContext
+tests/test_noteworthy.py:233:    from runos.analysis.context import RacesContext
+tests/test_context.py:14:from runos.analysis.context import (
+runos/analysis/__init__.py:16:* :mod:`runos.analysis.context` -- parse `races.md` / `plan.md`.
+runos/analysis/runner.py:23:from runos.analysis import context as ctx
+runos/analysis/runner.py:29:from runos.analysis.context import Race
+runos/sync/daily.py:34:from runos.analysis import context as ctx
+runos/analysis/report.py:20:from runos.analysis.context import PlanContext, Race, RacesContext
 ```
 
 **8 import sites across 6 files.** All mechanical:
 
-- 5 are `from tempo.analysis.context import ...` (renaming the path is a one-line sed per file).
-- 2 are `from tempo.analysis import context as ctx` — the simplest fix is to rename the alias source (`from tempo.analysis import races as ctx` keeps `ctx.parse_races` calls untouched), but the cleaner option is to rename the alias to `races` and update the call sites.
+- 5 are `from runos.analysis.context import ...` (renaming the path is a one-line sed per file).
+- 2 are `from runos.analysis import context as ctx` — the simplest fix is to rename the alias source (`from runos.analysis import races as ctx` keeps `ctx.parse_races` calls untouched), but the cleaner option is to rename the alias to `races` and update the call sites.
 - 1 is a doc-string mention in `__init__.py`.
 
-There is **no `__init__.py` re-export** from `tempo.analysis` that pins the name `context` publicly. `tests/test_context.py` should also be renamed to `tests/test_races.py` for symmetry (cheap; 1 file move).
+There is **no `__init__.py` re-export** from `runos.analysis` that pins the name `context` publicly. `tests/test_context.py` should also be renamed to `tests/test_races.py` for symmetry (cheap; 1 file move).
 
 ### Recommendation: **Do the rename.**
 
 Reasons:
 
-1. **It's cheap.** 8 sites, all in code we already touch in this phase (`runner.py`, `report.py`, `sync/daily.py`, `__init__.py`, `test_context.py`, `test_noteworthy.py`). No external consumers — Tempo is single-user with no published API surface.
+1. **It's cheap.** 8 sites, all in code we already touch in this phase (`runner.py`, `report.py`, `sync/daily.py`, `__init__.py`, `test_context.py`, `test_noteworthy.py`). No external consumers — RunOS is single-user with no published API surface.
 2. **Symmetry pays off immediately.** After Phase 8, the analysis layer has `races.py` and `heat.py` as siblings. Calling one of them `context.py` is a naming accident from when it held both races and plan parsers; the asymmetry will cause low-grade confusion in every PR that touches both files.
 3. **The renamed-test-file split is honest about scope.** `test_context.py` currently mixes races and plan tests; the plan tests are being deleted anyway, so the file is renamed *and* losing half its content — natural moment to do the rename.
-4. **`tempo/analysis/race.py` already exists** (it's the predictions module that holds `STANDARD_DISTANCES_M`, imported by `context.py:33`). The new file would be `races.py` (plural), distinct from the existing `race.py` (singular). This is **slightly ugly** but unambiguous in practice — the plural matches the markdown filename `races.md` and the dataclass `RacesContext`. If the planner is uncomfortable with the `race.py` / `races.py` pair, an alternative is to call the new module `tempo/analysis/races_md.py` — explicit about the file it parses. Recommendation: **plural `races.py`** matches the existing `RacesContext` naming and the user-facing filename.
+4. **`runos/analysis/race.py` already exists** (it's the predictions module that holds `STANDARD_DISTANCES_M`, imported by `context.py:33`). The new file would be `races.py` (plural), distinct from the existing `race.py` (singular). This is **slightly ugly** but unambiguous in practice — the plural matches the markdown filename `races.md` and the dataclass `RacesContext`. If the planner is uncomfortable with the `race.py` / `races.py` pair, an alternative is to call the new module `runos/analysis/races_md.py` — explicit about the file it parses. Recommendation: **plural `races.py`** matches the existing `RacesContext` naming and the user-facing filename.
 
 ### Compatibility shim?
 
@@ -438,7 +438,7 @@ Reasons:
 | # | Claim | Section | Risk if Wrong |
 |---|---|---|---|
 | A1 | `activity.day` and `race.race_date` are both timezone-naïve local-date strings, so they compare cleanly without TZ handling | Q3 edge case `d` | LOW — confirmed by reading `migrations/0002_structured.sql:21,27` and `context.py:160` (`date.fromisoformat`). Both sources verified. |
-| A2 | `tempo/analysis/race.py` (singular) does not currently parse `races.md` content (only holds distance constants + prediction math), so the planner can introduce `races.py` (plural) without collision | Q7 | LOW — confirmed by grep: `context.py:33` imports only `STANDARD_DISTANCES_M` from it. |
+| A2 | `runos/analysis/race.py` (singular) does not currently parse `races.md` content (only holds distance constants + prediction math), so the planner can introduce `races.py` (plural) without collision | Q7 | LOW — confirmed by grep: `context.py:33` imports only `STANDARD_DISTANCES_M` from it. |
 | A3 | Multiple sessions on the same date should each count separately in the rollup | Q1 trap #4 | LOW — matches journal-service convention (multiple activities on a day are each real). User can flag in review if they disagree. |
 | A4 | The "stale" case (last session > 28 days ago) should also omit the heat section, not render a "0/0/0 last session 47 days ago" line | Q2 degradation | MEDIUM — this is a judgement call. If the user prefers to *see* the stale signal (a nudge to resume heat work), the rule changes to "render iff `last_28d_count > 0` OR `last_session_days_ago is not None and last_session_days_ago <= 60`". Flag for discuss-phase confirmation. |
 
@@ -458,21 +458,21 @@ Reasons:
 - **`@dataclass(frozen=True, slots=True)`** — `HeatSession`, `HeatContext`, `HeatRollup`, `RaceLink` all follow this.
 - **Lenient parsers, never raise on malformed input** — locked.
 - **Local-first, no network in analysis layer** — none of this phase's code touches the network.
-- **Files in `content_dir` are gitignored** — `heat.md.example` is committed (repo root); the actual `heat.md` lives in `~/.tempo/` and is never committed.
+- **Files in `content_dir` are gitignored** — `heat.md.example` is committed (repo root); the actual `heat.md` lives in `~/.runos/` and is never committed.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- `/Users/rossheadington/Projects/tempo/.planning/phases/08-modular-trackers-heat-adaptation/08-CONTEXT.md` — locked decisions, full read.
-- `/Users/rossheadington/Projects/tempo/.planning/phases/08-modular-trackers-heat-adaptation/08-PATTERNS.md` — file-level pattern map, trusted as codebase truth source.
-- `tempo/analysis/context.py` (228 lines) — current parser, the model to mirror.
-- `tempo/analysis/recovery.py:402-455` — `render_recovery` shape, the integration target.
-- `tempo/analysis/report.py:180-279` — `render_race_readiness` shape, the plan-block removal target.
-- `tempo/analysis/runner.py:160-311` — orchestrator wiring.
-- `tempo/analysis/data.py:60-143` — read-only data layer convention, table-existence check pattern.
-- `tempo/journal/service.py:1-90` — 0/1/N convention source.
-- `tempo/migrations/0002_structured.sql:21,27,46` — confirms `activity.day` is local-date string.
-- `.env.example`, `tempo/cli.py`, `tempo/sync/daily.py`, `tempo/analysis/__init__.py`, `tests/test_config.py`, `tests/test_analyze_cli.py`, `tests/test_analysis_reports.py`, `tests/test_noteworthy.py` — grep-verified for Q4 blast radius.
+- `/Users/rossheadington/Projects/RunOS/.planning/phases/08-modular-trackers-heat-adaptation/08-CONTEXT.md` — locked decisions, full read.
+- `/Users/rossheadington/Projects/RunOS/.planning/phases/08-modular-trackers-heat-adaptation/08-PATTERNS.md` — file-level pattern map, trusted as codebase truth source.
+- `runos/analysis/context.py` (228 lines) — current parser, the model to mirror.
+- `runos/analysis/recovery.py:402-455` — `render_recovery` shape, the integration target.
+- `runos/analysis/report.py:180-279` — `render_race_readiness` shape, the plan-block removal target.
+- `runos/analysis/runner.py:160-311` — orchestrator wiring.
+- `runos/analysis/data.py:60-143` — read-only data layer convention, table-existence check pattern.
+- `runos/journal/service.py:1-90` — 0/1/N convention source.
+- `runos/migrations/0002_structured.sql:21,27,46` — confirms `activity.day` is local-date string.
+- `.env.example`, `runos/cli.py`, `runos/sync/daily.py`, `runos/analysis/__init__.py`, `tests/test_config.py`, `tests/test_analyze_cli.py`, `tests/test_analysis_reports.py`, `tests/test_noteworthy.py` — grep-verified for Q4 blast radius.
 
 ### Secondary
 None — entire research is in-repo code reading.

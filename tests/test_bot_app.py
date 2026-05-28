@@ -3,8 +3,8 @@
 No network. No real bot token. Every test:
 
 * deletes ``TELEGRAM_BOT_TOKEN`` / ``TELEGRAM_OWNER_CHAT_ID`` from the env first
-  (the shared ``tempo_data_dir`` fixture does not touch these because they are
-  intentionally NOT prefixed with ``TEMPO_``); each test then sets only the env
+  (the shared ``runos_data_dir`` fixture does not touch these because they are
+  intentionally NOT prefixed with ``RUNOS_``); each test then sets only the env
   vars it cares about,
 * loads :class:`Settings` with ``_env_file=None`` so the developer's real
   ``.env`` cannot leak in even if the cwd-chdir from the fixture missed it,
@@ -31,20 +31,20 @@ from telegram import Chat, Message, MessageEntity, Update, User
 from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, MessageHandler, filters
 
-from tempo.bot import (
+from runos.bot import (
     CLAUDE_CLI_MISSING_ERROR,
     GREETING,
     clear_command_handler,
     start_handler,
     text_handler,
 )
-from tempo.bot.app import (
+from runos.bot.app import (
     _require_telegram_config,
     _sweep_voice_cache,
     _verify_claude_cli,
     build_application,
 )
-from tempo.config import Settings
+from runos.config import Settings
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -99,9 +99,9 @@ def _find_start_handler(app) -> CommandHandler:
 
 
 def test_settings_load_without_telegram_vars(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With neither env var set, both fields are None (rest of tempo still works)."""
+    """With neither env var set, both fields are None (rest of runos still works)."""
     _clear_telegram_env(monkeypatch)
     settings = Settings(_env_file=None)
     assert settings.telegram_bot_token is None
@@ -109,7 +109,7 @@ def test_settings_load_without_telegram_vars(
 
 
 def test_settings_load_with_both_vars_set(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Setting both env vars produces a SecretStr token + int chat id; repr is scrubbed."""
     _clear_telegram_env(monkeypatch)
@@ -127,7 +127,7 @@ def test_settings_load_with_both_vars_set(
 
 
 def test_require_telegram_config_missing_token_raises(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Chat id alone -> ValueError naming both env-var names and the docs link."""
     _clear_telegram_env(monkeypatch)
@@ -142,7 +142,7 @@ def test_require_telegram_config_missing_token_raises(
 
 
 def test_require_telegram_config_missing_chat_id_raises(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Token alone -> the same ValueError shape."""
     _clear_telegram_env(monkeypatch)
@@ -162,7 +162,7 @@ def test_require_telegram_config_missing_chat_id_raises(
 
 
 def test_build_application_registers_owner_only_start_handler(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`build_application` registers exactly one `/start` CommandHandler whose
     filter is a `filters.Chat` configured for the owner chat id.
@@ -184,7 +184,7 @@ def test_build_application_registers_owner_only_start_handler(
 
 
 def test_start_command_filter_drops_non_owner(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`filters.Chat` returns falsy for any non-owner Update -- the dispatcher
     silently drops it before any handler runs. This is the heart of VOICE-01.
@@ -211,7 +211,7 @@ def test_start_command_filter_drops_non_owner(
 
 
 def test_start_handler_replies_to_owner_with_greeting(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`start_handler`(owner Update) -> one reply_text call with GREETING + HTML."""
     _clear_telegram_env(monkeypatch)
@@ -237,13 +237,13 @@ def test_start_handler_replies_to_owner_with_greeting(
     # at the class level with an AsyncMock (not a descriptor), the implicit
     # ``self`` is not bound, so ``call.args`` starts with the greeting itself.
     assert call.args[0] == GREETING
-    assert "Tempo bot online" in call.args[0]
+    assert "RunOS bot online" in call.args[0]
     # HTML parse mode (matches Phase 9 decision in CONTEXT.md).
     assert call.kwargs.get("parse_mode") == ParseMode.HTML
 
 
 def test_start_handler_defensive_check_rejects_mismatched_chat(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Belt-and-braces: even if the filter were bypassed, an in-handler
     chat-id mismatch -> silent drop (no reply, no log of bot existence).
@@ -272,13 +272,13 @@ def test_start_handler_defensive_check_rejects_mismatched_chat(
 
 def test_verify_claude_cli_passes_when_present(monkeypatch: pytest.MonkeyPatch) -> None:
     """`_verify_claude_cli` is a no-op when `shutil.which("claude")` returns a path."""
-    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
+    monkeypatch.setattr("runos.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
     _verify_claude_cli()  # no exception
 
 
 def test_verify_claude_cli_raises_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     """`_verify_claude_cli` raises RuntimeError(CLAUDE_CLI_MISSING_ERROR) on missing CLI."""
-    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: None)
+    monkeypatch.setattr("runos.bot.app.shutil.which", lambda name: None)
     with pytest.raises(RuntimeError) as excinfo:
         _verify_claude_cli()
     assert str(excinfo.value) == CLAUDE_CLI_MISSING_ERROR
@@ -288,13 +288,13 @@ def test_verify_claude_cli_raises_when_missing(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_build_application_raises_when_claude_cli_missing(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`build_application` raises before any Telegram traffic when claude is missing."""
     _clear_telegram_env(monkeypatch)
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-123")
     monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "987654321")
-    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: None)
+    monkeypatch.setattr("runos.bot.app.shutil.which", lambda name: None)
     settings = Settings(_env_file=None)
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -303,13 +303,13 @@ def test_build_application_raises_when_claude_cli_missing(
 
 
 def test_build_application_stashes_db_path(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`build_application` puts settings.db_path into bot_data for handler use."""
     _clear_telegram_env(monkeypatch)
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-123")
     monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "987654321")
-    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
+    monkeypatch.setattr("runos.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
     settings = Settings(_env_file=None)
 
     app = build_application(settings)
@@ -335,7 +335,7 @@ def _find_clear_command_handler(app) -> CommandHandler:
 
 
 def test_build_application_registers_text_and_new_handlers(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Phase 11 wires /clear + text handlers behind the owner filter.
 
@@ -347,7 +347,7 @@ def test_build_application_registers_text_and_new_handlers(
     _clear_telegram_env(monkeypatch)
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-123")
     monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "987654321")
-    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
+    monkeypatch.setattr("runos.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
     settings = Settings(_env_file=None)
 
     app = build_application(settings)
@@ -498,7 +498,7 @@ def test_sweep_voice_cache_handles_subdirectories(tmp_path: Path) -> None:
 
 
 def test_post_init_logs_agent_cwd_and_data_dir(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
 ) -> None:
     """`_post_init` emits an "agent cwd = <abs>" log line at startup.
 
@@ -513,10 +513,10 @@ def test_post_init_logs_agent_cwd_and_data_dir(
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-123")
     monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "987654321")
     monkeypatch.setenv("VOICE_RETENTION_DAYS", "3")
-    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
+    monkeypatch.setattr("runos.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
     # Stub out the work _post_init does so we can assert on the side log lines.
-    monkeypatch.setattr("tempo.bot.app.init_db", lambda path: SimpleNamespace(close=lambda: None))
-    monkeypatch.setattr("tempo.bot.app.warm_model", lambda settings: None)
+    monkeypatch.setattr("runos.bot.app.init_db", lambda path: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr("runos.bot.app.warm_model", lambda settings: None)
 
     settings = Settings(_env_file=None)
     app = build_application(settings)
@@ -530,7 +530,7 @@ def test_post_init_logs_agent_cwd_and_data_dir(
     fake_bot.set_my_commands = AsyncMock(return_value=None)
     fake_app = SimpleNamespace(bot=fake_bot)
 
-    caplog.set_level(logging.INFO, logger="tempo.bot")
+    caplog.set_level(logging.INFO, logger="runos.bot")
     asyncio.run(app.post_init(fake_app))  # type: ignore[arg-type]
 
     messages = [r.getMessage() for r in caplog.records]
@@ -541,7 +541,7 @@ def test_post_init_logs_agent_cwd_and_data_dir(
 
 
 def test_post_init_no_sweep_log_when_retention_zero(
-    tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
+    runos_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
 ) -> None:
     """With VOICE_RETENTION_DAYS=0 (default) the sweep is silent (no log line)."""
     import logging
@@ -550,9 +550,9 @@ def test_post_init_no_sweep_log_when_retention_zero(
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-123")
     monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "987654321")
     monkeypatch.delenv("VOICE_RETENTION_DAYS", raising=False)
-    monkeypatch.setattr("tempo.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
-    monkeypatch.setattr("tempo.bot.app.init_db", lambda path: SimpleNamespace(close=lambda: None))
-    monkeypatch.setattr("tempo.bot.app.warm_model", lambda settings: None)
+    monkeypatch.setattr("runos.bot.app.shutil.which", lambda name: "/usr/local/bin/claude")
+    monkeypatch.setattr("runos.bot.app.init_db", lambda path: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr("runos.bot.app.warm_model", lambda settings: None)
 
     settings = Settings(_env_file=None)
     app = build_application(settings)
@@ -562,7 +562,7 @@ def test_post_init_no_sweep_log_when_retention_zero(
     fake_bot.set_my_commands = AsyncMock(return_value=None)
     fake_app = SimpleNamespace(bot=fake_bot)
 
-    caplog.set_level(logging.INFO, logger="tempo.bot")
+    caplog.set_level(logging.INFO, logger="runos.bot")
     asyncio.run(app.post_init(fake_app))  # type: ignore[arg-type]
 
     messages = [r.getMessage() for r in caplog.records]

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  RunOS daily-run LaunchAgent TEMPLATE.
+
+  This is a committed template; it contains NO secrets and NO personal paths.
+  Replace the __PLACEHOLDER__ values, copy to ~/Library/LaunchAgents/, then load:
+
+      cp launchd/com.runos.daily.plist ~/Library/LaunchAgents/
+      launchctl load -w ~/Library/LaunchAgents/com.runos.daily.plist
+
+  To disable:
+
+      launchctl unload -w ~/Library/LaunchAgents/com.runos.daily.plist
+
+  Prefer generating this with `runos install-scheduler`, which fills in the
+  absolute paths for you (uv/python location, project dir, data dir, logs).
+
+  Why launchd and NOT cron (see README + .planning/research/PITFALLS.md #7):
+    * launchd runs a MISSED StartCalendarInterval job on wake; cron silently
+      skips jobs while the Mac is asleep -> silent data gaps.
+    * cron runs with a stripped PATH and often can't find `uv`/python; launchd
+      with an explicit PATH + absolute ProgramArguments runs like your shell.
+    * stdout/stderr are captured to a log file so failures are diagnosable.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.runos.daily</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Absolute path to uv (run `which uv`), then `run runos run-daily`. -->
+        <string>__UV_PATH__</string>
+        <string>run</string>
+        <string>runos</string>
+        <string>run-daily</string>
+    </array>
+
+    <!-- launchd runs a MISSED job on wake; cron would skip it (SCHED-02). -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>5</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <!-- Absolute path to your checked-out RunOS project directory. -->
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_DIR__</string>
+
+    <!-- Explicit PATH + TEMPO_DATA_DIR so the stripped launchd env runs the job
+         exactly like the interactive shell does (PITFALLS 7). -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>TEMPO_DATA_DIR</key>
+        <string>__DATA_DIR__</string>
+    </dict>
+
+    <!-- Logs under your data dir (outside the repo); create the dir first. -->
+    <key>StandardOutPath</key>
+    <string>__DATA_DIR__/logs/daily.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__DATA_DIR__/logs/daily.err.log</string>
+
+    <!-- Don't fire a sync just because the agent was (re)loaded. -->
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

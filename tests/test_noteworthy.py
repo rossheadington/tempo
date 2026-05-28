@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from tempo.analysis import noteworthy as nw
-from tempo.analysis.data import SourceFreshness
-from tempo.analysis.fitness import Guardrail
-from tempo.analysis.recovery import RecoveryAssessment, SignalAssessment
+from runos.analysis import noteworthy as nw
+from runos.analysis.data import SourceFreshness
+from runos.analysis.fitness import Guardrail
+from runos.analysis.recovery import RecoveryAssessment, SignalAssessment
 
 
 def _guardrail(**kw) -> Guardrail:  # type: ignore[no-untyped-def]
@@ -217,7 +217,7 @@ def test_thresholds_are_configurable() -> None:
 
 
 def test_next_race_within_days() -> None:
-    from tempo.analysis.races import Race, RacesContext
+    from runos.analysis.races import Race, RacesContext
 
     ctx = RacesContext(
         present=True,
@@ -230,6 +230,6 @@ def test_next_race_within_days() -> None:
 
 
 def test_next_race_within_days_none_when_absent() -> None:
-    from tempo.analysis.races import RacesContext
+    from runos.analysis.races import RacesContext
 
     assert nw.next_race_within_days(RacesContext(present=False), AS_OF) is None

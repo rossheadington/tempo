@@ -1,11 +1,11 @@
 # Food log -- EXAMPLE / TEMPLATE
 
-Copy this file to your Tempo content dir as `food.md` (default
-`<content_root>/food.md`, redirect with `TEMPO_CONTENT_DIR`) and edit it.
-Tempo reads it for the standalone `tempo analyze nutrition` report (NUTR-05)
+Copy this file to your RunOS content dir as `food.md` (default
+`<content_root>/food.md`, redirect with `RUNOS_CONTENT_DIR`) and edit it.
+RunOS reads it for the standalone `runos analyze nutrition` report (NUTR-05)
 AND the recovery report's `## Nutrition` section. The file is never committed
 (the content dir lives outside the repo tree). The numbers below are
-synthetic. Set `TEMPO_TARGET_KCAL` in `.env` to enable goal-tracking; see
+synthetic. Set `RUNOS_TARGET_KCAL` in `.env` to enable goal-tracking; see
 `docs/NUTRITION.md` for details.
 
 # Format overview

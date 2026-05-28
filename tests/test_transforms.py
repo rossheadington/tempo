@@ -14,9 +14,9 @@ from datetime import date
 
 import pytest
 
-from tempo.connectors.base import RawWriter
-from tempo.transforms import strava as strava_tf
-from tempo.transforms.runner import run_rederive
+from runos.connectors.base import RawWriter
+from runos.transforms import strava as strava_tf
+from runos.transforms.runner import run_rederive
 from tests.strava_fakes import make_activity, make_activity_tz, make_streams
 
 

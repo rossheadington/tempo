@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tempo.analysis.nutrition import (
+from runos.analysis.nutrition import (
     DailyNutrition,
     FoodContext,
     FoodEntry,

@@ -1,13 +1,13 @@
 # Project Research Summary
 
-**Project:** Tempo
+**Project:** RunOS
 **Domain:** Personal local-first training/health data pipeline (Strava + Garmin → SQLite, scheduled Claude analysis)
 **Researched:** 2026-05-26
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Tempo is a single-user batch ELT pipeline, not a product — and the research is unanimous that the right shape is small and boring: a medallion-architecture SQLite store (raw → structured → summary), thin connector adapters over `stravalib` and `garminconnect`, raw SQL for transforms, `typer` for the CLI, and `launchd` for scheduling. The core value is trustworthy signal delivered as Claude-authored markdown narrative — a synthesis of objective device data, subjective journal entries, training plan context, and race goals that no dashboard can replicate. The build order is forced by dependency and risk: Strava first (clean official OAuth2 API, proves the full pipeline end-to-end), Garmin second (fragile unofficial library, isolated behind a connector so its failures never block Strava or analysis).
+RunOS is a single-user batch ELT pipeline, not a product — and the research is unanimous that the right shape is small and boring: a medallion-architecture SQLite store (raw → structured → summary), thin connector adapters over `stravalib` and `garminconnect`, raw SQL for transforms, `typer` for the CLI, and `launchd` for scheduling. The core value is trustworthy signal delivered as Claude-authored markdown narrative — a synthesis of objective device data, subjective journal entries, training plan context, and race goals that no dashboard can replicate. The build order is forced by dependency and risk: Strava first (clean official OAuth2 API, proves the full pipeline end-to-end), Garmin second (fragile unofficial library, isolated behind a connector so its failures never block Strava or analysis).
 
 The most load-bearing architectural decisions are the ones that must land earliest: (a) the two-layer raw→structured storage, which makes every future metric derivable without re-fetching against rate-limited APIs; (b) the date spine with zero-fill, which is silently required by every EWMA and rolling-window calculation (CTL/ATL, ACWR, correlations); and (c) token persistence for both Strava (rotating refresh tokens that invalidate on each use) and Garmin (SSO session that triggers 48h+ account lockouts if you re-login on every run). These are foundation concerns, not later hardening steps.
 
@@ -25,7 +25,7 @@ The stack is intentionally minimal. Python 3.14 + `uv` is a project constraint a
 - `stravalib` 2.4 — Strava OAuth2, paged history, streams; handles token refresh automatically
 - `garminconnect` ≥0.3.3 — Garmin wellness; the only option; isolate as a failure domain; pin ≥0.3.3 (fixes 429 account-lockout bug from issue #344)
 - `sqlite3` (stdlib) — raw + structured storage; no ORM; version-table migrations
-- `typer` 0.25 — CLI (`tempo sync`, `tempo analyze`, `tempo journal`); subcommands map cleanly to domain
+- `typer` 0.25 — CLI (`runos sync`, `runos analyze`, `runos journal`); subcommands map cleanly to domain
 - `pydantic-settings` 2.14 — typed config/secrets from gitignored `.env`
 - `launchd` LaunchAgent plist — macOS scheduler; runs missed jobs on wake; cron does not
 - `tenacity` 9.x — retry/backoff for Strava rate limits and Garmin 429s
@@ -63,7 +63,7 @@ The feature dependency chain is strict: everything flows from per-activity load 
 
 ### Architecture Approach
 
-Tempo is a small batch ELT pipeline using medallion layering (bronze=raw, silver=structured, gold=daily summary) collapsed into a single SQLite file. Three non-negotiable architectural rules: (1) connectors write only to `raw_response`, transforms read only from raw and write to structured — this boundary makes `tempo rederive` work without network calls; (2) everything joins through a date spine so rest days, Garmin-only days, and activity-only days are first-class rows (not dropped by inner joins); (3) Claude writes structured rows only through a validated entrypoint with field checks and activity-id resolution — never free-form SQL.
+RunOS is a small batch ELT pipeline using medallion layering (bronze=raw, silver=structured, gold=daily summary) collapsed into a single SQLite file. Three non-negotiable architectural rules: (1) connectors write only to `raw_response`, transforms read only from raw and write to structured — this boundary makes `runos rederive` work without network calls; (2) everything joins through a date spine so rest days, Garmin-only days, and activity-only days are first-class rows (not dropped by inner joins); (3) Claude writes structured rows only through a validated entrypoint with field checks and activity-id resolution — never free-form SQL.
 
 **Major components:**
 1. **Connectors** — auth, paging, rate-limit handling, retries; write only to `raw_response`; thin `Connector` protocol (`backfill()`, `sync(since)`)
@@ -73,12 +73,12 @@ Tempo is a small batch ELT pipeline using medallion layering (bronze=raw, silver
 5. **Date spine + daily summary / gold** — `date_spine` dim + `daily_summary` view; one row per calendar day; left-joins all sources
 6. **Analysis layer** — reads gold/silver + plan/race markdown; produces findings; Claude renders narrative
 7. **Report writer** — dated markdown to `reports/`
-8. **Journal capture** — validated `tempo journal add` entrypoint; Claude calls it, never writes SQL directly
+8. **Journal capture** — validated `runos journal add` entrypoint; Claude calls it, never writes SQL directly
 9. **CLI + launchd scheduler** — `typer` app orchestrating sync → transform → analyze daily
 
 ### Critical Pitfalls
 
-1. **Secret or health-data leak into the public repo** — Keep the SQLite DB, tokens, `.env`, and `reports/` outside the repo tree entirely (e.g., `~/.tempo/`). Install a `gitleaks` pre-commit hook. Decide before the first commit whether `reports/` contains personal health data — if yes, gitignore or store outside the tree. Foundation phase, not a later concern.
+1. **Secret or health-data leak into the public repo** — Keep the SQLite DB, tokens, `.env`, and `reports/` outside the repo tree entirely (e.g., `~/.runos/`). Install a `gitleaks` pre-commit hook. Decide before the first commit whether `reports/` contains personal health data — if yes, gitignore or store outside the tree. Foundation phase, not a later concern.
 
 2. **Garmin account lockout from repeated logins** — Authenticate once, persist tokens, reuse indefinitely. The scheduled job must never trigger a fresh login. On any 429: fail the run, log, back off for hours — do not retry. Retrying compounds the block. Token persistence + no-retry-on-429 are core requirements of the Garmin phase, not hardening.
 
@@ -100,7 +100,7 @@ Tempo is a small batch ELT pipeline using medallion layering (bronze=raw, silver
 
 **Phase 1: Foundation — DB, credentials, CLI skeleton**
 Rationale: Security decisions (data/tokens outside repo tree, pre-commit hook) and schema decisions (date bucketing rule, migration pattern) made here are expensive to change later. Must exist before any connector writes anything.
-Delivers: `raw_response`, `date_spine`, `sync_state` tables; credential loading; token file paths outside repo tree; `gitleaks` hook; `tempo` CLI shell; WAL mode on; `.env.example` committed; reports/ policy decided.
+Delivers: `raw_response`, `date_spine`, `sync_state` tables; credential loading; token file paths outside repo tree; `gitleaks` hook; `runos` CLI shell; WAL mode on; `.env.example` committed; reports/ policy decided.
 Avoids: Secret/health-data leak (Pitfall 1); date bucketing rule defined before data enters (Pitfall 6).
 
 **Phase 2: Strava Ingestion — connector, backfill, incremental sync**
@@ -111,7 +111,7 @@ Avoids: Token rotation loss (Pitfall 4); backfill rate-limit blowout (Pitfall 5)
 
 **Phase 3: Strava Transforms + Date Spine + Daily Summary**
 Rationale: Transforms are pure functions of raw — testable without live API. Date spine and daily summary are correctness prerequisites for every analysis.
-Delivers: `tempo rederive`; `activity` + `activity_stream` structured tables; `date_spine` zero-filled; `daily_summary` view; local-date bucketing tested with edge cases (11pm run, timezone travel, DST).
+Delivers: `runos rederive`; `activity` + `activity_stream` structured tables; `date_spine` zero-filled; `daily_summary` view; local-date bucketing tested with edge cases (11pm run, timezone travel, DST).
 Avoids: Missing spine corrupting analyses; timezone bucketing errors (Pitfall 6).
 
 **Phase 4: Load Metrics + First Analysis Report (Strava end-to-end milestone)**
@@ -122,12 +122,12 @@ Avoids: Analysis trusting stale data (every report states per-source last-sync);
 
 **Phase 5: Journaling via Claude**
 Rationale: Journaling should start accumulating data as early as possible — every day without a journal entry is a lost paired data point for the correlation analysis.
-Delivers: `journal` table; `tempo journal add` validated entrypoint (RPE 1–10, activity-id resolution by date+sport); journal rows in `daily_summary`; sRPE parallel load track.
+Delivers: `journal` table; `runos journal add` validated entrypoint (RPE 1–10, activity-id resolution by date+sport); journal rows in `daily_summary`; sRPE parallel load track.
 Avoids: Claude writing SQL freely (architecture anti-pattern 4).
 
 **Phase 6: Garmin Ingestion + Wellness Transforms**
 Rationale: Garmin is an isolated phase because of its fragility. By this point the connector/transform pattern is proven; Garmin is "just another adapter."
-Delivers: `garminconnect` wrapper implementing `Connector` protocol; token persistence; explicit `tempo garmin login` command separate from scheduled sync; per-account 429 → fail-log-skip (no retry); Garmin failure isolation; `wellness_day` structured table; `calendarDate`-keyed sleep/HRV; daily summary now joins wellness.
+Delivers: `garminconnect` wrapper implementing `Connector` protocol; token persistence; explicit `runos garmin login` command separate from scheduled sync; per-account 429 → fail-log-skip (no retry); Garmin failure isolation; `wellness_day` structured table; `calendarDate`-keyed sleep/HRV; daily summary now joins wellness.
 Research flag: Higher uncertainty than any other phase. Monitor `garminconnect` upstream; pin version explicitly; budget time for possible version bump.
 Avoids: Garmin account lockout (Pitfall 2); Garmin library fragility (Pitfall 3).
 

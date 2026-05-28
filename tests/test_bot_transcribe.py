@@ -1,4 +1,4 @@
-"""Tests for ``tempo.bot.transcribe`` (Phase 10 / VOICE-04..06).
+"""Tests for ``runos.bot.transcribe`` (Phase 10 / VOICE-04..06).
 
 Covers:
 
@@ -15,7 +15,7 @@ Covers:
   ``tests/fixtures/voice/sample.ogg`` -- the only test that touches the
   real model. Marked ``slow`` (no marker convention yet; see docstring).
 
-Every test calls :func:`tempo.bot.transcribe._reset_for_tests` via an autouse
+Every test calls :func:`runos.bot.transcribe._reset_for_tests` via an autouse
 fixture so the module-level ``_MODEL`` singleton does not leak between tests
 (``monkeypatch`` alone won't undo a real ``WhisperModel`` rebind).
 """
@@ -28,8 +28,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tempo.bot import transcribe
-from tempo.config import Settings
+from runos.bot import transcribe
+from runos.config import Settings
 
 FIXTURE_OGG = Path(__file__).parent / "fixtures" / "voice" / "sample.ogg"
 
@@ -40,9 +40,9 @@ def _clear_whisper_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "WHISPER_MODEL_NAME",
         "WHISPER_COMPUTE_TYPE",
         "WHISPER_DEVICE",
-        "TEMPO_WHISPER_MODEL_NAME",
-        "TEMPO_WHISPER_COMPUTE_TYPE",
-        "TEMPO_WHISPER_DEVICE",
+        "RUNOS_WHISPER_MODEL_NAME",
+        "RUNOS_WHISPER_COMPUTE_TYPE",
+        "RUNOS_WHISPER_DEVICE",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -72,7 +72,7 @@ def test_get_model_before_warm_raises() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_warm_model_idempotent(tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_warm_model_idempotent(runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_whisper_env(monkeypatch)
     sentinel = object()
     constructor = MagicMock(return_value=sentinel)
@@ -88,7 +88,7 @@ def test_warm_model_idempotent(tempo_data_dir: Path, monkeypatch: pytest.MonkeyP
 
 
 def test_warm_model_uses_settings_values(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _clear_whisper_env(monkeypatch)
     constructor = MagicMock(return_value=object())
@@ -106,7 +106,7 @@ def test_warm_model_uses_settings_values(
 
 
 def test_warm_model_overridden_by_env(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _clear_whisper_env(monkeypatch)
     monkeypatch.setenv("WHISPER_MODEL_NAME", "base.en")
@@ -178,7 +178,7 @@ def test_transcribe_file_empty_segments_returns_empty_string(
 
 
 def test_transcribe_file_real_fixture_returns_nonempty(
-    tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Actually load ``small.en`` and transcribe the committed fixture.
 

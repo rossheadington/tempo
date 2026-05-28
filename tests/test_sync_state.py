@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from tempo.sync import state
+from runos.sync import state
 
 
 def test_read_defaults_when_absent(conn: sqlite3.Connection) -> None:

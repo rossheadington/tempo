@@ -2,7 +2,7 @@
 
 This is the headline Phase-6 requirement (GRMN-01/03; ARCHITECTURE Anti-Pattern 5):
 the fragile Garmin source is a contained failure domain. These tests drive the
-real ``tempo.sync.pipeline`` with a 429-raising fake Garmin connector and assert
+real ``runos.sync.pipeline`` with a 429-raising fake Garmin connector and assert
 that (a) Strava data still lands, (b) the pipeline does NOT raise, (c) Garmin is
 reported skipped, and (d) analysis still runs on the existing data.
 """
@@ -14,18 +14,18 @@ from datetime import date
 
 import pytest
 
-from tempo.connectors.base import RawWriter
-from tempo.connectors.garmin import (
+from runos.connectors.base import RawWriter
+from runos.connectors.garmin import (
     SOURCE as GARMIN,
 )
-from tempo.connectors.garmin import (
+from runos.connectors.garmin import (
     GarminAuthError,
     GarminConnector,
     GarminSyncError,
 )
-from tempo.connectors.strava import SOURCE as STRAVA
-from tempo.sync import pipeline
-from tempo.transforms.runner import run_transform
+from runos.connectors.strava import SOURCE as STRAVA
+from runos.sync import pipeline
+from runos.transforms.runner import run_transform
 from tests.garmin_fakes import FakeGarminClient, make_day
 from tests.strava_fakes import make_run
 
@@ -79,7 +79,7 @@ def test_garmin_unexpected_error_is_caught_and_skipped(conn: sqlite3.Connection)
 
 def test_full_sync_strava_survives_garmin_429(conn: sqlite3.Connection, monkeypatch) -> None:
     """Strava data lands and the pipeline does NOT raise when Garmin 429s (GRMN-01/03)."""
-    from tempo.config import Settings
+    from runos.config import Settings
 
     settings = Settings(data_dir="/tmp/unused")
 

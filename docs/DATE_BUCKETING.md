@@ -3,7 +3,7 @@
 **Status:** Authoritative. This rule is fixed *before any connector runs* and
 governs every join, the `date_spine`, and the `daily_summary` view.
 
-**Why this document exists.** Tempo joins activities, wellness, and journal
+**Why this document exists.** RunOS joins activities, wellness, and journal
 entries on a shared **date spine**. If "which day does this record belong to" is
 computed inconsistently across sources, every downstream analysis — training
 load vs recovery, trends, correlations — is subtly and confidently wrong (see
@@ -28,7 +28,7 @@ everything references it.
   date + sport), or the entry's own local date for rest-day notes.
 
 The spine stores **local dates only**. UTC timestamps and offsets are preserved
-verbatim in the raw layer so the bucket can be recomputed (`tempo rederive`)
+verbatim in the raw layer so the bucket can be recomputed (`runos rederive`)
 without re-fetching if the rule ever changes.
 
 ---
@@ -100,7 +100,7 @@ today."
    the local date defined here. No source uses a different convention.
 2. **Raw is preserved.** UTC timestamps + offsets stay verbatim in `raw_response`
    so the bucket is always re-derivable; the rule can be fixed and re-applied via
-   `tempo rederive` with zero network calls.
+   `runos rederive` with zero network calls.
 3. **Bucketing happens in the transform layer**, never in the connector — keeping
    it pure and re-runnable.
 

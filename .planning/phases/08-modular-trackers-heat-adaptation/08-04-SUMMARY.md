@@ -9,9 +9,9 @@ tags:
   - race-readiness-report
   - wave-2-integration
 requires:
-  - tempo.analysis.heat (Plan 08-02)
-  - tempo.analysis.races (Plan 08-01)
-  - tempo.analysis.race_link (Plan 08-03)
+  - runos.analysis.heat (Plan 08-02)
+  - runos.analysis.races (Plan 08-01)
+  - runos.analysis.race_link (Plan 08-03)
 provides:
   - "recovery.RecoveryAssessment.heat / heat_present fields"
   - "recovery._render_heat_section with A4 3-state degradation"
@@ -21,8 +21,8 @@ provides:
   - "runner.generate_all(..., heat_path=...)"
   - "runner.generate_race_readiness now calls link_races_to_activities"
 affects:
-  - tempo/cli.py (analyze + analyze recovery pass settings.heat_path)
-  - tempo/sync/daily.py (run_daily passes settings.heat_path to generate_all)
+  - runos/cli.py (analyze + analyze recovery pass settings.heat_path)
+  - runos/sync/daily.py (run_daily passes settings.heat_path to generate_all)
 tech-stack:
   added: []
   patterns:
@@ -32,11 +32,11 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - tempo/analysis/recovery.py  # +heat field + parser-thread + _render_heat_section
-    - tempo/analysis/report.py    # +_link_line + race_links param + per-race wiring
-    - tempo/analysis/runner.py    # heat_path param + link_races_to_activities call
-    - tempo/cli.py                # settings.heat_path threaded to two analyze sites
-    - tempo/sync/daily.py         # settings.heat_path threaded to generate_all
+    - runos/analysis/recovery.py  # +heat field + parser-thread + _render_heat_section
+    - runos/analysis/report.py    # +_link_line + race_links param + per-race wiring
+    - runos/analysis/runner.py    # heat_path param + link_races_to_activities call
+    - runos/cli.py                # settings.heat_path threaded to two analyze sites
+    - runos/sync/daily.py         # settings.heat_path threaded to generate_all
     - tests/test_recovery.py      # +5 heat-section tests
     - tests/test_analysis_reports.py  # +4 link-line tests +3 end-to-end tests
     - tests/test_analyze_cli.py   # seeded_cli fixture writes heat.md +1 assertion
@@ -57,7 +57,7 @@ metrics:
 
 Wave-2 integration plan: the three Wave-1 capabilities (races.result + completed,
 heat.md parser+rollup, race_link auto-link) are now visible to the user in the
-`tempo analyze recovery` and `tempo analyze race-readiness` reports, with the
+`runos analyze recovery` and `runos analyze race-readiness` reports, with the
 CLI and daily-scheduler callers updated to pass `settings.heat_path` through.
 
 ## Tasks completed
@@ -91,7 +91,7 @@ Plus end-to-end coverage:
   does not crash and the section is absent.
 - `test_analyze_recovery_subcommand` (in `test_analyze_cli.py`) seeds heat.md
   in the CLI's data dir and asserts `## Heat adaptation` is in the CLI-rendered
-  report -- end-to-end through the actual `tempo analyze recovery` invocation.
+  report -- end-to-end through the actual `runos analyze recovery` invocation.
 
 ## Race-link surfacing (TRACK-03) -- 4 phrasings pinned
 
@@ -135,7 +135,7 @@ windows be anchored to the same "as of" day the recovery verdict uses (the
 latest fitness-point day, not the wall clock). The runner has no business
 constructing dates; the analysis layer does.
 
-**Consequence vs the plan's acceptance grep** (`from tempo.analysis.heat import`
+**Consequence vs the plan's acceptance grep** (`from runos.analysis.heat import`
 in `runner.py`): the strict grep returns 0 instead of >=1, because the runner
 now relies on the heat module transitively through `recovery_mod`. Functionally
 equivalent (heat IS used by the runner pipeline), so this is a deviation in
@@ -156,8 +156,8 @@ merge, no conflicts) before starting Task 1. Documented here for the verifier.
 - All 3 task commits exist: b91ba31, 162ff09, e266d13 -- verified via `git log`.
 - Files claimed modified all exist + diff-statted in their commit.
 - 402 tests pass via `uv run pytest tests/ -x` (+12 from 390 baseline).
-- `uv run ruff check tempo/ tests/` clean.
-- `uv run ruff format --check tempo/ tests/` clean.
+- `uv run ruff check runos/ tests/` clean.
+- `uv run ruff format --check runos/ tests/` clean.
 - Smoke-tested actual rendered output for both the full-rollup and lapsed-nudge
   heat sections via inline `uv run python -c ...` against a seeded throwaway DB.
 

@@ -18,10 +18,10 @@ from pathlib import Path
 import pytest
 from stravalib.exc import RateLimitExceeded
 
-from tempo.connectors.base import RawWriter
-from tempo.connectors.strava import StravaConnector
-from tempo.connectors.tokens import TokenSet, TokenStore
-from tempo.sync import state as sync_state
+from runos.connectors.base import RawWriter
+from runos.connectors.strava import StravaConnector
+from runos.connectors.tokens import TokenSet, TokenStore
+from runos.sync import state as sync_state
 from tests.strava_fakes import FakeStravaClient, make_activity, make_streams
 
 
@@ -342,7 +342,7 @@ def test_stored_activity_ids_prefer_with_hr_filters_to_hr_recorded_activities(
 ) -> None:
     """--prefer-with-hr restricts the queue to activities with avg_hr > 0.
 
-    Used by ``tempo strava streams --prefer-with-hr`` to target the
+    Used by ``runos strava streams --prefer-with-hr`` to target the
     HR-stream backfill at activities recorded with a HR monitor paired
     (and therefore with HR data available from Strava). Requires the
     structured ``activity`` table to be populated; the join skips raw

@@ -8,15 +8,15 @@
 
 | New / Modified / Deleted | File | Role | Data Flow | Closest Analog | Match Quality |
 |---|---|---|---|---|---|
-| NEW | `tempo/analysis/heat.py` | parser + dataclasses + pure rollup | file-in → typed dataclass | `tempo/analysis/context.py` (parse_races, RacesContext, Race, _parse_kv, _parse_race_line) | exact (same shape, same lenient idioms) |
+| NEW | `runos/analysis/heat.py` | parser + dataclasses + pure rollup | file-in → typed dataclass | `runos/analysis/context.py` (parse_races, RacesContext, Race, _parse_kv, _parse_race_line) | exact (same shape, same lenient idioms) |
 | NEW | `heat.md.example` | committed user-facing template | docs | `races.md.example` | exact |
 | NEW | `tests/test_heat.py` | parser + rollup unit tests | tmp_path file → assert | `tests/test_context.py` (races section, lines 21-95) | exact |
-| MOD | `tempo/analysis/context.py` | parser + dataclasses (races-only after retirement) | file-in → typed dataclass | self (surgical edit) | n/a — self |
-| MOD | `tempo/analysis/data.py` (or new `tempo/analysis/race_link.py`) | read-only SQLite query + linker | DB read + zip with list | `tempo/analysis/data.py:srpe_by_day` + `tempo/journal/service.py:resolve_activity` (0/1/N pattern) | role-match + convention-match |
-| MOD | `tempo/analysis/recovery.py` | analysis renderer consumer | dataclass-in → render lines | self (extend render_recovery) + `tempo/analysis/noteworthy.py:next_race_within_days` (consume RacesContext) | self + role-match |
-| MOD | `tempo/analysis/report.py` | markdown renderer | dataclass-in → str | self (surgical edit — drop plan block, recovery rendering lives in recovery.py) | n/a — self |
-| MOD | `tempo/analysis/runner.py` | orchestrator | wire-in parsers/series | self (mirror `parse_races` call at line 269; remove `parse_plan` at line 270) | n/a — self |
-| MOD | `tempo/config.py` | settings + derived paths | env → typed paths | self (mirror `races_path` property at lines 142-144) | n/a — self |
+| MOD | `runos/analysis/context.py` | parser + dataclasses (races-only after retirement) | file-in → typed dataclass | self (surgical edit) | n/a — self |
+| MOD | `runos/analysis/data.py` (or new `runos/analysis/race_link.py`) | read-only SQLite query + linker | DB read + zip with list | `runos/analysis/data.py:srpe_by_day` + `runos/journal/service.py:resolve_activity` (0/1/N pattern) | role-match + convention-match |
+| MOD | `runos/analysis/recovery.py` | analysis renderer consumer | dataclass-in → render lines | self (extend render_recovery) + `runos/analysis/noteworthy.py:next_race_within_days` (consume RacesContext) | self + role-match |
+| MOD | `runos/analysis/report.py` | markdown renderer | dataclass-in → str | self (surgical edit — drop plan block, recovery rendering lives in recovery.py) | n/a — self |
+| MOD | `runos/analysis/runner.py` | orchestrator | wire-in parsers/series | self (mirror `parse_races` call at line 269; remove `parse_plan` at line 270) | n/a — self |
+| MOD | `runos/config.py` | settings + derived paths | env → typed paths | self (mirror `races_path` property at lines 142-144) | n/a — self |
 | MOD | `.env.example` | user-facing config docs | docs | self (the comment block at lines 65-67) | n/a — self |
 | MOD | `races.md.example` | committed user-facing template | docs | self (add result: example + ## Past races header) | n/a — self |
 | MOD | `tests/test_context.py` | unit tests | tmp_path file → assert | self (lines 85-95 `test_upcoming_sorts_and_filters` is the model for `completed`) | n/a — self |
@@ -29,9 +29,9 @@
 
 ## Pattern Assignments
 
-### NEW: `tempo/analysis/heat.py` (parser + dataclasses + rollup)
+### NEW: `runos/analysis/heat.py` (parser + dataclasses + rollup)
 
-**Analog:** `tempo/analysis/context.py` (entire file is the model)
+**Analog:** `runos/analysis/context.py` (entire file is the model)
 
 **Module docstring pattern** (context.py:1-24): a tidy paragraph naming the file the parser reads, calling out leniency, and including a one-line documented format example. Heat docstring mirrors this and shows the bullet shape from CONTEXT.md.
 
@@ -121,14 +121,14 @@ def parse_races(path: Path) -> RacesContext:
 ```
 **Apply to:** `parse_heat(path) -> HeatContext` — same skeleton, swap `_parse_race_line` for `_parse_heat_line`.
 
-**NEW pure function (no analog inside context.py — model after `tempo/analysis/recovery.py:assess_recovery`):** `heat_rollup(sessions, today)`:
+**NEW pure function (no analog inside context.py — model after `runos/analysis/recovery.py:assess_recovery`):** `heat_rollup(sessions, today)`:
 - Returns a frozen+slotted `HeatRollup` dataclass.
 - Pure over already-parsed sessions + a `today: date` (mirror the "pure over already-read inputs" convention in recovery.py:20-22).
 - Field naming convention from `RecoveryAssessment` (recovery.py:228-247) — short, snake_case, `_count` / `_minutes` / `_days_ago` suffixes per the CONTEXT.md spec.
 
 **Seam markers (heat.py is greenfield):**
-- Module sits next to `context.py` and `recovery.py` in `tempo/analysis/`.
-- Add to `tempo/analysis/__init__.py` module index (lines 11-19) — append a bullet for `heat`.
+- Module sits next to `context.py` and `recovery.py` in `runos/analysis/`.
+- Add to `runos/analysis/__init__.py` module index (lines 11-19) — append a bullet for `heat`.
 
 ---
 
@@ -140,8 +140,8 @@ def parse_races(path: Path) -> RacesContext:
 ```markdown
 # Races — EXAMPLE / TEMPLATE
 
-Copy this file to your Tempo data dir as `races.md` (default
-`~/.tempo/races.md`) and edit it. Tempo reads it for race-readiness context
+Copy this file to your RunOS data dir as `races.md` (default
+`~/.runos/races.md`) and edit it. RunOS reads it for race-readiness context
 (PLAN-01); it is never committed (the data dir lives outside the repo tree).
 
 ## Format
@@ -196,7 +196,7 @@ from pathlib import Path
 
 import pytest
 
-from tempo.analysis.context import (
+from runos.analysis.context import (
     parse_distance,
     parse_goal_time,
     parse_plan,
@@ -205,7 +205,7 @@ from tempo.analysis.context import (
 
 # ---- races.md -------------------------------------------------------------
 ```
-**Apply to:** test_heat.py imports `parse_heat`, `heat_rollup`, `HeatSession`, `HeatContext`, `HeatRollup` from `tempo.analysis.heat`.
+**Apply to:** test_heat.py imports `parse_heat`, `heat_rollup`, `HeatSession`, `HeatContext`, `HeatRollup` from `runos.analysis.heat`.
 
 **Missing-file test** (test_context.py:24-27):
 ```python
@@ -243,7 +243,7 @@ def test_parse_races_ignores_prose_and_headings(tmp_path: Path) -> None:
 
 ---
 
-### MOD: `tempo/analysis/context.py` (surgical edits)
+### MOD: `runos/analysis/context.py` (surgical edits)
 
 **Self-analog. Exact line targets:**
 
@@ -306,9 +306,9 @@ Per CONTEXT.md: "Returns past-dated races (date < today), sorted **most recent f
 
 ---
 
-### MOD: `tempo/analysis/data.py` (race↔activity auto-link) — OR — NEW `tempo/analysis/race_link.py`
+### MOD: `runos/analysis/data.py` (race↔activity auto-link) — OR — NEW `runos/analysis/race_link.py`
 
-**Analog 1 (data-layer query convention):** `tempo/analysis/data.py:srpe_by_day` (lines 127-143):
+**Analog 1 (data-layer query convention):** `runos/analysis/data.py:srpe_by_day` (lines 127-143):
 ```python
 def srpe_by_day(conn: sqlite3.Connection) -> dict[str, float]:
     """Return ``{day: total_srpe}`` summed across journal entries (JRNL-03).
@@ -336,7 +336,7 @@ def activities_by_day(conn: sqlite3.Connection) -> dict[str, list[ActivityRecord
 ```
 For race-link purposes a lighter `dict[str, list[int]]` (day → list of activity_id) is sufficient — counts decide ambiguity, the id is the link.
 
-**Analog 2 (0/1/N convention):** `tempo/journal/service.py:resolve_activity` docstring + behavior (service.py:8-25):
+**Analog 2 (0/1/N convention):** `runos/journal/service.py:resolve_activity` docstring + behavior (service.py:8-25):
 ```
 * **0 matches** -> no link. The entry is a rest-day / non-activity reflection;
   ``activity_id`` is ``None``. (Valid: rest days get journaled too.)
@@ -347,7 +347,7 @@ For race-link purposes a lighter `dict[str, list[int]]` (day → list of activit
 ```
 **Apply to:** `link_races_to_activities(races, conn) -> list[RaceLink]` — same 0/1/N taxonomy, but instead of raising on N>1 (which would crash analyses), return a `RaceLink` with `link_status='unlinked_ambiguous'`. Per CONTEXT.md: "**>1 match** → `unlinked_ambiguous`, `activity_id=None`. The user did multiple things on race day; we refuse to guess (mirrors journal-service convention from Phase 5)."
 
-**Dataclass shape** — model after `tempo/analysis/data.py:SourceFreshness` (lines 34-41):
+**Dataclass shape** — model after `runos/analysis/data.py:SourceFreshness` (lines 34-41):
 ```python
 @dataclass(frozen=True, slots=True)
 class SourceFreshness:
@@ -365,12 +365,12 @@ class SourceFreshness:
 - **Option B — new race_link.py:** Pro: dedicated module symmetric with `analysis/heat.py`. Con: another import. Recommend B if the planner takes the deferred `context.py → races.py` rename in CONTEXT.md (consistent module-per-concern). Otherwise A.
 
 **Seam markers:**
-- Add the function name to `tempo/analysis/__init__.py` module index after `data` bullet.
-- Called from `tempo/analysis/runner.py:generate_race_readiness` after `parse_races` (today's line 269).
+- Add the function name to `runos/analysis/__init__.py` module index after `data` bullet.
+- Called from `runos/analysis/runner.py:generate_race_readiness` after `parse_races` (today's line 269).
 
 ---
 
-### MOD: `tempo/analysis/recovery.py` (add heat-adaptation section)
+### MOD: `runos/analysis/recovery.py` (add heat-adaptation section)
 
 **Self-analog. Wiring touchpoints:**
 
@@ -402,22 +402,22 @@ out.append("")
 **Optional: extend `RecoveryAssessment`** — the cleanest place to attach heat rollup is as an optional field on the assessment dataclass (recovery.py:228-247), so `assess_recovery` (or a new `assess_recovery_with_heat`) carries it through to render. Mirror the `signals: list[SignalAssessment]` field pattern at line 246. Planner picks: pass-through param (simpler, no dataclass change) vs. field-on-assessment (more honest about the data flow).
 
 **Seam markers:**
-- Import: `from tempo.analysis.heat import HeatRollup` near the top with the other in-package imports (recovery.py:31-34).
+- Import: `from runos.analysis.heat import HeatRollup` near the top with the other in-package imports (recovery.py:31-34).
 - Caller in runner.py:289-311 (`generate_recovery`) gets the rollup before calling `render_recovery`.
 
 ---
 
-### MOD: `tempo/analysis/report.py` (surgical removal of plan block)
+### MOD: `runos/analysis/report.py` (surgical removal of plan block)
 
 **Self-analog. Exact removals:**
 
 **REMOVE import of PlanContext** (report.py:20):
 ```python
-from tempo.analysis.context import PlanContext, Race, RacesContext
+from runos.analysis.context import PlanContext, Race, RacesContext
 ```
 →
 ```python
-from tempo.analysis.context import Race, RacesContext
+from runos.analysis.context import Race, RacesContext
 ```
 
 **REMOVE plan param + plan block** (report.py:188-223 — the `render_race_readiness` signature + body):
@@ -444,7 +444,7 @@ This insertion point is after line 277 (`out.append(f"- **Form check**: {r.form_
 
 ---
 
-### MOD: `tempo/analysis/runner.py` (orchestrator wiring)
+### MOD: `runos/analysis/runner.py` (orchestrator wiring)
 
 **Self-analog. Exact line targets:**
 
@@ -520,20 +520,20 @@ def generate_recovery(
         heat_rollup=heat_roll,    # <-- NEW
     )
 ```
-**Import:** add `from tempo.analysis import heat as heat_mod` near the other `from tempo.analysis import ...` imports (runner.py:23-28).
+**Import:** add `from runos.analysis import heat as heat_mod` near the other `from runos.analysis import ...` imports (runner.py:23-28).
 
 **ADD heat_path to `generate_all` signature** (mirror what was just removed for plan_path).
 
 **ADD race-link resolution in `build_race_readiness`** (runner.py:170-206). After computing the `upcoming` list at line 182 (or paralleling it on `completed`), call `race_link.link_races_to_activities(upcoming_races, conn)` and zip the results into the per-race findings. Per CONTEXT.md: "Called from `analysis/runner.py` during race-readiness rendering."
 
 **Seam markers:**
-- `from tempo.analysis import context as ctx` (line 23) stays — `parse_races` is still here.
-- `from tempo.analysis.context import Race` (line 29) stays.
-- Callers of `generate_race_readiness` / `generate_all` need updating: `tempo/cli.py:445-457`, `tempo/cli.py:487-499`, `tempo/sync/daily.py:106-113`.
+- `from runos.analysis import context as ctx` (line 23) stays — `parse_races` is still here.
+- `from runos.analysis.context import Race` (line 29) stays.
+- Callers of `generate_race_readiness` / `generate_all` need updating: `runos/cli.py:445-457`, `runos/cli.py:487-499`, `runos/sync/daily.py:106-113`.
 
 ---
 
-### MOD: `tempo/config.py` (paths)
+### MOD: `runos/config.py` (paths)
 
 **Self-analog. Exact line targets:**
 
@@ -574,8 +574,8 @@ Insert immediately after `races_path` (between current lines 144 and 146) to kee
 
 **REMOVE plan mention** in the trailing comment block (lines 65-67):
 ```
-# Race-readiness context (PLAN-01/02): Tempo reads `races.md` and `plan.md` from
-# the data dir (default ~/.tempo/). Copy the committed races.md.example /
+# Race-readiness context (PLAN-01/02): RunOS reads `races.md` and `plan.md` from
+# the data dir (default ~/.runos/). Copy the committed races.md.example /
 # plan.md.example there and edit them. These files are never committed.
 ```
 **Apply to:** rewrite as something like:
@@ -583,11 +583,11 @@ Insert immediately after `races_path` (between current lines 144 and 146) to kee
 # Tracker files (read by analyses for context):
 #   races.md  -- race-readiness context (PLAN-01)
 #   heat.md   -- heat-adaptation sessions (recovery context)
-# Tempo reads them from TEMPO_CONTENT_DIR (default ~/.tempo/). Copy the committed
+# RunOS reads them from RUNOS_CONTENT_DIR (default ~/.runos/). Copy the committed
 # *.md.example templates there and edit them. These files are never committed.
 ```
 
-No new `TEMPO_*` vars (per CONTEXT.md).
+No new `RUNOS_*` vars (per CONTEXT.md).
 
 ---
 
@@ -739,14 +739,14 @@ Drop heat.md content into `settings.heat_path` in the fixture and assert `"## He
 **EDIT lines 239-241:**
 ```markdown
 **Plan & race context**: copy `races.md.example` / `plan.md.example` into your
-data dir as `races.md` / `plan.md` (default `~/.tempo/`) and edit them. Tempo
+data dir as `races.md` / `plan.md` (default `~/.runos/`) and edit them. RunOS
 reads them for race-readiness context; they are never committed.
 ```
 →
 ```markdown
 **Tracker files**: copy `races.md.example` and `heat.md.example` into your
-content dir as `races.md` / `heat.md` (default `~/.tempo/`) and edit them.
-Tempo reads `races.md` for race-readiness context and `heat.md` for heat-adaptation
+content dir as `races.md` / `heat.md` (default `~/.runos/`) and edit them.
+RunOS reads `races.md` for race-readiness context and `heat.md` for heat-adaptation
 context in the recovery report; both are never committed.
 ```
 
@@ -763,15 +763,15 @@ Delete the file at repo root. No analog needed — pure removal.
 ## Shared Patterns
 
 ### Lenient parser convention
-**Source:** `tempo/analysis/context.py:186-200` (`parse_races`)
-**Apply to:** `tempo/analysis/heat.py:parse_heat` (NEW)
+**Source:** `runos/analysis/context.py:186-200` (`parse_races`)
+**Apply to:** `runos/analysis/heat.py:parse_heat` (NEW)
 - Missing file → `(present=False, …=[], source_path=str(path))`.
 - Skip empty + `#` lines + non-bullet lines.
 - Per-line parser returns `None` on failure; caller filters Nones.
 - Never raise on malformed lines — silently drop.
 
 ### Frozen+slotted dataclass with `present` flag
-**Source:** `tempo/analysis/context.py:49-65` (`RacesContext`)
+**Source:** `runos/analysis/context.py:49-65` (`RacesContext`)
 **Apply to:** `HeatContext` (new), and any new `RaceLink` collection wrapper if added.
 - `@dataclass(frozen=True, slots=True)`.
 - `present: bool` first field.
@@ -779,14 +779,14 @@ Delete the file at repo root. No analog needed — pure removal.
 - Lists default to `field(default_factory=list)`.
 
 ### 0/1/N matching convention
-**Source:** `tempo/journal/service.py:8-25` (resolve_activity docstring) + behavior
+**Source:** `runos/journal/service.py:8-25` (resolve_activity docstring) + behavior
 **Apply to:** `link_races_to_activities` (NEW)
 - 0 matches → "no link", `activity_id=None`, status: `unlinked_no_match`.
 - 1 match → auto-link, `activity_id=<id>`, status: `linked`.
 - N>1 matches → refuse to guess. Journal raises; race-link returns `unlinked_ambiguous` (analyses must not crash on multi-activity race days).
 
 ### Pure renderer takes already-computed dataclasses
-**Source:** `tempo/analysis/recovery.py:402-455` (`render_recovery`) and `tempo/analysis/report.py:188-279` (`render_race_readiness`)
+**Source:** `runos/analysis/recovery.py:402-455` (`render_recovery`) and `runos/analysis/report.py:188-279` (`render_race_readiness`)
 **Apply to:** heat rendering inside recovery.py.
 - Renderer is a pure string builder; it does no DB I/O.
 - Inputs are already-computed dataclasses + the freshness header.
@@ -794,13 +794,13 @@ Delete the file at repo root. No analog needed — pure removal.
 - Sections degrade by being **omitted** when their inputs are empty/None (not by emitting "no data" text inside an already-rendered section header).
 
 ### Frozen-slot status fields are bare `str`
-**Source:** `tempo/analysis/recovery.py:65` (`SignalAssessment.status`), recovery.py:244 (`RecoveryAssessment.status`)
+**Source:** `runos/analysis/recovery.py:65` (`SignalAssessment.status`), recovery.py:244 (`RecoveryAssessment.status`)
 **Apply to:** `RaceLink.link_status: str` (with the four documented values in CONTEXT.md). Convention is bare `str` not `Literal[...]` — keeps the dataclasses simple and tests can assert string equality.
 
 ### Derived path properties on Settings
-**Source:** `tempo/config.py:141-149` (`races_path`, `plan_path`)
+**Source:** `runos/config.py:141-149` (`races_path`, `plan_path`)
 **Apply to:** new `heat_path` property — same shape, `content_root / "heat.md"`.
-- All paths derived from `content_root` (not `data_dir`) so they follow `TEMPO_CONTENT_DIR` overrides.
+- All paths derived from `content_root` (not `data_dir`) so they follow `RUNOS_CONTENT_DIR` overrides.
 - No `ensure_dirs` change — these are files, not directories.
 
 ---
@@ -814,12 +814,12 @@ None. Every file in this phase has a clear in-repo analog (either self-analog fo
 ## Metadata
 
 **Analog search scope:**
-- `tempo/analysis/` (full directory — read context.py, data.py, recovery.py, report.py, runner.py, noteworthy.py headers)
-- `tempo/config.py` (full)
-- `tempo/cli.py` (race-readiness section)
-- `tempo/sync/daily.py` (race-readiness section)
-- `tempo/journal/service.py` (0/1/N convention)
-- `tempo/migrations/0002_structured.sql` (activity.day column shape)
+- `runos/analysis/` (full directory — read context.py, data.py, recovery.py, report.py, runner.py, noteworthy.py headers)
+- `runos/config.py` (full)
+- `runos/cli.py` (race-readiness section)
+- `runos/sync/daily.py` (race-readiness section)
+- `runos/journal/service.py` (0/1/N convention)
+- `runos/migrations/0002_structured.sql` (activity.day column shape)
 - `tests/test_context.py`, `tests/test_analysis_reports.py`, `tests/test_analyze_cli.py`, `tests/test_config.py`, `tests/test_recovery.py` (header for shape)
 - `races.md.example`, `plan.md.example`, `.env.example`, `README.md`
 

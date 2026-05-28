@@ -56,7 +56,7 @@ grep -n "Edinburgh Half" training/races.md
 # Then use Edit tool to append the result field
 ```
 
-If Ross gives a Strava activity id, also append `| strava: <id>`. Otherwise the post-race link sweep (`tempo/analysis/race_link.py`) will auto-link based on date + distance match.
+If Ross gives a Strava activity id, also append `| strava: <id>`. Otherwise the post-race link sweep (`runos/analysis/race_link.py`) will auto-link based on date + distance match.
 
 Reply: "Logged result. Edinburgh Half: 1:23:47 (target 1:24). 13 seconds under."
 
@@ -69,9 +69,9 @@ If Ross is significantly changing the race (different distance, different city, 
 ## How to verify
 
 ```bash
-TEMPO_CONTENT_DIR=$(pwd)/training uv run python -c "
+RUNOS_CONTENT_DIR=$(pwd)/training uv run python -c "
 from pathlib import Path
-from tempo.analysis.races import parse_races
+from runos.analysis.races import parse_races
 ctx = parse_races(Path('training/races.md'))
 for r in ctx.races:
     result_str = f' RESULT={r.result}' if r.result else ''

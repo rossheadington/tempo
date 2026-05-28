@@ -5,25 +5,25 @@ subsystem: analysis
 tags: [nutrition, parser, lenient, rollup, layer-1]
 requires: []
 provides:
-  - tempo.analysis.nutrition.parse_food
-  - tempo.analysis.nutrition.daily_nutrition
-  - tempo.analysis.nutrition.nutrition_rollup
-  - tempo.analysis.nutrition.FoodEntry
-  - tempo.analysis.nutrition.MealBlock
-  - tempo.analysis.nutrition.FoodContext
-  - tempo.analysis.nutrition.DailyNutrition
-  - tempo.analysis.nutrition.NutritionRollup
-  - tempo.config.Settings.food_path
-  - tempo.config.Settings.target_kcal_default
+  - runos.analysis.nutrition.parse_food
+  - runos.analysis.nutrition.daily_nutrition
+  - runos.analysis.nutrition.nutrition_rollup
+  - runos.analysis.nutrition.FoodEntry
+  - runos.analysis.nutrition.MealBlock
+  - runos.analysis.nutrition.FoodContext
+  - runos.analysis.nutrition.DailyNutrition
+  - runos.analysis.nutrition.NutritionRollup
+  - runos.config.Settings.food_path
+  - runos.config.Settings.target_kcal_default
 affects:
-  - tempo/analysis/__init__.py
+  - runos/analysis/__init__.py
 key-files:
   created:
-    - tempo/analysis/nutrition.py
+    - runos/analysis/nutrition.py
     - tests/test_nutrition.py
   modified:
-    - tempo/config.py
-    - tempo/analysis/__init__.py
+    - runos/config.py
+    - runos/analysis/__init__.py
 decisions:
   - Single parser handles BOTH food.md formats (inline + block); state machine tracks active-block context as it iterates lines
   - Latest-wins dedup key is (date, meal_name, food_label) — different food_labels under the same (date, meal) stay as separate entries
@@ -45,10 +45,10 @@ Lenient two-format `food.md` parser + per-day aggregation + 7d/28d rolling rollu
 
 | Path | LoC | Status |
 | --- | --- | --- |
-| `tempo/analysis/nutrition.py` | 557 | new |
+| `runos/analysis/nutrition.py` | 557 | new |
 | `tests/test_nutrition.py` | 469 | new |
-| `tempo/config.py` | +20 | modified |
-| `tempo/analysis/__init__.py` | +1 | modified |
+| `runos/config.py` | +20 | modified |
+| `runos/analysis/__init__.py` | +1 | modified |
 
 `nutrition.py` is bigger than `weight.py` (304 LoC) because of the two-format parser surface — within the plan's 250-380 LoC target band on the higher end (the module docstring and the dataclass docstrings carry more weight here because the contract is more elaborate).
 
@@ -63,7 +63,7 @@ Lenient two-format `food.md` parser + per-day aggregation + 7d/28d rolling rollu
 
 Full suite: **641 passed, 1 deselected** (the slow Whisper fixture). No regressions.
 
-Ruff: clean across `tempo/` + `tests/`.
+Ruff: clean across `runos/` + `tests/`.
 
 ## Equivalence + goal verification (NUTR-03 + NUTR-04)
 
@@ -90,13 +90,13 @@ None.
 ## Commit
 
 - RED gate: `48fcb0c` — `test(16-01): add tests/test_nutrition.py for nutrition parser + rollup` (22 tests, RED before nutrition.py existed)
-- GREEN gate: `fbbd78e` — `feat(16-01): add tempo/analysis/nutrition.py parser + rollup + Settings.food_path` (parser + config + module index, all 22 tests green, ruff clean, full suite green)
+- GREEN gate: `fbbd78e` — `feat(16-01): add runos/analysis/nutrition.py parser + rollup + Settings.food_path` (parser + config + module index, all 22 tests green, ruff clean, full suite green)
 
 ## Self-Check: PASSED
 
-- `tempo/analysis/nutrition.py` exists: FOUND
+- `runos/analysis/nutrition.py` exists: FOUND
 - `tests/test_nutrition.py` exists: FOUND
-- `tempo/config.py` modified: FOUND (food_path property + target_kcal_default field)
-- `tempo/analysis/__init__.py` modified: FOUND (nutrition bullet added)
+- `runos/config.py` modified: FOUND (food_path property + target_kcal_default field)
+- `runos/analysis/__init__.py` modified: FOUND (nutrition bullet added)
 - Commit `48fcb0c` (RED): FOUND in git log
 - Commit `fbbd78e` (GREEN): FOUND in git log

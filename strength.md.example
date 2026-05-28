@@ -1,8 +1,8 @@
 # Strength sessions -- EXAMPLE / TEMPLATE
 
-Copy this file to your Tempo content dir as `strength.md` (default
-`<content_root>/strength.md`, redirect with `TEMPO_CONTENT_DIR`) and edit it.
-Tempo reads it for S&C context in the recovery report (SC-03); it is never
+Copy this file to your RunOS content dir as `strength.md` (default
+`<content_root>/strength.md`, redirect with `RUNOS_CONTENT_DIR`) and edit it.
+RunOS reads it for S&C context in the recovery report (SC-03); it is never
 committed (the content dir lives outside the repo tree).
 
 ## Format
@@ -12,7 +12,7 @@ optional start time, and optional name. Metadata lines and exercise bullets
 sit beneath it. Parsing is lenient: unknown keys are silently ignored,
 malformed lines are skipped, and a missing file degrades to `present=False`
 so analyses still run. Append new sessions to the bottom -- the file is
-treated as append-only by convention (Tempo never edits it).
+treated as append-only by convention (RunOS never edits it).
 
 **Header** -- `## YYYY-MM-DD [HH:MM] [— Name]`
 

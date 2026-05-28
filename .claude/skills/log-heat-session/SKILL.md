@@ -32,10 +32,10 @@ Concrete examples:
 3. **Verify with `parse_heat`:**
 
 ```bash
-TEMPO_CONTENT_DIR=$(pwd)/training uv run python -c "
+RUNOS_CONTENT_DIR=$(pwd)/training uv run python -c "
 from pathlib import Path
 from datetime import date
-from tempo.analysis.heat import parse_heat, heat_rollup
+from runos.analysis.heat import parse_heat, heat_rollup
 ctx = parse_heat(Path('training/heat.md'))
 r = heat_rollup(ctx.sessions, date.today())
 print(f'sessions_7d={r.sessions_7d} ({r.minutes_7d} min), last={r.days_since_last} days ago')

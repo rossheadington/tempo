@@ -1,7 +1,7 @@
-"""Unit tests for the one-shot Telegram failure notifier (tempo/sync/notify.py).
+"""Unit tests for the one-shot Telegram failure notifier (runos/sync/notify.py).
 
 The notifier hits the Telegram Bot API directly via ``urllib.request`` so we
-have a single seam to mock: ``tempo.sync.notify._post_message``. Tests cover
+have a single seam to mock: ``runos.sync.notify._post_message``. Tests cover
 the no-Telegram-configured silent path, the success path, the all-sources-ok
 silent path, the per-source-failure message body, the catastrophic-exception
 message body, and the send-failure-is-swallowed contract.
@@ -14,16 +14,16 @@ from urllib.error import URLError
 
 import pytest
 
-from tempo.config import Settings
-from tempo.sync import notify
-from tempo.sync.pipeline import SourceResult
+from runos.config import Settings
+from runos.sync import notify
+from runos.sync.pipeline import SourceResult
 
 
 def _settings_with_bot(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Settings:
     """Settings with Telegram bot configured. ``_env_file=None`` neutralises the
     developer's real `.env` (which has the live bot token); env vars supply
     fake values instead."""
-    monkeypatch.setenv("TEMPO_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("RUNOS_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token-123")
     monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "555")
     return Settings(_env_file=None)
@@ -32,7 +32,7 @@ def _settings_with_bot(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Settings:
 def _settings_without_bot(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Settings:
     """Settings with NO Telegram bot configured. ``_env_file=None`` is
     essential here -- the dev's real .env would otherwise leak in."""
-    monkeypatch.setenv("TEMPO_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("RUNOS_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_OWNER_CHAT_ID", raising=False)
     return Settings(_env_file=None)
@@ -57,7 +57,7 @@ def test_format_failure_message_lists_only_failures() -> None:
         SourceResult("garmin", ok=False, detail="429 rate-limit"),
     ]
     body = notify.format_failure_message(results)
-    assert "Tempo sync failed" in body
+    assert "RunOS sync failed" in body
     assert "garmin" in body
     assert "429 rate-limit" in body
     assert "strava" not in body
@@ -79,7 +79,7 @@ def test_format_exception_message_includes_class_and_str() -> None:
     """Catastrophic message names the exception class + message."""
     exc = RuntimeError("connector unavailable")
     body = notify.format_exception_message(exc)
-    assert "Tempo sync crashed" in body
+    assert "RunOS sync crashed" in body
     assert "RuntimeError" in body
     assert "connector unavailable" in body
 
@@ -154,7 +154,7 @@ def test_send_failure_alert_posts_when_any_source_fails(
     token, chat_id, body = posted[0]
     assert token == "fake-token-123"
     assert chat_id == 555
-    assert "Tempo sync failed" in body
+    assert "RunOS sync failed" in body
     assert "garmin" in body
     assert "429 rate-limit" in body
 
@@ -175,7 +175,7 @@ def test_send_failure_alert_swallows_telegram_errors(
     monkeypatch.setattr(notify, "_post_message", fake_post)
 
     results = [SourceResult("garmin", ok=False, detail="429")]
-    with caplog.at_level("WARNING", logger="tempo.sync.notify"):
+    with caplog.at_level("WARNING", logger="runos.sync.notify"):
         sent = notify.send_failure_alert(settings, results)
     assert sent is False
     assert "telegram notify failed" in caplog.text
@@ -193,7 +193,7 @@ def test_send_failure_alert_swallows_runtime_telegram_rejection(
     monkeypatch.setattr(notify, "_post_message", fake_post)
 
     results = [SourceResult("garmin", ok=False, detail="429")]
-    with caplog.at_level("WARNING", logger="tempo.sync.notify"):
+    with caplog.at_level("WARNING", logger="runos.sync.notify"):
         sent = notify.send_failure_alert(settings, results)
     assert sent is False
     assert "telegram notify failed" in caplog.text
@@ -218,7 +218,7 @@ def test_send_exception_alert_posts_when_configured(
     assert sent is True
     assert len(posted) == 1
     _, _, body = posted[0]
-    assert "Tempo sync crashed" in body
+    assert "RunOS sync crashed" in body
     assert "ValueError" in body
     assert "creds missing" in body
 

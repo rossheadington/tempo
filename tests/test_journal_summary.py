@@ -17,16 +17,16 @@ import sqlite3
 
 import pytest
 
-from tempo.analysis.load import (
+from runos.analysis.load import (
     DayLoad,
     LoadConfig,
     LoadMethod,
     apply_srpe_fallback,
 )
-from tempo.analysis.runner import build_load_series
-from tempo.connectors.base import RawWriter
-from tempo.journal import add_entry
-from tempo.transforms.runner import run_rederive
+from runos.analysis.runner import build_load_series
+from runos.connectors.base import RawWriter
+from runos.journal import add_entry
+from runos.transforms.runner import run_rederive
 from tests.strava_fakes import make_run
 
 
