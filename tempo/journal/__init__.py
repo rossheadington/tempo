@@ -22,6 +22,7 @@ from tempo.journal.service import (
     MultipleActivitiesError,
     add_entry,
     compute_srpe,
+    link_orphan_entries,
     list_entries,
     resolve_activity,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "MultipleActivitiesError",
     "add_entry",
     "compute_srpe",
+    "link_orphan_entries",
     "list_entries",
     "resolve_activity",
 ]

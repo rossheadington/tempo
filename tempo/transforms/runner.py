@@ -26,6 +26,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 
+from tempo.journal.service import link_orphan_entries
 from tempo.transforms import spine
 from tempo.transforms import strava as strava_tf
 from tempo.transforms import wellness as wellness_tf
@@ -87,6 +88,17 @@ def run_transform(conn: sqlite3.Connection, *, fill_to: date | None = None) -> T
     """
     with conn:  # one atomic transaction
         result = _rebuild(conn, fill_to=fill_to)
+    # Post-transform hook: link any orphan journal entries (recorded via the
+    # Telegram bot before Strava had synced) to the activities that just
+    # arrived. Idempotent; cheap on a fully-linked DB. Lives outside the
+    # transform transaction so a failure here doesn't roll back the structured
+    # rebuild -- the orphan stays linkable on the next transform.
+    try:
+        linked = link_orphan_entries(conn)
+        if linked:
+            logger.info("orphan journal entries linked: %d", linked)
+    except sqlite3.Error as exc:  # noqa: BLE001 - log + swallow; transforms succeeded
+        logger.warning("orphan-link pass failed (non-fatal): %s", exc)
     logger.info(
         "transform: %d activities, %d streams, %d wellness days, %d spine days",
         result.activities,

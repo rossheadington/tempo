@@ -358,6 +358,88 @@ def _validate_day(day: str) -> str:
         raise JournalError(f"day must be an ISO YYYY-MM-DD date, got {day!r}") from exc
 
 
+def link_orphan_entries(
+    conn: sqlite3.Connection, *, day: str | None = None
+) -> int:
+    """Link orphan journal entries (``activity_id IS NULL``) to matching activities.
+
+    Walks every journal row where ``activity_id`` is NULL (optionally filtered to
+    a single ``day``) and looks for an activity on that day matching the entry's
+    sport. Applies the same 0/1/many convention as :func:`resolve_activity`:
+
+    * **0 matches** -- leave the entry orphaned (it really is a rest-day reflection
+      or the activity hasn't arrived yet; future sync will retry).
+    * **exactly 1 match** -- UPDATE the entry to set ``activity_id``. If the entry
+      has no ``duration_min`` set, also recompute ``srpe`` using the now-linked
+      activity's ``moving_s`` (else ``elapsed_s``), so the sRPE load track for
+      the day reflects the linked activity duration.
+    * **many matches** -- skip (caller must disambiguate manually with
+      ``--activity-id`` via :func:`add_entry`). Never guesses on ambiguity.
+
+    Designed to run as a post-transform hook: after every ``tempo transform``,
+    newly-arrived activities get auto-linked to any journal entries the user
+    captured via the Telegram bot before Strava had synced. Idempotent --
+    re-running it on a fully-linked DB is a no-op.
+
+    Args:
+        conn: SQLite connection (caller owns the transaction; this function
+            wraps its writes in ``with conn:`` so a partial failure rolls back).
+        day: If given (ISO ``YYYY-MM-DD``), only consider orphans on that day.
+            ``None`` (default) sweeps every orphan in the table.
+
+    Returns:
+        The number of entries linked (0 if nothing was eligible).
+    """
+    where = "activity_id IS NULL"
+    params: tuple[object, ...] = ()
+    if day is not None:
+        where += " AND day = ?"
+        params = (day,)
+    orphans = conn.execute(
+        f"SELECT id, day, sport, rpe, duration_min FROM journal WHERE {where}",
+        params,
+    ).fetchall()
+
+    linked = 0
+    with conn:
+        for row in orphans:
+            entry_id = int(row["id"])
+            entry_day = str(row["day"])
+            entry_sport = row["sport"]
+            entry_rpe = int(row["rpe"])
+            entry_dur = row["duration_min"]
+            # Only attempt if the entry has a sport hint -- without it the
+            # resolution would be "any activity on the day", which we treat as
+            # too lossy to auto-apply (mirrors resolve_activity's ambiguity rule).
+            if not entry_sport:
+                continue
+            candidates = _activities_on_day(conn, entry_day, entry_sport)
+            if len(candidates) != 1:
+                continue
+            match = candidates[0]
+            # Recompute sRPE if the entry didn't carry an explicit duration --
+            # the newly-linked activity's moving_s (or elapsed_s) is now the
+            # authoritative duration for this entry's load track (JRNL-03).
+            if entry_dur is None:
+                derived_min = None
+                if match.moving_s and match.moving_s > 0:
+                    derived_min = float(match.moving_s) / 60.0
+                elif match.elapsed_s and match.elapsed_s > 0:
+                    derived_min = float(match.elapsed_s) / 60.0
+                new_srpe = compute_srpe(entry_rpe, derived_min)
+                conn.execute(
+                    "UPDATE journal SET activity_id = ?, srpe = ? WHERE id = ?",
+                    (match.activity_id, new_srpe, entry_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE journal SET activity_id = ? WHERE id = ?",
+                    (match.activity_id, entry_id),
+                )
+            linked += 1
+    return linked
+
+
 def list_entries(conn: sqlite3.Connection, *, limit: int | None = None) -> list[JournalEntry]:
     """Return journal entries, most recent first (by day then id)."""
     sql = (

@@ -829,6 +829,34 @@ def journal_add(
         typer.echo("  sRPE not computed (no duration available).")
 
 
+@journal_app.command("link-orphans")
+def journal_link_orphans(
+    day: str | None = typer.Option(
+        None,
+        "--day",
+        help="ISO YYYY-MM-DD to restrict the sweep to. Defaults to all orphans.",
+    ),
+) -> None:
+    """Link orphan journal entries (activity_id IS NULL) to matching activities.
+
+    Auto-runs after every ``tempo transform`` as a post-transform hook -- this
+    CLI command is for manual / debugging use. Safe to run repeatedly: a
+    fully-linked DB is a no-op. Uses the same 0/1/many rule as the writer
+    (skips ambiguous days; never guesses).
+    """
+    from tempo.journal import link_orphan_entries
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    conn = db.init_db(settings.db_path)
+    try:
+        linked = link_orphan_entries(conn, day=day)
+    finally:
+        conn.close()
+    scope = f"day={day}" if day else "all days"
+    typer.echo(f"Linked {linked} orphan journal entr{'y' if linked == 1 else 'ies'} ({scope}).")
+
+
 @journal_app.command("list")
 def journal_list(
     limit: int | None = typer.Option(None, "--limit", help="Max entries to show."),
