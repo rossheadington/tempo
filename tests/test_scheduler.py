@@ -214,10 +214,16 @@ def _sync_paths(tmp_path: Path) -> scheduler.SchedulerPaths:
 
 
 def test_render_hourly_sync_plist_parses_and_uses_sync_subcommand(tmp_path: Path) -> None:
-    """Hourly plist runs `tempo sync --notify-on-failure`, not run-daily."""
+    """Hourly plist runs `tempo sync --notify-on-failure --with-recent-streams`."""
     parsed = plistlib.loads(scheduler.render_hourly_sync_plist(_sync_paths(tmp_path)).encode())
     assert parsed["Label"] == scheduler.HOURLY_SYNC_LABEL
-    assert parsed["ProgramArguments"][-2:] == ["sync", "--notify-on-failure"]
+    # Hourly job: sync with both the notify flag (silent-on-success contract)
+    # and the recent-streams flag (HR streams for recent activities).
+    assert parsed["ProgramArguments"][-3:] == [
+        "sync",
+        "--notify-on-failure",
+        "--with-recent-streams",
+    ]
 
 
 def test_render_hourly_sync_plist_uses_start_interval(tmp_path: Path) -> None:

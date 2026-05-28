@@ -244,11 +244,21 @@ def resolve_hourly_sync_paths(
 ) -> SchedulerPaths:
     """Resolve absolute paths for the hourly-sync plist.
 
-    The argv is ``tempo sync --notify-on-failure`` so a Telegram message
-    fires only when a source fails -- the silent-on-success contract the
-    hourly schedule depends on.
+    The argv is ``tempo sync --notify-on-failure --with-recent-streams`` so
+    every hourly run:
+
+    * Pulls Strava + Garmin activity summaries into raw.
+    * Runs transform so newly-synced activities land in the structured
+      ``activity`` table.
+    * Fetches HR streams for recent (last 24h) activities recorded with a
+      HR monitor that don't yet have streams stored.
+    * Runs transform again so the structured ``activity_stream`` table is
+      up-to-date.
+    * Sends a Telegram message ONLY if anything failed (silent on success).
     """
-    program, args = _find_program(project_dir, "sync", "--notify-on-failure")
+    program, args = _find_program(
+        project_dir, "sync", "--notify-on-failure", "--with-recent-streams"
+    )
     log_dir = data_dir / "logs"
     return SchedulerPaths(
         program=program,

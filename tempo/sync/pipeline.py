@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 from tempo.config import Settings
 from tempo.connectors.base import RawWriter
@@ -122,6 +123,90 @@ def run_strava_sync(conn: sqlite3.Connection, settings: Settings) -> SourceResul
         ).fetchone()[0]
     )
     return SourceResult(STRAVA_SOURCE, ok=True, detail="ok", rows=strava_rows)
+
+
+@dataclass(frozen=True, slots=True)
+class StreamFetchResult:
+    """Outcome of a recent-streams fetch pass within the sync."""
+
+    candidates: int                #: Recent HR-recorded activities missing streams
+    fetched: int                   #: How many actually got pulled this call
+    activity_ids: tuple[int, ...]  #: Ids of activities streams were fetched for
+    error: str | None = None       #: Set when the connector build / fetch failed terminally
+
+
+def fetch_recent_streams(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    *,
+    lookback_days: int = 1,
+) -> StreamFetchResult:
+    """Fetch HR streams for recent HR-recorded Strava activities still missing them.
+
+    Looks at the structured ``activity`` table for rows with
+    ``day >= today - lookback_days`` AND ``avg_hr > 0`` (i.e. the activity
+    was recorded with a HR monitor paired) AND no existing stream rows in
+    ``activity_stream``. For each, calls
+    :meth:`tempo.connectors.strava.StravaConnector.fetch_streams` -- which
+    is lazy + idempotent, so re-running over the same set is safe.
+
+    **Requires the structured layer to be populated.** The caller should run
+    ``tempo transform`` before this function so newly-synced activities are
+    visible in ``activity``, and again after so the fetched stream raw rows
+    are transformed into ``activity_stream``.
+
+    Rate-limit budget: 1 Strava request per activity. For a typical day with
+    1-3 sessions, this is well under the 200/15min cap. For a catch-up
+    after a multi-day Mac sleep, ``lookback_days`` bounds the worst case.
+    """
+    cutoff = (date.today() - timedelta(days=lookback_days)).isoformat()
+    rows = conn.execute(
+        """
+        SELECT activity_id FROM activity
+        WHERE day >= ?
+          AND avg_hr IS NOT NULL AND avg_hr > 0
+          AND activity_id NOT IN (SELECT activity_id FROM activity_stream)
+        ORDER BY day DESC, activity_id DESC
+        """,
+        (cutoff,),
+    ).fetchall()
+    candidates = [int(r[0]) for r in rows]
+    if not candidates:
+        return StreamFetchResult(candidates=0, fetched=0, activity_ids=())
+
+    try:
+        connector = build_strava_connector(settings)
+    except Exception as exc:  # noqa: BLE001 - building must not crash the sync
+        logger.warning("recent-streams: strava connector unavailable; skipping: %s", exc)
+        return StreamFetchResult(
+            candidates=len(candidates),
+            fetched=0,
+            activity_ids=(),
+            error=f"connector unavailable: {exc}",
+        )
+
+    raw = RawWriter(conn, STRAVA_SOURCE)
+    fetched_ids: list[int] = []
+    for aid in candidates:
+        try:
+            if connector.fetch_streams(raw, aid):
+                fetched_ids.append(aid)
+        except Exception as exc:  # noqa: BLE001 - per-activity failure stays isolated
+            logger.warning(
+                "recent-streams: fetch failed for activity %d: %s", aid, exc
+            )
+            continue
+    logger.info(
+        "recent-streams: %d candidates, %d fetched, %d skipped (already cached or failed)",
+        len(candidates),
+        len(fetched_ids),
+        len(candidates) - len(fetched_ids),
+    )
+    return StreamFetchResult(
+        candidates=len(candidates),
+        fetched=len(fetched_ids),
+        activity_ids=tuple(fetched_ids),
+    )
 
 
 def run_full_sync(conn: sqlite3.Connection, settings: Settings) -> list[SourceResult]:

@@ -249,6 +249,23 @@ def sync(
         "TELEGRAM_OWNER_CHAT_ID in .env -- otherwise the flag is a no-op. "
         "Designed for unattended cron / systemd / launchd invocations.",
     ),
+    with_recent_streams: bool = typer.Option(
+        False,
+        "--with-recent-streams",
+        help="After the activity sync, automatically fetch HR streams for "
+        "recent activities recorded with a HR monitor (avg_hr > 0) that "
+        "don't yet have streams stored. Bounded by --stream-lookback-days. "
+        "Adds 1 Strava request per recent HR-recorded activity needing a "
+        "fetch (typically 0-3 per hour). Runs a transform before AND after "
+        "so the structured layer is fully up-to-date.",
+    ),
+    stream_lookback_days: int = typer.Option(
+        1,
+        "--stream-lookback-days",
+        help="With --with-recent-streams, the lookback window in days for "
+        "which to consider activities for stream fetch (default 1 = the last "
+        "24h). Increase if the Mac has been asleep for multiple days.",
+    ),
 ) -> None:
     """Pull new data from connected sources into the raw store.
 
@@ -261,14 +278,34 @@ def sync(
     chat whenever the run finishes with any source ``ok=False`` OR raises an
     unhandled exception. Silent on full success -- safe to wire into an
     hourly cron / systemd-timer / launchd schedule without spam.
+
+    With ``--with-recent-streams``: after the activity sync, automatically
+    pull HR streams for recent HR-recorded activities. Runs transform
+    before and after so the structured ``activity_stream`` table reflects
+    the new data. Intended for the hourly scheduled job.
     """
     from tempo.sync import notify, pipeline
 
     settings, conn = _connected_db()
     results: list[pipeline.SourceResult] = []
+    stream_result: pipeline.StreamFetchResult | None = None
     try:
         try:
             results = pipeline.run_full_sync(conn, settings)
+            if with_recent_streams:
+                from tempo.transforms.runner import run_transform
+
+                # First transform: get newly-synced activity summaries into
+                # the structured `activity` table so fetch_recent_streams can
+                # query them.
+                run_transform(conn)
+                stream_result = pipeline.fetch_recent_streams(
+                    conn, settings, lookback_days=stream_lookback_days
+                )
+                # Second transform: the freshly-fetched raw stream rows
+                # become structured `activity_stream` rows.
+                if stream_result.fetched > 0:
+                    run_transform(conn)
         except ValueError as exc:
             # Strava credentials missing -- the same UX as `tempo strava sync`.
             # Missing creds IS a failure worth notifying about (the scheduled job
@@ -294,6 +331,24 @@ def sync(
             # A skipped Garmin run is NOT a failure of `tempo sync` -- surfaced
             # clearly so a partial sync is never mistaken for complete.
             typer.secho(f"  {r.source}: skipped -- {r.detail}", fg="yellow")
+
+    if stream_result is not None:
+        if stream_result.error:
+            typer.secho(
+                f"  recent-streams: skipped -- {stream_result.error}",
+                fg="yellow",
+            )
+        elif stream_result.candidates == 0:
+            typer.secho(
+                "  recent-streams: nothing to fetch (no recent HR-recorded activities)",
+                fg="green",
+            )
+        else:
+            typer.secho(
+                f"  recent-streams: fetched {stream_result.fetched} of "
+                f"{stream_result.candidates} candidates",
+                fg="green",
+            )
 
     if notify_on_failure and any(not r.ok for r in results):
         # Per-source failure (Garmin 429, Strava transient, etc.) -- silent
