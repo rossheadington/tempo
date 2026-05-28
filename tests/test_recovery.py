@@ -282,9 +282,14 @@ def test_render_recovery_has_freshness_and_either_direction_note(conn: sqlite3.C
 
 
 def _ok_assessment(
-    *, heat: object = None, heat_present: bool = False
+    *,
+    heat: object = None,
+    heat_present: bool = False,
+    strength: object = None,
+    strength_present: bool = False,
 ) -> recovery.RecoveryAssessment:
-    """Hand-built RecoveryAssessment with neutral signals so we exercise ONLY the heat path."""
+    """Hand-built RecoveryAssessment with neutral signals so we exercise ONLY
+    the heat / strength path."""
     signals = [
         recovery.SignalAssessment(
             metric="hrv",
@@ -326,6 +331,8 @@ def _ok_assessment(
         messages=["Recovery looks good."],
         heat=heat,  # type: ignore[arg-type]
         heat_present=heat_present,
+        strength=strength,  # type: ignore[arg-type]
+        strength_present=strength_present,
     )
 
 
@@ -436,3 +443,139 @@ def test_render_recovery_heat_today_phrase() -> None:
     assert "## Heat adaptation" in text
     assert "last session: today" in text
     assert "0 days ago" not in text
+
+
+# ---- Strength & conditioning section ----
+
+
+def test_render_recovery_omits_strength_when_no_strength_file() -> None:
+    """strength.md missing -> the section is omitted entirely (no header)."""
+    a = _ok_assessment(strength=None, strength_present=False)
+    text = _render(a)
+    assert "## Strength & conditioning" not in text
+
+
+def test_render_recovery_omits_strength_when_present_but_empty() -> None:
+    """strength.md present but no sessions parsed -> section omitted (no header)."""
+    from tempo.analysis.strength import StrengthRollup
+
+    empty = StrengthRollup(
+        today=date(2026, 4, 1),
+        last_7d_count=0,
+        last_7d_tonnage_kg=0.0,
+        last_14d_count=0,
+        last_14d_tonnage_kg=0.0,
+        last_28d_count=0,
+        last_28d_tonnage_kg=0.0,
+        last_session_date=None,
+        last_session_days_ago=None,
+        last_session_name=None,
+    )
+    a = _ok_assessment(strength=empty, strength_present=True)
+    text = _render(a)
+    assert "## Strength & conditioning" not in text
+
+
+def test_render_recovery_renders_strength_when_recent_sessions() -> None:
+    """Sessions in the 7/14/28-day windows -> full rollup line with tonnage + name."""
+    from tempo.analysis.strength import StrengthRollup
+
+    rollup = StrengthRollup(
+        today=date(2026, 5, 27),
+        last_7d_count=2,
+        last_7d_tonnage_kg=9835.0,
+        last_14d_count=2,
+        last_14d_tonnage_kg=9835.0,
+        last_28d_count=3,
+        last_28d_tonnage_kg=14200.0,
+        last_session_date=date(2026, 5, 26),
+        last_session_days_ago=1,
+        last_session_name="Lower body",
+    )
+    a = _ok_assessment(strength=rollup, strength_present=True)
+    text = _render(a)
+    assert "## Strength & conditioning" in text
+    assert "last 7 days: 2 sessions" in text
+    assert "9,835 kg" in text
+    assert "last 28 days: 3 sessions" in text
+    assert "14.2 t" in text
+    assert "Lower body" in text
+    assert "1 day ago" in text
+    # The full-rollup line must NOT be a lapsed-nudge.
+    assert "lapsed" not in text.lower()
+
+
+def test_render_recovery_renders_strength_lapsed_nudge() -> None:
+    """Sessions exist in history but ALL >28 days old -> one-line lapsed nudge."""
+    from tempo.analysis.strength import StrengthRollup
+
+    lapsed = StrengthRollup(
+        today=date(2026, 5, 27),
+        last_7d_count=0,
+        last_7d_tonnage_kg=0.0,
+        last_14d_count=0,
+        last_14d_tonnage_kg=0.0,
+        last_28d_count=0,
+        last_28d_tonnage_kg=0.0,
+        last_session_date=date(2026, 4, 1),
+        last_session_days_ago=56,
+        last_session_name="Upper body",
+    )
+    a = _ok_assessment(strength=lapsed, strength_present=True)
+    text = _render(a)
+    assert "## Strength & conditioning" in text
+    assert "S&C protocol lapsed" in text
+    assert "56 days ago" in text
+    assert "No sessions in the last 28 days" in text
+    # The lapsed nudge is the ONLY strength line -- no rollup numbers.
+    assert "last 7 days:" not in text
+    assert "tonnage" not in text
+
+
+def test_render_recovery_strength_section_follows_heat() -> None:
+    """When both heat and strength are active, strength renders AFTER heat."""
+    from tempo.analysis.heat import HeatRollup
+    from tempo.analysis.strength import StrengthRollup
+
+    heat_rollup = HeatRollup(
+        today=date(2026, 5, 27),
+        last_7d_count=3,
+        last_7d_minutes=78.0,
+        last_14d_count=6,
+        last_14d_minutes=154.0,
+        last_28d_count=10,
+        last_28d_minutes=260.0,
+        last_session_date=date(2026, 5, 25),
+        last_session_days_ago=2,
+    )
+    strength_rollup = StrengthRollup(
+        today=date(2026, 5, 27),
+        last_7d_count=2,
+        last_7d_tonnage_kg=9835.0,
+        last_14d_count=2,
+        last_14d_tonnage_kg=9835.0,
+        last_28d_count=3,
+        last_28d_tonnage_kg=14200.0,
+        last_session_date=date(2026, 5, 26),
+        last_session_days_ago=1,
+        last_session_name="Lower body",
+    )
+    a = _ok_assessment(
+        heat=heat_rollup,
+        heat_present=True,
+        strength=strength_rollup,
+        strength_present=True,
+    )
+    text = _render(a)
+    assert "## Heat adaptation" in text
+    assert "## Strength & conditioning" in text
+    assert text.index("## Heat adaptation") < text.index("## Strength & conditioning")
+
+
+def test_fmt_tonnage_kg_vs_tonnes() -> None:
+    """`_fmt_tonnage` boundary cases: 0 kg / comma-grouped kg / tonnes with 1 decimal."""
+    assert recovery._fmt_tonnage(0.0) == "0 kg"
+    assert recovery._fmt_tonnage(9835.0) == "9,835 kg"
+    assert recovery._fmt_tonnage(9999.0) == "9,999 kg"
+    assert recovery._fmt_tonnage(10000.0) == "10.0 t"
+    assert recovery._fmt_tonnage(12400.0) == "12.4 t"
