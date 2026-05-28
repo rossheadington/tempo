@@ -6,7 +6,7 @@ that ties the warmed faster-whisper singleton (Plan 10-01's
 :mod:`tempo.bot.transcribe`) to the Telegram dispatcher. Phase 11 plan
 11-03 reworks :func:`voice_handler`'s post-transcription tail, adds the
 matching :func:`text_handler` (non-command messages -> agent), the
-:func:`new_command_handler` (``/new`` resets the per-chat session), and a
+:func:`clear_command_handler` (``/clear`` resets the per-chat session), and a
 private :func:`_keep_typing` helper that refreshes Telegram's typing
 indicator while ``run_turn`` is in flight.
 
@@ -21,6 +21,7 @@ silently see every chat that messages the bot (VOICE-01 allowlist).
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import sqlite3
 import time
@@ -72,9 +73,9 @@ OVERSIZED_REPLY: str = (
 #: against this constant directly.
 MISSING_CLI_REPLY: str = "Claude Code isn't running. Try claude login in a terminal."
 
-#: Fixed reply for ``/new``: the previous session id has been deleted from
+#: Fixed reply for ``/clear``: the previous session id has been deleted from
 #: ``bot_session`` and the next message will start a fresh Claude Code session.
-NEW_SESSION_REPLY: str = "Started a fresh session. Next message gets a clean slate."
+CLEAR_SESSION_REPLY: str = "Cleared. Next message starts a fresh Claude Code session."
 
 #: Fixed reply when the voice transcript is empty (Whisper detected no
 #: speech). The agent is NOT called for empty transcripts -- we just tell
@@ -201,7 +202,14 @@ async def _run_agent_turn(
 
         save_session(conn, chat_id, turn.session_id)
 
-        chunks = format_for_telegram(turn.text)
+        # Guard: a Claude Code turn that ends on a tool call (no trailing
+        # assistant text) yields an empty string. Telegram rejects empty
+        # messages with BadRequest("Message text is empty"). Reply with a
+        # short placeholder so the user knows the turn ran but produced
+        # no spoken response.
+        chunks = [c for c in format_for_telegram(turn.text) if c.strip()]
+        if not chunks:
+            chunks = ["(agent finished without a reply)"]
         for chunk in chunks:
             await update.message.reply_text(chunk, parse_mode=ParseMode.HTML)
 
@@ -327,10 +335,17 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     # Log the raw transcript at INFO so the developer can still see what
-    # Whisper produced -- but DO NOT send it to Telegram (Phase 11 removes
-    # the Phase 10 echo behaviour). ``html.escape`` is not needed in the log
-    # line.
+    # Whisper produced.
     logger.info("voice transcript (chat=%d): %s", update.effective_chat.id, transcript)
+
+    # Echo the transcript back to the user FIRST (before the agent turn,
+    # which can take 10-30s) so they can confirm Whisper heard them right
+    # -- and have a written record without scrolling up past the agent's
+    # reply. Italics keep it visually distinct from agent text.
+    await update.message.reply_text(
+        f"<i>📝 Heard: {html.escape(transcript, quote=False)}</i>",
+        parse_mode=ParseMode.HTML,
+    )
 
     chat_id = update.effective_chat.id
     try:
@@ -348,7 +363,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     Same shape as the post-transcription half of :func:`voice_handler`, but
     the prompt is :attr:`update.message.text` directly -- no Whisper step.
     Registered behind ``filters.TEXT & ~filters.COMMAND & filters.Chat(owner)``
-    so ``/new`` and ``/start`` route to their own CommandHandlers.
+    so ``/clear`` and ``/start`` route to their own CommandHandlers.
 
     Empty / whitespace-only text is dropped silently with a DEBUG log: the
     TEXT filter already excludes Voice/Photo/Sticker etc., so anything here
@@ -374,11 +389,88 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await _run_agent_turn(update, context, prompt, chat_id)
 
 
-async def new_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Owner-only ``/new`` command: delete the stored session id (VOICE-08).
+#: Reply when the user runs ``/sync`` and at least one source ran successfully.
+#: ``{lines}`` is replaced with one line per source result, in the same shape
+#: as ``tempo sync`` CLI output.
+SYNC_REPLY_PREFIX: str = "<b>Sync complete</b>\n"
+
+#: Reply when ``/sync`` was triggered but Strava credentials are missing -- the
+#: ``ValueError`` from ``pipeline.run_full_sync`` is mapped to this short line.
+SYNC_CONFIG_ERROR: str = (
+    "Sync skipped -- Strava credentials missing. Run <code>tempo strava auth</code> "
+    "in a terminal first."
+)
+
+
+async def sync_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner-only ``/sync`` command: run Strava + isolated Garmin sync (VOICE-08 / GRMN-03).
+
+    Mirrors the ``tempo sync`` CLI: Strava is authoritative; Garmin is wrapped
+    in a try/except inside the pipeline so a 429 / breakage logs+skips rather
+    than blocks the run. Reports per-source status back to the chat as an
+    HTML reply. Synchronous work (HTTP + SQLite) runs in
+    ``asyncio.to_thread`` so the event loop stays responsive while the pull
+    is in flight. Typing indicator keeps the user informed -- a fresh
+    Strava + Garmin pull can take 30-90s.
+    """
+    expected_owner_id = context.application.bot_data.get("owner_chat_id")
+    if (
+        update.effective_chat is None
+        or expected_owner_id is None
+        or update.effective_chat.id != expected_owner_id
+    ):
+        return
+    if update.message is None:
+        return
+
+    # Import inside the handler so a bot startup never pays the cost of
+    # importing the connectors (stravalib, garminconnect) when /sync is
+    # never used.
+    from tempo.config import get_settings
+    from tempo.sync import pipeline
+
+    settings = get_settings()
+    db_path: Path = context.application.bot_data["db_path"]
+
+    await update.effective_chat.send_action(ChatAction.TYPING)
+    typing_task = asyncio.create_task(_keep_typing(update.effective_chat))
+
+    def _do_sync() -> list[object]:
+        conn = connect(db_path)
+        try:
+            return list(pipeline.run_full_sync(conn, settings))
+        finally:
+            conn.close()
+
+    try:
+        results = await asyncio.to_thread(_do_sync)
+    except ValueError as exc:
+        logger.info("/sync skipped: %s", exc)
+        await update.message.reply_text(SYNC_CONFIG_ERROR, parse_mode=ParseMode.HTML)
+        return
+    finally:
+        typing_task.cancel()
+        await asyncio.gather(typing_task, return_exceptions=True)
+
+    lines: list[str] = []
+    for r in results:
+        source = html.escape(str(getattr(r, "source", "?")), quote=False)
+        if getattr(r, "ok", False):
+            rows = int(getattr(r, "rows", 0))
+            lines.append(f"  {source}: ok ({rows} raw rows)")
+        else:
+            err = html.escape(str(getattr(r, "error", "?")), quote=False)
+            lines.append(f"  {source}: skipped ({err})")
+    body = SYNC_REPLY_PREFIX + "<pre>" + "\n".join(lines) + "</pre>"
+    logger.info("/sync: %s", "; ".join(line.strip() for line in lines))
+    await update.message.reply_text(body, parse_mode=ParseMode.HTML)
+
+
+async def clear_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner-only ``/clear`` command: delete the stored session id (VOICE-08).
 
     The DELETE is idempotent (no row -> still success); the user gets the
-    same confirmation either way so a redundant ``/new`` is harmless.
+    same confirmation either way so a redundant ``/clear`` is harmless.
     """
     expected_owner_id = context.application.bot_data.get("owner_chat_id")
     if (
@@ -399,4 +491,4 @@ async def new_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         conn.close()
 
     logger.info("session reset · chat=%d", chat_id)
-    await update.message.reply_text(NEW_SESSION_REPLY, parse_mode=ParseMode.HTML)
+    await update.message.reply_text(CLEAR_SESSION_REPLY, parse_mode=ParseMode.HTML)

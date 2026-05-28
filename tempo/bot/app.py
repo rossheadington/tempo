@@ -8,7 +8,7 @@ in :func:`run`; the CLI wrapper in plan 09-02 just calls ``run()``.
 Phase 11 plan 11-03 extends :func:`build_application`:
 
 * registers the new :func:`text_handler` (non-command text -> agent loop) and
-  :func:`new_command_handler` (``/new`` resets the per-chat session);
+  :func:`clear_command_handler` (``/new`` resets the per-chat session);
 * stashes ``settings.db_path`` in ``bot_data`` so handlers can open
   short-lived sqlite connections without re-importing :mod:`tempo.config`;
 * runs :func:`tempo.db.init_db` in the ``post_init`` hook so migration 0005
@@ -32,6 +32,7 @@ import sys
 import time
 from pathlib import Path
 
+from telegram import BotCommand
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -42,14 +43,24 @@ from telegram.ext import (
 
 from tempo.bot.error_handler import telegram_error_handler
 from tempo.bot.handlers import (
-    new_command_handler,
+    clear_command_handler,
     start_handler,
+    sync_command_handler,
     text_handler,
     voice_handler,
 )
 from tempo.bot.transcribe import warm_model
 from tempo.config import Settings, get_settings
 from tempo.db import init_db
+
+#: Slash commands published to Telegram via ``setMyCommands`` at startup.
+#: Telegram clients show these in the ``/`` autocomplete menu so the user
+#: never has to remember the exact spelling. Keep descriptions <= 256 chars
+#: and use sentence case (Telegram's UI convention).
+BOT_COMMANDS: list[BotCommand] = [
+    BotCommand("sync", "Pull latest Strava + Garmin data (then transform)"),
+    BotCommand("clear", "Start a fresh Claude Code session (forgets prior chat)"),
+]
 
 logger = logging.getLogger("tempo.bot")
 
@@ -177,13 +188,27 @@ def build_application(settings: Settings) -> Application:
         # Pitfall fix: clears any stale webhook so getUpdates doesn't 409.
         # Pending updates are preserved so offline messages still get handled.
         await application.bot.delete_webhook(drop_pending_updates=False)
+        # Publish the slash-command menu so typing "/" in Telegram pops up
+        # an autocomplete list. Idempotent and cheap; runs every startup so
+        # adding a new handler + listing it in BOT_COMMANDS is all it takes.
+        await application.bot.set_my_commands(BOT_COMMANDS)
+        logger.info(
+            "command menu published (%d): %s",
+            len(BOT_COMMANDS),
+            ", ".join(f"/{c.command}" for c in BOT_COMMANDS),
+        )
         # Phase 11 (Plan 11-03): ensure migration 0005 (bot_session) is
         # applied before any handler runs. ``init_db`` is idempotent --
         # already-applied migrations are skipped -- and a no-op overhead
         # at every startup is well worth the guarantee on a fresh checkout
         # where the user runs ``tempo bot run`` without ``tempo init`` first.
-        conn = await asyncio.to_thread(init_db, settings.db_path)
-        conn.close()
+        # Open + close in the SAME thread -- SQLite connections are not
+        # shareable across threads (sqlite3.ProgrammingError otherwise).
+        def _init_and_close(db_path: Path) -> None:
+            conn = init_db(db_path)
+            conn.close()
+
+        await asyncio.to_thread(_init_and_close, settings.db_path)
         # VOICE-06: warm the WhisperModel ONCE so the first voice memo does
         # not pay the multi-second model load. ``asyncio.to_thread`` because
         # the WhisperModel constructor blocks (file I/O + native init) and
@@ -226,11 +251,12 @@ def build_application(settings: Settings) -> Application:
 
     owner_filter = filters.Chat(chat_id=owner_chat_id)
     app.add_handler(CommandHandler("start", start_handler, filters=owner_filter))
-    # Phase 11 (Plan 11-03): /new resets the per-chat session id. Registered
+    # Phase 11 (Plan 11-03): /clear resets the per-chat session id. Registered
     # BEFORE the generic TEXT handler -- ``filters.COMMAND`` and
     # ``~filters.COMMAND`` already make the dispatch unambiguous, but the
     # ordering is a defensive convention.
-    app.add_handler(CommandHandler("new", new_command_handler, filters=owner_filter))
+    app.add_handler(CommandHandler("clear", clear_command_handler, filters=owner_filter))
+    app.add_handler(CommandHandler("sync", sync_command_handler, filters=owner_filter))
     # VOICE-03/04/06: owner-only voice intake. ``filters.VOICE & owner_filter``
     # means non-owner voice memos are silently dropped at the dispatcher,
     # same as non-owner /start (research/telegram-bot-research.md
@@ -249,7 +275,7 @@ def build_application(settings: Settings) -> Application:
 
     logger.info(
         "Bot configured -- owner_chat_id=%d, concurrent_updates=True, "
-        "voice_handler=registered, text_handler=registered, new_command_handler=registered, "
+        "voice_handler=registered, text_handler=registered, clear_command_handler=registered, "
         "error_handler=registered",
         owner_chat_id,
     )

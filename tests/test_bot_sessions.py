@@ -28,38 +28,25 @@ def _count(conn: sqlite3.Connection) -> int:
     return int(conn.execute("SELECT COUNT(*) FROM bot_session;").fetchone()[0])
 
 
-def test_session_window_hours_constant_is_four() -> None:
-    """The locked default 4-hour resume window (per 11-CONTEXT.md)."""
-    assert sessions.SESSION_WINDOW_HOURS == 4
-
-
 def test_get_or_create_session_returns_none_on_empty_table(conn: sqlite3.Connection) -> None:
     """Fresh DB, never-saved chat_id -> None; no row is inserted as a side effect."""
-    assert sessions.get_or_create_session(conn, 999, now=T0) is None
+    assert sessions.get_or_create_session(conn, 999) is None
     assert _count(conn) == 0
 
 
-def test_save_then_get_within_window_returns_same_session_id(conn: sqlite3.Connection) -> None:
-    """Save at T0, get at T0+3h -> returns the saved session id (inside 4h window)."""
+def test_get_after_save_returns_session_id(conn: sqlite3.Connection) -> None:
+    """Save at T0, later get -> returns the saved session id (no time-based expiry)."""
     sessions.save_session(conn, 999, "sess-A", now=T0)
-    got = sessions.get_or_create_session(conn, 999, now=T0 + timedelta(hours=3))
-    assert got == "sess-A"
+    assert sessions.get_or_create_session(conn, 999) == "sess-A"
 
 
-def test_get_just_inside_window_returns_session_id(conn: sqlite3.Connection) -> None:
-    """Save at T0, get at T0 + (4h - 1s) -> still within window, returns id."""
+def test_session_persists_indefinitely(conn: sqlite3.Connection) -> None:
+    """Sessions never expire by time; only ``/clear`` (reset_session) ends them."""
     sessions.save_session(conn, 999, "sess-A", now=T0)
-    inside = T0 + timedelta(hours=4) - timedelta(seconds=1)
-    assert sessions.get_or_create_session(conn, 999, now=inside) == "sess-A"
-
-
-def test_get_after_window_returns_none(conn: sqlite3.Connection) -> None:
-    """Save at T0, get at T0 + (4h + 1s) -> outside window, returns None; row stays."""
-    sessions.save_session(conn, 999, "sess-A", now=T0)
-    outside = T0 + timedelta(hours=4) + timedelta(seconds=1)
-    assert sessions.get_or_create_session(conn, 999, now=outside) is None
-    # get_or_create_session is read-only; the stale row must still be there.
-    assert _count(conn) == 1
+    # Hypothetically days later -- still returns the same id.
+    far_future = T0 + timedelta(days=30)
+    sessions.save_session(conn, 999, "sess-A", now=far_future)
+    assert sessions.get_or_create_session(conn, 999) == "sess-A"
 
 
 def test_save_session_preserves_started_at_on_same_id(conn: sqlite3.Connection) -> None:
@@ -94,7 +81,7 @@ def test_reset_session_deletes_row_and_subsequent_get_returns_none(
     assert _count(conn) == 1
     sessions.reset_session(conn, 999)
     assert _count(conn) == 0
-    assert sessions.get_or_create_session(conn, 999, now=T0) is None
+    assert sessions.get_or_create_session(conn, 999) is None
     # Idempotent: calling reset again on an absent chat_id does not raise.
     sessions.reset_session(conn, 999)
     assert _count(conn) == 0
@@ -104,24 +91,23 @@ def test_two_chat_ids_do_not_interfere(conn: sqlite3.Connection) -> None:
     """Distinct chat_ids hold independent sessions (PK isolates rows)."""
     sessions.save_session(conn, 1, "sess-A", now=T0)
     sessions.save_session(conn, 2, "sess-B", now=T0)
-    assert sessions.get_or_create_session(conn, 1, now=T0) == "sess-A"
-    assert sessions.get_or_create_session(conn, 2, now=T0) == "sess-B"
+    assert sessions.get_or_create_session(conn, 1) == "sess-A"
+    assert sessions.get_or_create_session(conn, 2) == "sess-B"
     # Resetting chat 1 leaves chat 2 untouched.
     sessions.reset_session(conn, 1)
-    assert sessions.get_or_create_session(conn, 1, now=T0) is None
-    assert sessions.get_or_create_session(conn, 2, now=T0) == "sess-B"
+    assert sessions.get_or_create_session(conn, 1) is None
+    assert sessions.get_or_create_session(conn, 2) == "sess-B"
 
 
 def test_session_re_exports_from_tempo_bot_package() -> None:
     """The three public functions are importable from `tempo.bot` (matches existing pattern)."""
     from tempo.bot import (
-        SESSION_WINDOW_HOURS,
         get_or_create_session,
         reset_session,
         save_session,
     )
 
-    assert SESSION_WINDOW_HOURS == 4
+
     assert callable(get_or_create_session)
     assert callable(save_session)
     assert callable(reset_session)

@@ -4,7 +4,7 @@ Owner-only Telegram bot that runs locally via long-polling. Phase 9 added the
 wiring; Phase 10 layers local faster-whisper transcription (Plan 10-01) and
 the voice-memo handler (Plan 10-02) on top; Phase 11 adds the per-chat Claude
 Code session-id store (Plan 11-01), the Claude Agent SDK wrapper (Plan 11-02),
-and the handler integration that wires voice + text + ``/new`` through the
+and the handler integration that wires voice + text + ``/clear`` through the
 agent loop (Plan 11-03). The package is import-safe: importing :mod:`tempo.bot`
 never starts the bot, never touches the network, never downloads a Whisper
 model, never spawns the ``claude`` CLI, and never calls
@@ -22,12 +22,12 @@ Modules:
 * :mod:`tempo.bot.handlers`   -- :func:`start_handler` (``/start`` greeting),
   :func:`voice_handler` (owner-only voice-memo intake, post-Phase-11 routed
   through the agent loop), :func:`text_handler` (non-command text messages
-  routed through the agent loop), :func:`new_command_handler` (``/new``
+  routed through the agent loop), :func:`clear_command_handler` (``/clear``
   resets the per-chat Claude Code session), and the :data:`MAX_VOICE_BYTES`
   20 MB pre-download guard constant.
 * :mod:`tempo.bot.sessions`   -- :func:`get_or_create_session` /
   :func:`save_session` / :func:`reset_session` plus the
-  :data:`SESSION_WINDOW_HOURS` 4-hour resume window (VOICE-08; backs the
+  persistent session that only resets on ``/clear`` (VOICE-08; backs the
   ``bot_session`` table added by migration 0005).
 * :mod:`tempo.bot.transcribe` -- :func:`warm_model` / :func:`get_model` /
   :func:`transcribe_file`: the module-level WhisperModel singleton and the
@@ -47,17 +47,16 @@ from tempo.bot.agent import (
 from tempo.bot.app import CLAUDE_CLI_MISSING_ERROR, build_application, run
 from tempo.bot.error_handler import ERROR_REPLY, telegram_error_handler
 from tempo.bot.handlers import (
+    CLEAR_SESSION_REPLY,
     GREETING,
     MAX_VOICE_BYTES,
     MISSING_CLI_REPLY,
-    NEW_SESSION_REPLY,
-    new_command_handler,
+    clear_command_handler,
     start_handler,
     text_handler,
     voice_handler,
 )
 from tempo.bot.sessions import (
-    SESSION_WINDOW_HOURS,
     get_or_create_session,
     reset_session,
     save_session,
@@ -72,13 +71,13 @@ __all__ = [
     "GREETING",
     "MAX_VOICE_BYTES",
     "MISSING_CLI_REPLY",
-    "NEW_SESSION_REPLY",
-    "SESSION_WINDOW_HOURS",
+    "CLEAR_SESSION_REPLY",
+    
     "build_application",
     "format_for_telegram",
     "get_model",
     "get_or_create_session",
-    "new_command_handler",
+    "clear_command_handler",
     "reset_session",
     "run",
     "run_turn",

@@ -133,13 +133,20 @@ def _looks_like_assistant_message(message: object) -> bool:
 
     We deliberately do **not** ``isinstance``-check against
     ``claude_agent_sdk.AssistantMessage`` -- the SDK's public class names
-    have changed across 0.1.x / 0.2.x and may again in 0.3.x. Filtering by
-    a ``role="assistant"`` attribute plus a ``content`` iterable keeps the
-    wrapper resilient and the tests free of SDK-private-type imports.
+    have changed across 0.1.x / 0.2.x and may again in 0.3.x. The SDK's
+    AssistantMessage does NOT carry a ``role`` attribute, so we identify
+    it by class name + a ``content`` iterable. Dict-shaped messages
+    (used in tests) still match via the ``role="assistant"`` convention.
     """
+    if isinstance(message, dict):
+        return message.get("role") == "assistant" and "content" in message
+    if getattr(message, "content", None) is None:
+        return False
+    # Real SDK 0.2.x: class name match (no ``role`` attribute exposed).
+    # Test mocks: ``role="assistant"`` on a SimpleNamespace.
     return (
-        getattr(message, "role", None) == "assistant"
-        and getattr(message, "content", None) is not None
+        type(message).__name__ == "AssistantMessage"
+        or getattr(message, "role", None) == "assistant"
     )
 
 
@@ -160,6 +167,10 @@ def _extract_text_from_block(block: object) -> str | None:
         if block.get("type") == "text":
             return str(block.get("text", ""))
         return None
+    # SDK 0.2.x TextBlock has only ``.text``; no ``.type`` attribute.
+    # Identify by class name + presence of ``text`` attr.
+    if type(block).__name__ == "TextBlock" and hasattr(block, "text"):
+        return str(block.text)
     if getattr(block, "type", None) == "text":
         return str(getattr(block, "text", ""))
     return None
@@ -260,8 +271,95 @@ async def run_turn(
     )
 
 
+def _escape_with_table_pre_blocks(text: str) -> str:
+    """HTML-escape ``text`` while converting Markdown tables to ``<pre>`` blocks.
+
+    Telegram has NO HTML table tag, but ``<pre>`` renders in a monospace font
+    with horizontal scroll on overflow -- so a column-aligned plain-text table
+    inside ``<pre>`` looks right on every client. Without this, raw Markdown
+    pipes get HTML-escaped into a wall of unaligned bars.
+
+    Algorithm: single line-by-line pass. Non-table text is HTML-escaped
+    normally. When we hit a candidate table row (line starts+ends with
+    ``|`` AND the next line is a separator like ``|---|---|``), we collect
+    the contiguous block of table rows and replace it with a single
+    pre-rendered ``<pre>`` block (cells stripped, padded to column width,
+    contents escaped). The separator row is dropped from the rendered
+    output. Lenient: a header row without a trailing separator falls back
+    to plain escaped text.
+    """
+    lines = text.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if not _is_table_row(lines[i]) or i + 1 >= len(lines) or not _is_table_separator(
+            lines[i + 1]
+        ):
+            out.append(html.escape(lines[i], quote=False))
+            i += 1
+            continue
+        # Collect contiguous table rows: header, separator, body rows.
+        table_lines: list[str] = [lines[i]]
+        j = i + 2  # skip separator
+        while j < len(lines) and _is_table_row(lines[j]):
+            table_lines.append(lines[j])
+            j += 1
+        out.append(_format_table_as_pre(table_lines))
+        i = j
+    return "\n".join(out)
+
+
+def _is_table_row(line: str) -> bool:
+    """A table row starts AND ends with ``|`` (after stripping)."""
+    s = line.strip()
+    return s.startswith("|") and s.endswith("|") and len(s) >= 2
+
+
+def _is_table_separator(line: str) -> bool:
+    """Separator rows contain only ``|`` / ``-`` / ``:`` / whitespace."""
+    s = line.strip()
+    return (
+        s.startswith("|")
+        and s.endswith("|")
+        and all(c in "|-: \t" for c in s)
+        and "-" in s
+    )
+
+
+def _split_table_row(line: str) -> list[str]:
+    """Split a ``| a | b | c |`` row into ``["a", "b", "c"]`` (stripped)."""
+    s = line.strip()
+    # Strip the leading/trailing | and split. ``[1:-1]`` is safe because
+    # _is_table_row guaranteed both ends are |.
+    return [cell.strip() for cell in s[1:-1].split("|")]
+
+
+def _format_table_as_pre(table_lines: list[str]) -> str:
+    """Render a list of ``| ... |`` rows as a single ``<pre>`` block."""
+    rows = [_split_table_row(line) for line in table_lines]
+    if not rows:
+        return ""
+    cols = max(len(r) for r in rows)
+    # Pad short rows so column-width calc is uniform.
+    rows = [r + [""] * (cols - len(r)) for r in rows]
+    widths = [max(len(r[c]) for r in rows) for c in range(cols)]
+    # HTML-escape cell content inside the <pre> block: <pre> is a Telegram
+    # HTML tag, so its body still needs &/</> escaping to stay valid.
+    rendered_rows: list[str] = []
+    for r in rows:
+        padded = "  ".join(html.escape(r[c], quote=False).ljust(widths[c]) for c in range(cols))
+        rendered_rows.append(padded.rstrip())
+    body = "\n".join(rendered_rows)
+    return f"<pre>{body}</pre>"
+
+
 def format_for_telegram(text: str) -> list[str]:
     """HTML-escape ``text`` and split it into Telegram-sized chunks.
+
+    Markdown tables (``| a | b |`` rows separated by a ``|---|---|`` line)
+    are pre-rendered into aligned monospace ``<pre>`` blocks so they look
+    correct in Telegram (which has no HTML table tag). Non-table text is
+    HTML-escaped normally.
 
     Escapes only ``&`` / ``<`` / ``>`` (``quote=False``) because the bot's
     fixed reply mode is ``ParseMode.HTML`` and we don't need to escape
@@ -285,7 +383,7 @@ def format_for_telegram(text: str) -> list[str]:
         At least one chunk. An empty input becomes ``[""]`` -- callers
         decide whether to actually send an empty reply.
     """
-    escaped = html.escape(text, quote=False)
+    escaped = _escape_with_table_pre_blocks(text)
 
     if len(escaped) <= TELEGRAM_MAX_BODY_CHARS:
         return [escaped]

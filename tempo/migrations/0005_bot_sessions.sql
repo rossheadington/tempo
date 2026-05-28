@@ -33,7 +33,7 @@
 -- timestamps are ISO 8601 UTC strings (`datetime.now(UTC).isoformat()`) -- the
 -- project convention from tempo.journal.service. The 4-hour resume window is
 -- evaluated in Python, not SQL, so the window is a code-side knob (see
--- tempo.bot.sessions.SESSION_WINDOW_HOURS).
+-- tempo.bot.sessions). Sessions persist indefinitely until ``/clear``.
 CREATE TABLE bot_session (
     chat_id          INTEGER PRIMARY KEY,        -- Telegram chat id (no FK; external)
     session_id       TEXT NOT NULL,              -- opaque Claude Code session uuid

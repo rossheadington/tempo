@@ -6,14 +6,13 @@ This module is the validated boundary for ``bot_session`` writes -- mirrors the
 types and no derived columns. Pure stdlib :mod:`sqlite3`, no async, no Telegram
 or Claude SDK imports.
 
-The 4-hour resume window
-------------------------
-:data:`SESSION_WINDOW_HOURS` is the LOCKED default (per 11-CONTEXT.md
-Implementation Decisions): :func:`get_or_create_session` returns the stored
-session id only while ``now - last_message_at < window``. Outside the window we
-return ``None`` and the caller's next turn will get a fresh session id back from
-the Claude Agent SDK and persist it via :func:`save_session`. The stale row is
-left in place; the next :func:`save_session` UPSERTs it.
+Session lifetime
+----------------
+Sessions persist **indefinitely** -- there is no time-based expiry.
+:func:`get_or_create_session` returns whatever session id is stored, so the
+conversation stays alive across days, weeks, and restarts. The only way to
+start a fresh session is for the user to send ``/clear`` in Telegram, which
+calls :func:`reset_session`.
 
 Drift between SQLite and Claude Code on disk
 --------------------------------------------
@@ -25,7 +24,6 @@ that drift (per 11-CONTEXT.md ``<specifics>``); no reconciliation happens here.
 
 Public surface
 --------------
-* :data:`SESSION_WINDOW_HOURS` -- the 4-hour default.
 * :func:`get_or_create_session` -- read-only lookup; returns ``str | None``.
 * :func:`save_session` -- UPSERT keeping ``started_at`` stable when ``session_id``
   is unchanged; rotates ``started_at`` when ``session_id`` flips.
@@ -35,11 +33,7 @@ Public surface
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime, timedelta
-
-# The locked resume window: turns more than 4 hours apart start a fresh Claude
-# Code session. Future config knob if needed (11-CONTEXT.md Decisions).
-SESSION_WINDOW_HOURS: int = 4
+from datetime import UTC, datetime
 
 
 def _now(now: datetime | None) -> datetime:
@@ -67,26 +61,19 @@ def _load_session(conn: sqlite3.Connection, chat_id: int) -> tuple[str, datetime
 def get_or_create_session(
     conn: sqlite3.Connection,
     chat_id: int,
-    *,
-    now: datetime | None = None,
-    window_hours: int = SESSION_WINDOW_HOURS,
 ) -> str | None:
-    """Return the stored session id if within the resume window, else ``None``.
+    """Return the stored session id if any, else ``None``.
 
-    Read-only: never inserts, updates, or deletes. When the row exists but
-    ``last_message_at`` is older than ``window_hours``, returns ``None`` and
-    leaves the row untouched -- the next :func:`save_session` call from the
-    handler will UPSERT it with the new session id.
-
-    ``now`` defaults to :func:`datetime.now` in :data:`~datetime.UTC`.
+    Read-only: never inserts, updates, or deletes. The session persists
+    indefinitely until the user explicitly clears it via the ``/clear``
+    command (see :func:`reset_session`). There is no time-based expiry --
+    the conversation stays alive across days / weeks / restarts.
     """
     loaded = _load_session(conn, chat_id)
     if loaded is None:
         return None
-    session_id, last_at = loaded
-    if _now(now) - last_at < timedelta(hours=window_hours):
-        return session_id
-    return None
+    session_id, _last_at = loaded
+    return session_id
 
 
 def save_session(
@@ -132,7 +119,7 @@ def save_session(
 def reset_session(conn: sqlite3.Connection, chat_id: int) -> None:
     """DELETE the row for ``chat_id``; idempotent when the row is absent.
 
-    Used by the ``/new`` slash command (Plan 11-03) to force a fresh session on
+    Used by the ``/clear`` slash command (Plan 11-03) to force a fresh session on
     the next turn.
     """
     with conn:

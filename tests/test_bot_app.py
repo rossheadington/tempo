@@ -34,7 +34,7 @@ from telegram.ext import CommandHandler, MessageHandler, filters
 from tempo.bot import (
     CLAUDE_CLI_MISSING_ERROR,
     GREETING,
-    new_command_handler,
+    clear_command_handler,
     start_handler,
     text_handler,
 )
@@ -325,19 +325,19 @@ def _find_text_handler(app) -> MessageHandler:
     raise AssertionError("text_handler MessageHandler not registered")
 
 
-def _find_new_command_handler(app) -> CommandHandler:
-    """Locate the registered /new ``CommandHandler`` on ``app``."""
+def _find_clear_command_handler(app) -> CommandHandler:
+    """Locate the registered /clear ``CommandHandler`` on ``app``."""
     for group in app.handlers.values():
         for handler in group:
-            if isinstance(handler, CommandHandler) and "new" in handler.commands:
+            if isinstance(handler, CommandHandler) and "clear" in handler.commands:
                 return handler
-    raise AssertionError("/new CommandHandler not registered")
+    raise AssertionError("/clear CommandHandler not registered")
 
 
 def test_build_application_registers_text_and_new_handlers(
     tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Phase 11 wires /new + text handlers behind the owner filter.
+    """Phase 11 wires /clear + text handlers behind the owner filter.
 
     The text handler must:
       - accept an owner non-command text Update,
@@ -352,9 +352,9 @@ def test_build_application_registers_text_and_new_handlers(
 
     app = build_application(settings)
 
-    # /new CommandHandler exists, behind a filters.Chat(owner) filter.
-    new_handler = _find_new_command_handler(app)
-    assert new_handler.callback is new_command_handler
+    # /clear CommandHandler exists, behind a filters.Chat(owner) filter.
+    new_handler = _find_clear_command_handler(app)
+    assert new_handler.callback is clear_command_handler
 
     # text MessageHandler exists, with the right callback.
     text_msg_handler = _find_text_handler(app)
@@ -403,14 +403,14 @@ def test_build_application_registers_text_and_new_handlers(
     cmd_update.set_bot(cmd_message.get_bot())
     assert not text_msg_handler.check_update(cmd_update)
 
-    # /new from owner -> accepted by the new_command_handler.
-    new_entity = MessageEntity(type="bot_command", offset=0, length=4)
+    # /clear from owner -> accepted by the clear_command_handler.
+    new_entity = MessageEntity(type="bot_command", offset=0, length=6)
     new_message = Message(
         message_id=103,
         date=datetime.now(UTC),
         chat=owner_text_chat,
         from_user=owner_text_user,
-        text="/new",
+        text="/clear",
         entities=(new_entity,),
     )
     new_message.set_bot(MagicMock(username="tempo_test_bot"))
@@ -418,13 +418,13 @@ def test_build_application_registers_text_and_new_handlers(
     new_update.set_bot(new_message.get_bot())
     assert new_handler.check_update(new_update)
 
-    # /new from non-owner -> rejected.
+    # /clear from non-owner -> rejected.
     non_owner_new = Message(
         message_id=104,
         date=datetime.now(UTC),
         chat=non_owner_chat,
         from_user=owner_text_user,
-        text="/new",
+        text="/clear",
         entities=(new_entity,),
     )
     non_owner_new.set_bot(MagicMock(username="tempo_test_bot"))
@@ -527,6 +527,7 @@ def test_post_init_logs_agent_cwd_and_data_dir(
     # live bot.
     fake_bot = MagicMock()
     fake_bot.delete_webhook = AsyncMock(return_value=None)
+    fake_bot.set_my_commands = AsyncMock(return_value=None)
     fake_app = SimpleNamespace(bot=fake_bot)
 
     caplog.set_level(logging.INFO, logger="tempo.bot")
@@ -558,6 +559,7 @@ def test_post_init_no_sweep_log_when_retention_zero(
 
     fake_bot = MagicMock()
     fake_bot.delete_webhook = AsyncMock(return_value=None)
+    fake_bot.set_my_commands = AsyncMock(return_value=None)
     fake_app = SimpleNamespace(bot=fake_bot)
 
     caplog.set_level(logging.INFO, logger="tempo.bot")

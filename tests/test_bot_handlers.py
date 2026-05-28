@@ -67,15 +67,15 @@ from tempo.bot import (
     MAX_VOICE_BYTES,
     AgentInvocationError,
     AgentTurn,
-    new_command_handler,
+    clear_command_handler,
     text_handler,
     voice_handler,
 )
 from tempo.bot.app import build_application
 from tempo.bot.handlers import (
+    CLEAR_SESSION_REPLY,
     EMPTY_TRANSCRIPT_REPLY,
     MISSING_CLI_REPLY,
-    NEW_SESSION_REPLY,
     OVERSIZED_REPLY,
 )
 from tempo.config import Settings
@@ -183,7 +183,7 @@ def _make_new_command_update(
         date=datetime.now(UTC),
         chat=chat,
         from_user=user,
-        text="/new",
+        text="/clear",
         entities=(entity,),
     )
     if with_bot:
@@ -444,11 +444,15 @@ def test_voice_handler_happy_path_writes_file_transcribes_and_replies(
     assert save_args[1] == 987654321
     assert save_args[2] == "sess-NEW"
 
-    # Reply is the agent text (not the raw transcript), HTML parse mode.
-    mock_reply.assert_awaited_once()
-    call = mock_reply.await_args
-    assert call.args[0] == "agent reply"
-    assert call.kwargs.get("parse_mode") == ParseMode.HTML
+    # Voice handler sends TWO replies: (1) the transcript echo so the user
+    # can see what Whisper heard, (2) the agent's answer. Both HTML.
+    assert mock_reply.await_count == 2
+    echo_call = mock_reply.await_args_list[0]
+    assert "📝 Heard:" in echo_call.args[0]
+    assert echo_call.kwargs.get("parse_mode") == ParseMode.HTML
+    agent_call = mock_reply.await_args_list[1]
+    assert agent_call.args[0] == "agent reply"
+    assert agent_call.kwargs.get("parse_mode") == ParseMode.HTML
 
     # The typing indicator was kicked at least once before run_turn.
     assert mock_send_action.await_count >= 1
@@ -507,9 +511,11 @@ def test_voice_handler_escapes_html_in_agent_reply(
 
     asyncio.run(voice_handler(update, context))  # type: ignore[arg-type]
 
-    mock_reply.assert_awaited_once()
-    body = mock_reply.await_args.args[0]
-    # html.escape (quote=False) applied by format_for_telegram. No `<i>` wrapper.
+    # Voice handler now sends 2 replies: transcript echo first, agent reply second.
+    assert mock_reply.await_count == 2
+    body = mock_reply.await_args_list[1].args[0]  # second await = agent reply
+    # html.escape (quote=False) applied by format_for_telegram. No `<i>` wrapper
+    # around the agent text itself (the wrapper is for the transcript echo only).
     assert body == "3 &lt; 4 &amp; 5 &gt; 4"
 
 
@@ -803,18 +809,20 @@ def test_voice_handler_long_reply_is_split_into_chunks_with_prefix(
 
     asyncio.run(voice_handler(update, context))  # type: ignore[arg-type]
 
-    assert mocks["reply"].await_count >= 2  # type: ignore[attr-defined]
-    # Each chunk is <= 4096 chars and starts with [k/N] for k = 1..N.
+    # The voice handler sends the transcript echo first (1 reply), then the
+    # multi-chunk agent reply (N replies). So total = 1 + N (where N >= 2 for
+    # the long-reply case being tested).
+    assert mocks["reply"].await_count >= 3  # type: ignore[attr-defined]
+    chunk_calls = list(mocks["reply"].await_args_list[1:])  # type: ignore[attr-defined]
+    # Each agent chunk is <= 4096 chars and starts with [k/N] for k = 1..N.
     seen_prefixes: list[str] = []
-    for call in mocks["reply"].await_args_list:  # type: ignore[attr-defined]
+    for call in chunk_calls:
         body = call.args[0]
         assert len(body) <= 4096
         assert body.startswith("[")
-        # extract "[k/N] " prefix
         prefix_end = body.index(" ") + 1
         seen_prefixes.append(body[:prefix_end])
-    # Prefixes are 1-indexed and contiguous: [1/N], [2/N], ...
-    n = mocks["reply"].await_count  # type: ignore[attr-defined]
+    n = len(chunk_calls)
     expected = [f"[{i}/{n}] " for i in range(1, n + 1)]
     assert seen_prefixes == expected
 
@@ -845,21 +853,28 @@ def test_voice_handler_missing_cli_replies_with_clear_message(
     # The handler must NOT re-raise.
     asyncio.run(voice_handler(update, context))  # type: ignore[arg-type]
 
-    mocks["reply"].assert_awaited_once()  # type: ignore[attr-defined]
-    body = mocks["reply"].await_args.args[0]  # type: ignore[index]
-    assert body == MISSING_CLI_REPLY
+    # Two replies: transcript echo first, then MISSING_CLI_REPLY for the
+    # AgentInvocationError path. Order matters -- the echo lands before the
+    # agent is even attempted.
+    assert mocks["reply"].await_count == 2  # type: ignore[attr-defined]
+    echo_body = mocks["reply"].await_args_list[0].args[0]  # type: ignore[index]
+    assert "📝 Heard:" in echo_body
+    error_body = mocks["reply"].await_args_list[1].args[0]  # type: ignore[index]
+    assert error_body == MISSING_CLI_REPLY
     # No session was persisted -- agent failed before save_session.
     save_mock.assert_not_called()
 
 
-def test_voice_handler_does_not_echo_raw_transcript_anymore(
+def test_voice_handler_echoes_transcript_before_agent_reply(
     tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Negative regression: the Phase 10 `<i>{transcript}</i>` echo is GONE.
+    """The transcript is echoed back FIRST so the user can confirm what Whisper heard.
 
-    Even with the agent returning a known reply, NO reply body should equal
-    the italics-wrapped transcript. Guards against accidental revival of
-    the Phase 10 behaviour.
+    Echo format: ``<i>📝 Heard: {transcript}</i>`` -- italicised so it's
+    visually distinct from the agent's prose reply, with the speech-bubble
+    emoji as a clear "this is what I heard" marker. Sent before the agent
+    is even called so the user gets the confirmation immediately while the
+    agent takes its 10-30s.
     """
     _clear_env(monkeypatch)
     mocks = _setup_voice_mocks(monkeypatch, transcript="hello world this is a test")
@@ -881,9 +896,12 @@ def test_voice_handler_does_not_echo_raw_transcript_anymore(
 
     asyncio.run(voice_handler(update, context))  # type: ignore[arg-type]
 
-    for call in mocks["reply"].await_args_list:  # type: ignore[attr-defined]
-        body = call.args[0]
-        assert body != "<i>hello world this is a test</i>"
+    # The FIRST reply must be the transcript echo.
+    first_body = mocks["reply"].await_args_list[0].args[0]  # type: ignore[attr-defined]
+    assert "📝 Heard:" in first_body
+    assert "hello world this is a test" in first_body
+    assert first_body.startswith("<i>")
+    assert first_body.endswith("</i>")
 
 
 def test_voice_handler_empty_transcript_skips_agent(
@@ -1098,11 +1116,11 @@ def test_text_handler_defensive_check_rejects_mismatched_chat(
 
 
 # ---------------------------------------------------------------------------
-# new_command_handler
+# clear_command_handler
 # ---------------------------------------------------------------------------
 
 
-def test_new_command_handler_resets_session_and_replies(
+def test_clear_command_handler_resets_session_and_replies(
     tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`/new` -> reset_session called with the owner chat id; fixed reply sent."""
@@ -1121,18 +1139,18 @@ def test_new_command_handler_resets_session_and_replies(
         ),
     )
 
-    asyncio.run(new_command_handler(update, context))  # type: ignore[arg-type]
+    asyncio.run(clear_command_handler(update, context))  # type: ignore[arg-type]
 
     fake_reset.assert_called_once()
     # reset_session(conn, chat_id) -- second arg is chat_id
     assert fake_reset.call_args.args[1] == 987654321
 
     mock_reply.assert_awaited_once()
-    assert mock_reply.await_args.args[0] == NEW_SESSION_REPLY
+    assert mock_reply.await_args.args[0] == CLEAR_SESSION_REPLY
     assert mock_reply.await_args.kwargs.get("parse_mode") == ParseMode.HTML
 
 
-def test_new_command_handler_defensive_check_rejects_mismatched_chat(
+def test_clear_command_handler_defensive_check_rejects_mismatched_chat(
     tempo_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """In-handler chat-id mismatch -> silent drop, no reset_session call."""
@@ -1151,7 +1169,7 @@ def test_new_command_handler_defensive_check_rejects_mismatched_chat(
         ),
     )
 
-    asyncio.run(new_command_handler(update, context))  # type: ignore[arg-type]
+    asyncio.run(clear_command_handler(update, context))  # type: ignore[arg-type]
 
     assert mock_reply.await_count == 0
 
