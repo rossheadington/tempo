@@ -363,6 +363,16 @@ def parse_food(path: Path) -> FoodContext:
                 malformed.append(line_no)
                 continue
             if current_block_date is not None:
+                # Even inside a block, the bullet may still be an inline-format
+                # entry (carries its own ``YYYY-MM-DD <meal>:`` prefix AND
+                # a ``|`` macro separator). Try inline first so an inline
+                # entry appended after a block doesn't get misattributed to
+                # the active block's meal_name. The block stays open for
+                # subsequent block-shaped bullets.
+                inline_entry = _parse_inline_entry(raw_line, line_no)
+                if inline_entry is not None:
+                    collected.append(inline_entry)
+                    continue
                 entry = _parse_block_bullet(
                     raw_line, line_no, current_block_date, current_block_meal
                 )

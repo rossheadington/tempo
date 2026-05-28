@@ -151,6 +151,42 @@ def test_parse_food_both_formats_in_same_file(tmp_path: Path) -> None:
     assert ctx.blocks[0].date == date(2026, 5, 27)
 
 
+def test_parse_food_inline_entry_after_block_keeps_its_own_meal_name(
+    tmp_path: Path,
+) -> None:
+    """Inline entries appended after a ``## breakfast`` block keep their own meal.
+
+    Regression: the parser previously stayed in "block mode" once a ``##``
+    header opened, classifying every subsequent ``- `` bullet as a block
+    child of that meal even when the bullet was clearly inline-shaped
+    (carried its own ``YYYY-MM-DD <meal>:`` prefix AND ``|`` macro
+    separator). That made a ``cat >> food.md`` append misattribute the
+    snack to breakfast. The bullet's ``|`` distinguishes inline-from-block
+    cleanly; we try inline first inside an active block.
+    """
+    p = _write_food(
+        tmp_path,
+        "## 2026-05-28 breakfast\n"
+        "- bagel: p:8 c:40 f:2 cal:214\n"
+        "\n"
+        "- 2026-05-28 snack: 500ml monster | p:0 c:60 f:0 cal:237\n",
+    )
+    ctx = parse_food(p)
+    assert ctx.malformed_lines == ()
+    assert len(ctx.entries) == 2
+    meals = {(e.meal_name, e.food_label) for e in ctx.entries}
+    assert meals == {
+        ("breakfast", "bagel"),
+        ("snack", "500ml monster"),
+    }
+    # The active block stays a block; the inline entry is not in `blocks`.
+    assert len(ctx.blocks) == 1
+    assert ctx.blocks[0].meal_name == "breakfast"
+    # Block has exactly one entry (the bagel) — the inline snack didn't
+    # leak into the block's `entries` tuple.
+    assert len(ctx.blocks[0].entries) == 1
+
+
 def test_parse_food_inline_and_block_produce_equivalent_entries(tmp_path: Path) -> None:
     """The equivalence guarantee: same meal in both formats produces identical
     FoodEntry records modulo date / source_line / source_format."""
