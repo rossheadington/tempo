@@ -26,6 +26,7 @@ from tempo.analysis import fitness, load, race
 from tempo.analysis import races as ctx
 from tempo.analysis import recovery as recovery_mod
 from tempo.analysis import report as report_mod
+from tempo.analysis.preferences import PreferencesContext, Units
 from tempo.analysis.race_link import link_races_to_activities
 from tempo.analysis.races import Race
 
@@ -110,7 +111,7 @@ def weekly_rollups(conn: sqlite3.Connection, series: LoadSeries) -> list[report_
             report_mod.WeeklyRollup(
                 week_label=label,
                 n_activities=int(agg["n"]),
-                distance_km=agg["dist"] / 1000.0,
+                distance_m=agg["dist"],
                 duration_h=agg["dur"] / 3600.0,
                 load=agg["load"],
             )
@@ -212,12 +213,18 @@ def build_race_readiness(
 # ---------------------------------------------------------------------------
 
 
-def _load_config_from_settings(settings) -> load.LoadConfig:  # type: ignore[no-untyped-def]
+def _load_config_from_prefs(prefs: PreferencesContext) -> load.LoadConfig:
+    """Build a :class:`load.LoadConfig` from a parsed preferences context.
+
+    Pure shim — the four physiology knobs (threshold pace + max/resting/threshold
+    HR) used to live on :class:`Settings`; Phase 17 moved them into
+    ``preferences.md`` so :class:`Physiology` is now the authoritative source.
+    """
     return load.LoadConfig(
-        threshold_pace_s_per_km=settings.threshold_pace_s_per_km,
-        max_hr=settings.max_hr,
-        resting_hr=settings.resting_hr,
-        threshold_hr=settings.threshold_hr,
+        threshold_pace_s_per_km=prefs.physiology.threshold_pace_s_per_km,
+        max_hr=prefs.physiology.max_hr,
+        resting_hr=prefs.physiology.resting_hr,
+        threshold_hr=prefs.physiology.threshold_hr,
     )
 
 
@@ -234,8 +241,14 @@ def generate_load_trend(
     cfg: load.LoadConfig,
     reports_dir: Path,
     generated_on: date,
+    units: Units | None = None,
 ) -> Path:
-    """Compute the load-trend findings and write the dated markdown report."""
+    """Compute the load-trend findings and write the dated markdown report.
+
+    ``units`` controls the display unit for the weekly-distance column; defaults
+    to the Phase 17 ``Units()`` (km + min/km) for back-compat. Callers may pass
+    ``prefs.units`` to honour ``preferences.md`` (see :func:`tempo.cli`).
+    """
     series = build_load_series(conn, cfg)
     guardrail = fitness.evaluate_guardrail(series.points)
     weeks = weekly_rollups(conn, series)
@@ -252,6 +265,7 @@ def generate_load_trend(
         guardrail=guardrail,
         weeks=weeks,
         has_load_config=has_config,
+        units=units if units is not None else Units(),
     )
     return _write_report(reports_dir, "load-trend", generated_on, text)
 
@@ -441,6 +455,7 @@ def generate_all(
     target_kcal: int | None = None,
     reports_dir: Path,
     generated_on: date,
+    units: Units | None = None,
 ) -> AnalyzeResult:
     """Run the FULL analysis suite (load-trend, race-readiness, recovery, correlations, nutrition).
 
@@ -448,10 +463,16 @@ def generate_all(
     five reports are written to the gitignored reports dir, each with its own
     per-source freshness header. No network. ``food_path`` is optional for
     back-compat: callers that don't pass it skip the nutrition report entirely.
+    ``units`` controls the display unit for the weekly-distance column
+    (Phase 17); defaults to km when ``None``.
     """
     return AnalyzeResult(
         load_trend=generate_load_trend(
-            conn, cfg=cfg, reports_dir=reports_dir, generated_on=generated_on
+            conn,
+            cfg=cfg,
+            reports_dir=reports_dir,
+            generated_on=generated_on,
+            units=units,
         ),
         race_readiness=generate_race_readiness(
             conn,

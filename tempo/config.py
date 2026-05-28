@@ -128,21 +128,6 @@ class Settings(BaseSettings):
         ),
     )
 
-    # ---- Nutrition goal (Phase 16) ----
-    # Bare env-var name (NOT prefixed) to match the user-facing knobs
-    # convention. Optional: when unset, the nutrition rollup leaves
-    # ``target_kcal`` + ``deficit_surplus_7d`` as ``None`` and the report
-    # renderer omits the goal line silently.
-    target_kcal_default: int | None = Field(
-        default=None,
-        validation_alias="TEMPO_TARGET_KCAL",
-        description=(
-            "Optional daily kcal target for nutrition rollup goal tracking. "
-            "When set, the 7-day rollup surfaces deficit_surplus_7d = avg_7d.kcal "
-            "- target. When unset (the default), goal tracking is silently off."
-        ),
-    )
-
     # ---- Voice cache retention (Phase 12 / v1.1) ----
     # Bare env-var name (NOT prefixed) so the convention matches the other
     # bot-side knobs (TELEGRAM_*, WHISPER_*). Default 0 = delete every voice
@@ -157,31 +142,16 @@ class Settings(BaseSettings):
         ),
     )
 
-    # ---- Load / analysis settings (Phase 4) ----
-    threshold_pace_s_per_km: float | None = Field(
-        default=None,
-        description=(
-            "Functional threshold pace in seconds per km (the pace you could hold "
-            "for ~1 hour all-out). Required for pace-based rTSS load. e.g. 240 = "
-            "4:00/km. If unset, load falls back to hrTSS when HR data exists."
-        ),
-    )
-    max_hr: int | None = Field(
-        default=None,
-        description="Maximum heart rate (bpm). Used by the hrTSS load fallback.",
-    )
-    resting_hr: int | None = Field(
-        default=None,
-        description="Resting heart rate (bpm). Used by the hrTSS (HRR) load fallback.",
-    )
-    threshold_hr: int | None = Field(
-        default=None,
-        description=(
-            "Lactate-threshold heart rate (bpm) -- the HR you could hold for ~1 hour. "
-            "Anchors hrTSS so 1 hour at threshold HR scores ~100, matching rTSS. If "
-            "unset, it is estimated as ~0.92 * max_hr."
-        ),
-    )
+    # ---- Personal physiology + nutrition target ----
+    # NOTE (Phase 17): the four physiology knobs (threshold_pace_s_per_km,
+    # max_hr, resting_hr, threshold_hr) and the nutrition target
+    # (target_kcal_default) used to live here as ``.env``-driven Fields.
+    # They now live in a user-edited markdown file at
+    # ``content_root/preferences.md`` and are loaded via
+    # ``tempo.analysis.preferences.parse_preferences(settings.preferences_path)``
+    # which returns a frozen ``PreferencesContext`` carrying ``physiology`` /
+    # ``units`` / ``nutrition`` typed sections. The ``preferences_path``
+    # derived property below is the only configuration surface.
 
     @field_validator("data_dir", mode="after")
     @classmethod
@@ -244,6 +214,11 @@ class Settings(BaseSettings):
     def food_path(self) -> Path:
         """Path to the user-maintained food log (read for nutrition rollup + recovery context)."""
         return self.content_root / "food.md"
+
+    @property
+    def preferences_path(self) -> Path:
+        """Path to ``preferences.md`` (physiology + units + nutrition + prose)."""
+        return self.content_root / "preferences.md"
 
     @property
     def voice_cache_dir(self) -> Path:

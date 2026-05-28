@@ -28,12 +28,17 @@ cli = CliRunner()
 @pytest.fixture
 def seeded_cli(tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A CLI data dir seeded with activities + load config + races/heat context."""
-    monkeypatch.setenv("TEMPO_THRESHOLD_PACE_S_PER_KM", "240")
-    monkeypatch.setenv("TEMPO_MAX_HR", "190")
-    monkeypatch.setenv("TEMPO_RESTING_HR", "50")
-
+    # Phase 17: physiology config now lives in preferences.md, not .env vars.
     settings = get_settings()
     settings.ensure_dirs()
+    settings.preferences_path.write_text(
+        "# Preferences\n\n"
+        "## Physiology\n"
+        "threshold_pace: 240 s/km\n"
+        "max_hr: 190\n"
+        "resting_hr: 50\n",
+        encoding="utf-8",
+    )
     conn = db.init_db(settings.db_path)
     start = date(2026, 1, 1)
     try:
@@ -144,3 +149,72 @@ def test_analyze_on_empty_db_degrades_not_crash(tempo_data_dir: Path) -> None:
             assert "Data: food.md" in text
         else:
             assert "## Data freshness" in text
+
+
+def test_analyze_nutrition_reads_target_kcal_from_preferences_md(
+    tempo_data_dir: Path,
+) -> None:
+    """Phase 17: the CLI must honour `target_kcal` in preferences.md (not .env).
+
+    Writes a preferences.md with a `## Nutrition` target, seeds a food.md with
+    enough entries that the 7-day rollup can compute a delta, then asserts the
+    rendered nutrition report surfaces the goal line — which only renders when
+    `target_kcal` is present.
+    """
+    from datetime import UTC, datetime
+
+    from tempo.config import get_settings
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    settings.preferences_path.write_text(
+        "# Preferences\n\n## Nutrition\ntarget_kcal: 2400\n",
+        encoding="utf-8",
+    )
+    today = datetime.now(UTC).date()
+    # Seed a single day's food entry so the rollup has at least one logged day.
+    settings.food_path.write_text(
+        f"- {today.isoformat()} breakfast: oats | p:13 c:54 f:6 cal:300\n",
+        encoding="utf-8",
+    )
+
+    result = cli.invoke(app, ["analyze", "nutrition"])
+    assert result.exit_code == 0, result.output
+    files = list((tempo_data_dir / "reports").glob("*-nutrition.md"))
+    assert len(files) == 1
+    text = files[0].read_text(encoding="utf-8")
+    # The Goal section only renders when target_kcal is non-None — which means
+    # the CLI successfully sourced it from preferences.md (not the deleted
+    # TEMPO_TARGET_KCAL env var).
+    assert "2400" in text
+    assert "Goal" in text or "Target" in text
+
+
+def test_analyze_load_trend_renders_miles_when_preferences_says_miles(
+    seeded_cli: Path,
+) -> None:
+    """Phase 17: the load-trend report's distance column honours `## Units` in preferences.md."""
+    from tempo.config import get_settings
+
+    settings = get_settings()
+    # Replace the seeded preferences.md (which has Physiology only) with one
+    # that also picks miles for distance display.
+    settings.preferences_path.write_text(
+        "# Preferences\n\n"
+        "## Physiology\n"
+        "threshold_pace: 240 s/km\n"
+        "max_hr: 190\n"
+        "resting_hr: 50\n\n"
+        "## Units\n"
+        "distance: miles\n",
+        encoding="utf-8",
+    )
+
+    result = cli.invoke(app, ["analyze", "load-trend"])
+    assert result.exit_code == 0, result.output
+    files = list((seeded_cli / "reports").glob("*-load-trend.md"))
+    assert len(files) == 1
+    text = files[0].read_text(encoding="utf-8")
+    # Column header reflects miles, not km.
+    assert "Distance (mi)" in text
+    assert "Distance (km)" not in text

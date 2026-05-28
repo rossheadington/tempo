@@ -123,8 +123,8 @@ class NutritionRollup:
     averaged from per-day percentages). ``avg_28d_kcal`` is a scalar int;
     deeper 28-day trend lives in a future version.
 
-    ``target_kcal`` is sourced from the caller (typically
-    ``Settings.target_kcal_default`` via ``TEMPO_TARGET_KCAL``);
+    ``target_kcal`` is sourced from the caller (Phase 17: the CLI loads it
+    from ``preferences.md`` via ``PreferencesContext.nutrition.target_kcal``);
     ``deficit_surplus_7d`` is ``avg_7d.kcal - target_kcal`` when both are
     available, else ``None``.
     """

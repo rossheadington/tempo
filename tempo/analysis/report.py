@@ -20,9 +20,11 @@ from datetime import date
 from tempo.analysis.data import SourceFreshness
 from tempo.analysis.fitness import FitnessPoint, Guardrail
 from tempo.analysis.load import DayLoad
+from tempo.analysis.preferences import Units
 from tempo.analysis.race import RacePrediction, format_hms
 from tempo.analysis.race_link import RaceLink
 from tempo.analysis.races import Race, RacesContext
+from tempo.units import format_distance
 
 # A source synced longer ago than this is flagged stale in the header.
 STALE_AFTER_DAYS = 2
@@ -30,11 +32,16 @@ STALE_AFTER_DAYS = 2
 
 @dataclass(frozen=True, slots=True)
 class WeeklyRollup:
-    """Per-week training volume / load summary for the load-trend report."""
+    """Per-week training volume / load summary for the load-trend report.
+
+    ``distance_m`` is raw metres (SI), to keep the analysis layer unit-agnostic;
+    the renderer converts to the user's preferred unit via
+    :func:`tempo.units.format_distance` at the display boundary (Phase 17).
+    """
 
     week_label: str
     n_activities: int
-    distance_km: float
+    distance_m: float
     duration_h: float
     load: float
 
@@ -108,8 +115,15 @@ def render_load_trend(
     guardrail: Guardrail,
     weeks: list[WeeklyRollup],
     has_load_config: bool,
+    units: Units | None = None,
 ) -> str:
-    """Render the training-load & trend report (ANL-01, LOAD-02/03)."""
+    """Render the training-load & trend report (ANL-01, LOAD-02/03).
+
+    ``units`` controls the weekly-distance column label + value. When ``None``
+    (the default) the renderer uses :class:`Units` defaults (km + min/km) so
+    pre-Phase-17 callers see no change.
+    """
+    units = units if units is not None else Units()
     out = [
         freshness_header(
             report_title="Training Load & Trend",
@@ -130,8 +144,8 @@ def render_load_trend(
     if not has_load_config:
         out.append(
             "> :warning: No threshold pace or HR config set -- per-activity load may be "
-            "**insufficient** for many days. Set `TEMPO_THRESHOLD_PACE_S_PER_KM` (and/or "
-            "`TEMPO_MAX_HR`/`TEMPO_RESTING_HR`) for accurate rTSS/hrTSS load.\n"
+            "**insufficient** for many days. Fill in `## Physiology` in `preferences.md` "
+            "(threshold_pace / max_hr / resting_hr) for accurate rTSS/hrTSS load.\n"
         )
 
     latest = points[-1]
@@ -150,11 +164,16 @@ def render_load_trend(
 
     out.append("## Weekly volume & load\n")
     if weeks:
-        out.append("| Week | Runs | Distance (km) | Time (h) | Load |")
+        distance_label = "Distance (mi)" if units.distance == "miles" else "Distance (km)"
+        out.append(f"| Week | Runs | {distance_label} | Time (h) | Load |")
         out.append("|------|------|---------------|----------|------|")
         for w in weeks[-12:]:
+            # ``format_distance`` returns "12.9 km" / "8.0 mi"; strip the unit
+            # suffix because the column header already states the unit.
+            dist_str = format_distance(w.distance_m, units, precision=1)
+            dist_value = dist_str.rsplit(" ", 1)[0] if " " in dist_str else dist_str
             out.append(
-                f"| {w.week_label} | {w.n_activities} | {w.distance_km:.1f} | "
+                f"| {w.week_label} | {w.n_activities} | {dist_value} | "
                 f"{w.duration_h:.1f} | {w.load:.0f} |"
             )
     else:

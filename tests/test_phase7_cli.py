@@ -29,11 +29,17 @@ cli = CliRunner()
 
 @pytest.fixture
 def seeded_data_dir(tempo_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("TEMPO_THRESHOLD_PACE_S_PER_KM", "240")
-    monkeypatch.setenv("TEMPO_MAX_HR", "190")
-    monkeypatch.setenv("TEMPO_RESTING_HR", "48")
+    # Phase 17: physiology config now lives in preferences.md, not .env vars.
     settings = get_settings()
     settings.ensure_dirs()
+    settings.preferences_path.write_text(
+        "# Preferences\n\n"
+        "## Physiology\n"
+        "threshold_pace: 240 s/km\n"
+        "max_hr: 190\n"
+        "resting_hr: 48\n",
+        encoding="utf-8",
+    )
     conn = db.init_db(settings.db_path)
     d0 = date(2026, 1, 1)
     n = 70

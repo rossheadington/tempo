@@ -27,13 +27,25 @@ from tests.strava_fakes import make_run
 
 
 def _settings(tmp_path) -> Settings:  # type: ignore[no-untyped-def]
-    return Settings(
-        data_dir=str(tmp_path / "data"),
-        threshold_pace_s_per_km=240.0,
-        max_hr=190,
-        resting_hr=48,
-        threshold_hr=170,
+    """Build Settings + drop a preferences.md so the daily run picks up physiology.
+
+    Phase 17 moved threshold_pace / max_hr / resting_hr / threshold_hr out of
+    Settings and into preferences.md (parsed at runtime). Tests that previously
+    constructed Settings(threshold_pace_s_per_km=240.0, ...) now write the same
+    values into preferences.md at the (default) content_root.
+    """
+    settings = Settings(data_dir=str(tmp_path / "data"))
+    settings.content_root.mkdir(parents=True, exist_ok=True)
+    settings.preferences_path.write_text(
+        "# Preferences\n\n"
+        "## Physiology\n"
+        "threshold_pace: 240 s/km\n"
+        "max_hr: 190\n"
+        "resting_hr: 48\n"
+        "threshold_hr: 170\n",
+        encoding="utf-8",
     )
+    return settings
 
 
 class _FakeStrava:

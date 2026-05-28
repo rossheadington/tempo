@@ -39,6 +39,40 @@ def test_content_dir_defaults_to_data_dir(tempo_data_dir: Path) -> None:
     assert settings.heat_path == tempo_data_dir / "heat.md"
 
 
+def test_preferences_path_derived_under_content_root(
+    tempo_data_dir: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """Phase 17: preferences.md is resolved under content_root, alongside races.md / food.md."""
+    # 1. With no TEMPO_CONTENT_DIR override, preferences.md lives under data_dir.
+    settings = get_settings()
+    assert settings.preferences_path == tempo_data_dir / "preferences.md"
+
+    # 2. With TEMPO_CONTENT_DIR set, it follows content_root.
+    content = tmp_path / "training"
+    monkeypatch.setenv("TEMPO_CONTENT_DIR", str(content))
+    settings = get_settings()
+    assert settings.preferences_path == content / "preferences.md"
+
+
+def test_phase17_migrated_settings_fields_removed() -> None:
+    """Phase 17 deleted the five .env-sourced physiology / nutrition knobs.
+
+    They moved to preferences.md (parsed via tempo.analysis.preferences); the
+    Settings class must no longer expose them as attributes.
+    """
+    settings = Settings(_env_file=None)
+    for removed in (
+        "threshold_pace_s_per_km",
+        "max_hr",
+        "resting_hr",
+        "threshold_hr",
+        "target_kcal_default",
+    ):
+        assert not hasattr(settings, removed), (
+            f"Settings still exposes deleted field {removed!r}"
+        )
+
+
 def test_content_dir_redirects_content_only(tempo_data_dir: Path, tmp_path: Path) -> None:
     # content_dir moves races/heat/reports, but the DB and tokens stay in data_dir
     # (the privacy boundary): secrets/state never follow the human-readable files.

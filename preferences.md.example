@@ -1,0 +1,75 @@
+# Preferences -- EXAMPLE / TEMPLATE
+
+Copy this file to your Tempo content dir as `preferences.md` (default
+`<content_root>/preferences.md`, redirect with `TEMPO_CONTENT_DIR`) and edit
+it. UNLIKE the other trackers (food.md, weight.md, races.md, etc.) which are
+append-only logs, this file is an **edit-in-place profile**: hand-edit the
+typed sections when your numbers change, hand-edit the prose sections any
+time you'd like the coach to see something. The file is never committed (the
+content dir lives outside the repo tree). The numbers below are synthetic
+textbook placeholders -- replace with yours.
+
+The four typed sections (`Physiology`, `Units`, `Nutrition`) are parsed as
+structured config; every other H2 section is captured verbatim as a prose
+section the coach can read via `Read training/preferences.md`.
+
+See `docs/PREFERENCES.md` for the full grammar + lenient-parsing contract.
+
+## Physiology
+
+threshold_pace: 4:00/km          # accepted forms: M:SS/mi, M:SS/km, NNN s/km, NNN
+max_hr: 190                      # measured or estimated; feeds load.py hr-TSS
+resting_hr: 50                   # 7d morning average from the watch
+threshold_hr: 175                # optional; if absent load.py uses ~0.92*max_hr
+
+## Units
+
+distance: km                     # km | miles (also accepted: mi, mile, kilometres)
+pace: min_per_km                 # min_per_km | min_per_mile (also: min/km, mpk, min/mi, mpm)
+
+## Nutrition
+
+target_kcal: 2200                # optional; enables 7d delta in nutrition + recovery reports
+
+## Training week
+
+Monday: easy doubles, ~12 km
+Tuesday: threshold day (sometimes double threshold, sometimes threshold + easy)
+Wednesday: medium-long, 14-16 km steady
+Thursday: single easy
+Friday: marathon-pace work OR easy (inverse of Sunday)
+Saturday: easy
+Sunday: long with marathon-pace work OR pure easy (inverse of Friday)
+Note: don't typically do MP work on both Fri AND Sun in the same week.
+
+## Goals / current focus
+
+- Build aerobic base through the spring
+- A-race: autumn marathon, sub-3 hour goal
+- Avoid the recurring left-Achilles niggle by capping any single week below 100 km
+
+# What gets parsed vs. read
+
+The lenient parser ONLY extracts typed fields from the three named sections
+above (`Physiology`, `Units`, `Nutrition`). Unknown keys inside a typed
+section are silently ignored (forward-compat). Any other `## Header` is
+captured verbatim into the parsed context's `prose_sections` dict, keyed by
+the lowercased + stripped header text -- the coach reads it when relevant,
+the analysis layer never interprets it. Free-form prose between sections,
+the leading `# Preferences` H1, and any preamble before the first H2 are all
+discarded by the parser (but visible when the coach reads the file).
+
+# What NOT to do
+
+Malformed typed-section values stay at their default and the line number
+lands in `PreferencesContext.malformed_lines`. Examples (shown with a
+leading `~` so the parser doesn't see them as live values):
+
+  * `~ threshold_pace: 4 min/mi`     -- missing seconds component (needs M:SS/unit).
+  * `~ max_hr: high`                 -- not parseable as int.
+  * `~ target_kcal: about 2200`      -- prose where a number is required.
+
+_Tempo's parser is lenient: missing file degrades to `present=False`,
+malformed values leave the field at its default (line number captured in
+`PreferencesContext.malformed_lines`), unknown keys / unrecognised sections
+do not raise. See `docs/PREFERENCES.md` for the full contract._

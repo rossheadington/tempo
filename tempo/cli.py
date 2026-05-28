@@ -686,15 +686,21 @@ app.add_typer(analyze_app, name="analyze")
 
 
 def _analyze_setup():
-    """Open the DB and build the load config from settings for an analysis run."""
+    """Open the DB and build the per-run config from preferences.md.
+
+    Returns ``(settings, conn, cfg, prefs)`` -- the load config + units +
+    nutrition target all flow from ``preferences.md`` (Phase 17).
+    """
     from tempo.analysis import load as load_mod
-    from tempo.analysis.runner import _load_config_from_settings
+    from tempo.analysis.preferences import PreferencesContext, parse_preferences
+    from tempo.analysis.runner import _load_config_from_prefs
 
     settings = get_settings()
     settings.ensure_dirs()
     conn = db.init_db(settings.db_path)
-    cfg: load_mod.LoadConfig = _load_config_from_settings(settings)
-    return settings, conn, cfg
+    prefs: PreferencesContext = parse_preferences(settings.preferences_path)
+    cfg: load_mod.LoadConfig = _load_config_from_prefs(prefs)
+    return settings, conn, cfg, prefs
 
 
 @analyze_app.callback(invoke_without_command=True)
@@ -712,7 +718,7 @@ def analyze_main(ctx: typer.Context) -> None:
 
     from tempo.analysis import runner
 
-    settings, conn, cfg = _analyze_setup()
+    settings, conn, cfg, prefs = _analyze_setup()
     today = datetime.now(UTC).date()
     try:
         result = runner.generate_all(
@@ -723,9 +729,10 @@ def analyze_main(ctx: typer.Context) -> None:
             strength_path=settings.strength_path,
             weight_path=settings.weight_path,
             food_path=settings.food_path,
-            target_kcal=settings.target_kcal_default,
+            target_kcal=prefs.nutrition.target_kcal,
             reports_dir=settings.reports_dir,
             generated_on=today,
+            units=prefs.units,
         )
     finally:
         conn.close()
@@ -741,13 +748,14 @@ def analyze_load_trend() -> None:
 
     from tempo.analysis import runner
 
-    settings, conn, cfg = _analyze_setup()
+    settings, conn, cfg, prefs = _analyze_setup()
     try:
         path = runner.generate_load_trend(
             conn,
             cfg=cfg,
             reports_dir=settings.reports_dir,
             generated_on=datetime.now(UTC).date(),
+            units=prefs.units,
         )
     finally:
         conn.close()
@@ -761,7 +769,7 @@ def analyze_race_readiness() -> None:
 
     from tempo.analysis import runner
 
-    settings, conn, cfg = _analyze_setup()
+    settings, conn, cfg, _prefs = _analyze_setup()
     try:
         path = runner.generate_race_readiness(
             conn,
@@ -787,7 +795,7 @@ def analyze_recovery() -> None:
 
     from tempo.analysis import runner
 
-    settings, conn, cfg = _analyze_setup()
+    settings, conn, cfg, prefs = _analyze_setup()
     try:
         path = runner.generate_recovery(
             conn,
@@ -796,7 +804,7 @@ def analyze_recovery() -> None:
             strength_path=settings.strength_path,
             weight_path=settings.weight_path,
             food_path=settings.food_path,
-            target_kcal=settings.target_kcal_default,
+            target_kcal=prefs.nutrition.target_kcal,
             reports_dir=settings.reports_dir,
             generated_on=datetime.now(UTC).date(),
         )
@@ -817,7 +825,7 @@ def analyze_correlations() -> None:
 
     from tempo.analysis import runner
 
-    settings, conn, cfg = _analyze_setup()
+    settings, conn, cfg, _prefs = _analyze_setup()
     try:
         path = runner.generate_correlations(
             conn,
@@ -836,14 +844,15 @@ def analyze_nutrition() -> None:
 
     Reads ``food.md`` from the content dir and writes a dated nutrition
     report to the reports dir. Pure-file analysis -- no DB reads, no network.
-    When ``TEMPO_TARGET_KCAL`` is set the report includes a signed
-    deficit/surplus delta against the 7-day average.
+    When ``target_kcal`` is set in ``preferences.md``'s ``## Nutrition``
+    section the report includes a signed deficit/surplus delta against the
+    7-day average.
     """
     from datetime import UTC, datetime
 
     from tempo.analysis import runner
 
-    settings, conn, cfg = _analyze_setup()
+    settings, conn, cfg, prefs = _analyze_setup()
     try:
         path = runner.generate_nutrition(
             conn,
@@ -851,7 +860,7 @@ def analyze_nutrition() -> None:
             reports_dir=settings.reports_dir,
             generated_on=datetime.now(UTC).date(),
             food_path=settings.food_path,
-            target_kcal=settings.target_kcal_default,
+            target_kcal=prefs.nutrition.target_kcal,
         )
     finally:
         conn.close()

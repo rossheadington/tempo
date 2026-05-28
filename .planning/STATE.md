@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.5
-milestone_name: nutrition-tracker
+milestone: v1.6
+milestone_name: preferences-extraction
 status: shipped
-stopped_at: v1.5 (Phase 16) complete + post-v1.5 operational hardening on `main`; no active milestone. Ready for `/gsd-new-milestone` when next iteration starts.
-last_updated: "2026-05-28T18:00:00.000Z"
-last_activity: 2026-05-28 — Phase 16 (Nutrition Tracker, v1.5) shipped end-to-end. New `tempo/analysis/nutrition.py` (5 frozen+slots dataclasses; lenient two-format parser — inline + block-per-meal — interchangeable in one file; latest-wins dedup; left-open-right-closed 7d/28d windows; optional `target_kcal` deficit/surplus); `Settings.food_path` derived property + `Settings.target_kcal_default` opt-in via `TEMPO_TARGET_KCAL`; new `tempo/analysis/nutrition_report.py` + `tempo analyze nutrition` CLI write `reports/<date>-nutrition.md`; `RecoveryAssessment` gains `nutrition`/`nutrition_present` fields with `_render_nutrition_section` enforcing the 3-state degradation rule (absent → omit / stale >3d → one-line nudge / current → 7d P/C/F/cal rollup + optional goal-delta) positioned AFTER `## Weight`; `runner.generate_recovery` + `generate_all` + `generate_nutrition` thread `food_path` + `target_kcal`; `cli.py` + `sync/daily.py` pass them at every analyze entry point. `food.md.example` (14 entries, 7 inline + 7 block, 0 malformed) + `docs/NUTRITION.md` (394 lines) + `.env.example` (TEMPO_TARGET_KCAL knob) + README mention. 655 tests green (+36 from Phase 15), ruff clean. Verifier PASS 3/3.
+stopped_at: v1.6 (Phase 17) complete on `main`; v1.5 + Phase-16 nutrition tracker still in place underneath. Ready for next iteration.
+last_updated: "2026-05-28T20:00:00.000Z"
+last_activity: 2026-05-28 — Phase 17 (Preferences Extraction, v1.6) shipped end-to-end. New `tempo/analysis/preferences.py` (4 frozen+slots dataclasses — `Physiology`/`Units`/`Nutrition`/`PreferencesContext`; lenient parser with H2-section grammar, threshold-pace M:SS/mi + M:SS/km + bare s/km parsing, units alias normalisation, prose sections captured verbatim, malformed lines captured) + `tempo/units.py` formatter (`format_distance`/`format_pace`, NIST-exact `KM_PER_MILE = 1.609344`, en-dash sentinel for None/<=0/NaN). Five `.env`-sourced knobs DELETED from `Settings`: `TEMPO_THRESHOLD_PACE_S_PER_KM` / `TEMPO_MAX_HR` / `TEMPO_RESTING_HR` / `TEMPO_THRESHOLD_HR` / `TEMPO_TARGET_KCAL`. New `Settings.preferences_path` derived property. `runner.py` + `cli.py` + `sync/daily.py` now load `prefs = parse_preferences(settings.preferences_path)` once per invocation and pass typed values (`prefs.physiology.*`, `prefs.nutrition.target_kcal`, `prefs.units`) into the analysis seam (which preserved its existing `LoadConfig` / `target_kcal` / `units` typed parameters — smaller diff than threading `prefs` everywhere). `render_load_trend` now takes `units: Units` and switches column header `"Distance (km)"` ↔ `"Distance (mi)"` + cell value via `format_distance` (storage stays SI throughout). `preferences.md.example` (75 lines, placeholder values) + `docs/PREFERENCES.md` (325 lines) + `.env.example` updated with the Phase-17 migration comment trail. 716 tests green (+30 from Phase 16's 655 + ~31 new — 17 preferences parser + 9 units formatter + 2 CLI honour-preferences + 2 config — minus a few rewritten fixtures), ruff clean, `grep settings.<deleted>` returns empty. Verifier PASS 3/3.
 progress:
   total_phases: 1
   completed_phases: 1
-  completed: [16]
-  total_plans: 4
-  completed_plans: 4
+  completed: [17]
+  total_plans: 3
+  completed_plans: 3
   percent: 100
 ---
 

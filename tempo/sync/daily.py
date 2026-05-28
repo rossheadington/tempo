@@ -38,6 +38,7 @@ from tempo.analysis import races as ctx
 from tempo.analysis import recovery as recovery_mod
 from tempo.analysis import runner as analysis_runner
 from tempo.analysis.load import LoadConfig
+from tempo.analysis.preferences import PreferencesContext, parse_preferences
 from tempo.analysis.runner import AnalyzeResult, build_load_series
 from tempo.config import Settings
 from tempo.sync import pipeline
@@ -61,12 +62,13 @@ class DailyRunResult:
     stale_sources: list[str] = field(default_factory=list)
 
 
-def _load_config_from_settings(settings: Settings) -> LoadConfig:
+def _load_config_from_prefs(prefs: PreferencesContext) -> LoadConfig:
+    """Build a :class:`LoadConfig` from a parsed preferences context (Phase 17)."""
     return LoadConfig(
-        threshold_pace_s_per_km=settings.threshold_pace_s_per_km,
-        max_hr=settings.max_hr,
-        resting_hr=settings.resting_hr,
-        threshold_hr=settings.threshold_hr,
+        threshold_pace_s_per_km=prefs.physiology.threshold_pace_s_per_km,
+        max_hr=prefs.physiology.max_hr,
+        resting_hr=prefs.physiology.resting_hr,
+        threshold_hr=prefs.physiology.threshold_hr,
     )
 
 
@@ -102,16 +104,18 @@ def run_daily(
     )
 
     # ---- 3. Analyze: write the full report suite ----
-    cfg = _load_config_from_settings(settings)
+    prefs = parse_preferences(settings.preferences_path)
+    cfg = _load_config_from_prefs(prefs)
     reports = analysis_runner.generate_all(
         conn,
         cfg=cfg,
         races_path=settings.races_path,
         heat_path=settings.heat_path,
         food_path=settings.food_path,
-        target_kcal=settings.target_kcal_default,
+        target_kcal=prefs.nutrition.target_kcal,
         reports_dir=settings.reports_dir,
         generated_on=generated_on,
+        units=prefs.units,
     )
 
     # ---- 4. Noteworthy-only surfacing (recompute the shared findings once) ----
