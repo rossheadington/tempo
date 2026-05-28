@@ -240,24 +240,49 @@ def _run_strava_sync() -> None:
 
 
 @app.command()
-def sync() -> None:
+def sync(
+    notify_on_failure: bool = typer.Option(
+        False,
+        "--notify-on-failure",
+        help="Send a Telegram message to the owner when any source fails or the "
+        "run crashes. Silent on full success. Requires TELEGRAM_BOT_TOKEN + "
+        "TELEGRAM_OWNER_CHAT_ID in .env -- otherwise the flag is a no-op. "
+        "Designed for unattended cron / systemd / launchd invocations.",
+    ),
+) -> None:
     """Pull new data from connected sources into the raw store.
 
     Runs the Strava incremental sync, then *attempts* Garmin behind the same
     connector interface. Garmin is an ISOLATED failure domain: a 429 / auth break
     / library failure is caught, logged, and skipped (no retry) so Strava sync and
     a later ``tempo analyze`` still complete on existing data (GRMN-01/03).
+
+    With ``--notify-on-failure``: a single Telegram message goes to the owner
+    chat whenever the run finishes with any source ``ok=False`` OR raises an
+    unhandled exception. Silent on full success -- safe to wire into an
+    hourly cron / systemd-timer / launchd schedule without spam.
     """
-    from tempo.sync import pipeline
+    from tempo.sync import notify, pipeline
 
     settings, conn = _connected_db()
+    results: list[pipeline.SourceResult] = []
     try:
         try:
             results = pipeline.run_full_sync(conn, settings)
         except ValueError as exc:
             # Strava credentials missing -- the same UX as `tempo strava sync`.
+            # Missing creds IS a failure worth notifying about (the scheduled job
+            # otherwise silently degrades forever).
+            if notify_on_failure:
+                notify.send_exception_alert(settings, exc)
             typer.secho(str(exc), fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1) from exc
+        except Exception as exc:
+            # Catastrophic: send notification BEFORE re-raising so an
+            # unattended job operator still gets the signal.
+            if notify_on_failure:
+                notify.send_exception_alert(settings, exc)
+            raise
     finally:
         conn.close()
 
@@ -269,6 +294,11 @@ def sync() -> None:
             # A skipped Garmin run is NOT a failure of `tempo sync` -- surfaced
             # clearly so a partial sync is never mistaken for complete.
             typer.secho(f"  {r.source}: skipped -- {r.detail}", fg="yellow")
+
+    if notify_on_failure and any(not r.ok for r in results):
+        # Per-source failure (Garmin 429, Strava transient, etc.) -- silent
+        # on success, loud on any non-ok result.
+        notify.send_failure_alert(settings, results)
 
 
 # ---------------------------------------------------------------------------

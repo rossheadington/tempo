@@ -153,3 +153,102 @@ def test_tempo_sync_reports_both_sources_garmin_isolated(tempo_data_dir: Path, m
     finally:
         conn.close()
     assert n == 1
+
+
+def _patch_sync_pipeline_results(
+    monkeypatch, results: list
+) -> None:
+    """Stub pipeline.run_full_sync to return a canned list without touching connectors."""
+    from tempo.sync import pipeline
+
+    monkeypatch.setattr(pipeline, "run_full_sync", lambda conn, settings: results)
+
+
+def test_tempo_sync_notify_on_failure_silent_when_all_ok(
+    tempo_data_dir: Path, monkeypatch
+) -> None:
+    """`tempo sync --notify-on-failure` is silent on full success.
+
+    Even with Telegram fully configured, no message is sent when every
+    source returns ok=True. The flag must be safe to wire into an hourly
+    schedule without spamming the owner.
+    """
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token")
+    monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "555")
+
+    from tempo.sync import notify
+    from tempo.sync.pipeline import SourceResult
+
+    _patch_sync_pipeline_results(
+        monkeypatch,
+        [
+            SourceResult("strava", ok=True, detail="ok", rows=10),
+            SourceResult("garmin", ok=True, detail="ok", rows=3),
+        ],
+    )
+
+    posted: list = []
+    monkeypatch.setattr(notify, "_post_message", lambda *a, **k: posted.append((a, k)))
+
+    result = runner.invoke(app, ["sync", "--notify-on-failure"])
+    assert result.exit_code == 0, result.output
+    assert posted == []
+
+
+def test_tempo_sync_notify_on_failure_posts_when_garmin_fails(
+    tempo_data_dir: Path, monkeypatch
+) -> None:
+    """`tempo sync --notify-on-failure` posts when any source returns ok=False."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token")
+    monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "555")
+
+    from tempo.sync import notify
+    from tempo.sync.pipeline import SourceResult
+
+    _patch_sync_pipeline_results(
+        monkeypatch,
+        [
+            SourceResult("strava", ok=True, detail="ok", rows=10),
+            SourceResult("garmin", ok=False, detail="skipped: 429 rate-limit"),
+        ],
+    )
+
+    posted: list = []
+
+    def fake_post(token, chat_id, body):
+        posted.append((token, chat_id, body))
+
+    monkeypatch.setattr(notify, "_post_message", fake_post)
+
+    result = runner.invoke(app, ["sync", "--notify-on-failure"])
+    assert result.exit_code == 0, result.output
+    assert len(posted) == 1
+    _, _, body = posted[0]
+    assert "garmin" in body
+    assert "429" in body
+
+
+def test_tempo_sync_no_flag_does_not_post_even_on_failure(
+    tempo_data_dir: Path, monkeypatch
+) -> None:
+    """Without --notify-on-failure, no Telegram message is sent for ANY result."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token")
+    monkeypatch.setenv("TELEGRAM_OWNER_CHAT_ID", "555")
+
+    from tempo.sync import notify
+    from tempo.sync.pipeline import SourceResult
+
+    _patch_sync_pipeline_results(
+        monkeypatch,
+        [
+            SourceResult("strava", ok=True, detail="ok", rows=10),
+            SourceResult("garmin", ok=False, detail="skipped: 429 rate-limit"),
+        ],
+    )
+
+    posted: list = []
+    monkeypatch.setattr(notify, "_post_message", lambda *a, **k: posted.append((a, k)))
+
+    result = runner.invoke(app, ["sync"])
+    assert result.exit_code == 0, result.output
+    assert posted == []
