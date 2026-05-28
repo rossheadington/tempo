@@ -406,10 +406,24 @@ def parse_food(path: Path) -> FoodContext:
         sorted(by_key.values(), key=lambda e: (e.date, e.source_line))
     )
 
+    # Apply the same dedup to MealBlock.entries so `blocks` stays a true view
+    # of `entries` (every block entry is also in `entries`; nothing surviving
+    # in `entries` is dropped from its source block). Without this, a block
+    # that repeated a (date, meal_name, food_label) triple kept both copies
+    # in MealBlock.entries while FoodContext.entries kept only the latest.
+    surviving_lines = {e.source_line for e in deduped}
+    filtered_blocks: list[MealBlock] = []
+    for block in blocks:
+        kept = tuple(e for e in block.entries if e.source_line in surviving_lines)
+        if kept:
+            filtered_blocks.append(
+                MealBlock(date=block.date, meal_name=block.meal_name, entries=kept)
+            )
+
     return FoodContext(
         present=True,
         entries=deduped,
-        blocks=tuple(blocks),
+        blocks=tuple(filtered_blocks),
         path=path,
         malformed_lines=tuple(sorted(set(malformed))),
     )

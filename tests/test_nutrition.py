@@ -301,6 +301,36 @@ def test_parse_food_latest_wins_on_same_date_meal_food(tmp_path: Path) -> None:
     assert by_label["1 banana"].kcal == 105
 
 
+def test_parse_food_blocks_is_a_strict_view_of_entries(tmp_path: Path) -> None:
+    """``FoodContext.blocks`` cannot contain entries deduped out of ``entries``.
+
+    Regression: latest-wins dedup ran only on ``entries`` (the flat
+    deduplicated list), leaving ``MealBlock.entries`` carrying both the
+    superseded and the surviving copy. Now both apply the same
+    (date, meal_name, food_label) latest-wins so ``blocks`` is a true
+    view of ``entries``.
+    """
+    p = _write_food(
+        tmp_path,
+        "## 2026-05-28 breakfast\n"
+        "- 80g rolled oats: p:10 c:50 f:5 cal:280\n"
+        "- 80g rolled oats: p:13 c:54 f:6 cal:303\n"
+        "- 1 banana: p:1.3 c:27 f:0.4 cal:105\n",
+    )
+    ctx = parse_food(p)
+    assert len(ctx.entries) == 2
+    assert len(ctx.blocks) == 1
+    block = ctx.blocks[0]
+    assert len(block.entries) == 2
+    # No surviving block entry references the superseded 280-kcal oats row.
+    kcals_in_block = sorted(e.kcal for e in block.entries)
+    assert kcals_in_block == [105, 303]
+    # Every block entry is also in `entries`.
+    entry_lines = {e.source_line for e in ctx.entries}
+    for e in block.entries:
+        assert e.source_line in entry_lines
+
+
 def test_parse_food_block_with_malformed_header_skipped(tmp_path: Path) -> None:
     p = _write_food(
         tmp_path,
