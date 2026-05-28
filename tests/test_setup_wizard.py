@@ -279,6 +279,62 @@ def test_wizard_only_filter_strava(
     assert all_delegated_mocks["run_full_sync"] == 0
 
 
+def test_wizard_only_conflicts_with_skip_flag_exits_2(
+    monkeypatch: pytest.MonkeyPatch,
+    fresh_settings: Settings,
+    fake_home: Path,
+    fresh_cwd: Path,
+    all_delegated_mocks: dict[str, Any],
+    patched_get_settings,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Asking for --only=garmin AND --skip-garmin is incoherent; exit 2 with a clear error.
+
+    Regression: previously the --skip-* flag won silently, producing a no-op
+    run with the user's explicit --only request quietly discarded. Now we
+    fail fast at orchestrator entry with a red error line per conflicting
+    step.
+    """
+    exit_code = run_wizard(
+        fresh_settings,
+        only={"garmin"},
+        skip_garmin=True,
+    )
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "--only=garmin" in captured.err
+    assert "--skip-garmin" in captured.err
+    # No delegated helper should have run -- we bailed before dispatch.
+    assert all_delegated_mocks["build_strava"] == 0
+    assert all_delegated_mocks["init"] == 0
+    assert all_delegated_mocks["garmin_login"] == 0
+
+
+def test_wizard_only_bot_scheduler_conflicts_with_skip_telegram(
+    monkeypatch: pytest.MonkeyPatch,
+    fresh_settings: Settings,
+    fake_home: Path,
+    fresh_cwd: Path,
+    all_delegated_mocks: dict[str, Any],
+    patched_get_settings,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--only=bot-scheduler + --skip-telegram (which implies --skip-bot-scheduler) errors.
+
+    The error message must surface the --skip-telegram → --skip-bot-scheduler
+    implication so the user knows WHY their --only request was rejected.
+    """
+    exit_code = run_wizard(
+        fresh_settings,
+        only={"bot-scheduler"},
+        skip_telegram=True,
+    )
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "--only=bot-scheduler" in captured.err
+    assert "--skip-telegram" in captured.err
+
+
 def test_wizard_skip_garmin(
     monkeypatch: pytest.MonkeyPatch,
     fresh_settings: Settings,

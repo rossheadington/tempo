@@ -607,6 +607,38 @@ def run_wizard(
     if skip_telegram:
         skip_bot_scheduler = True
 
+    # Reject --only=<step> when <step> is also skipped by a flag: the user
+    # asked for the step explicitly AND asked to skip it, which is incoherent.
+    # Catching it here means the wizard fails fast with a clear message
+    # instead of silently producing a no-op run.
+    skipped_by_flag: dict[str, str] = {}
+    if skip_garmin:
+        skipped_by_flag["garmin"] = "--skip-garmin"
+    if skip_telegram:
+        skipped_by_flag["telegram"] = "--skip-telegram"
+    if skip_scheduler:
+        skipped_by_flag["scheduler"] = "--skip-scheduler"
+    if skip_bot_scheduler:
+        # If --skip-telegram set this, surface the implication so the error
+        # is honest about why bot-scheduler is unavailable.
+        skipped_by_flag["bot-scheduler"] = (
+            "--skip-telegram (implies --skip-bot-scheduler)"
+            if skip_telegram
+            else "--skip-bot-scheduler"
+        )
+    if skip_smoke:
+        skipped_by_flag["smoke"] = "--skip-smoke"
+    conflicts = sorted(only_set & skipped_by_flag.keys())
+    if conflicts:
+        for step in conflicts:
+            typer.secho(
+                f"--only={step} conflicts with {skipped_by_flag[step]}: "
+                "step is both requested and skipped.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+        return 2
+
     # Explicit dispatch table. Plain list of tuples; no clever registration.
     dispatch: list[tuple[str, object, bool]] = [
         ("welcome", step_welcome, False),
