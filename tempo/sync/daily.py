@@ -108,6 +108,8 @@ def run_daily(
         cfg=cfg,
         races_path=settings.races_path,
         heat_path=settings.heat_path,
+        food_path=settings.food_path,
+        target_kcal=settings.target_kcal_default,
         reports_dir=settings.reports_dir,
         generated_on=generated_on,
     )

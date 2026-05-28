@@ -339,6 +339,39 @@ def generate_recovery(
     return _write_report(reports_dir, "recovery", generated_on, text)
 
 
+def generate_nutrition(
+    conn: sqlite3.Connection | None,
+    *,
+    cfg: load.LoadConfig,
+    reports_dir: Path,
+    generated_on: date,
+    food_path: Path,
+    target_kcal: int | None = None,
+) -> Path:
+    """Write the dated nutrition report (NUTR-05).
+
+    Parses ``food.md``, builds a ``NutritionRollup`` for ``generated_on``, and
+    renders the standalone nutrition report into
+    ``reports/<YYYY-MM-DD>-nutrition.md``. ``conn`` and ``cfg`` are accepted
+    for runner-signature uniformity (the daily pipeline opens one connection
+    for the whole analysis suite); this report does NOT read from the DB --
+    it's a pure file parse + render.
+    """
+    from tempo.analysis import nutrition as nutrition_mod
+    from tempo.analysis import nutrition_report as nutrition_report_mod
+
+    context = nutrition_mod.parse_food(food_path)
+    today_breakdown = nutrition_mod.daily_nutrition(context.entries, generated_on)
+    rollup = nutrition_mod.nutrition_rollup(
+        context.entries, generated_on, target_kcal=target_kcal
+    )
+    blocks_today = tuple(b for b in context.blocks if b.date == generated_on)
+    text = nutrition_report_mod.render_nutrition(
+        generated_on, rollup, today_breakdown, blocks_today, context
+    )
+    return _write_report(reports_dir, "nutrition", generated_on, text)
+
+
 def generate_correlations(
     conn: sqlite3.Connection,
     *,
@@ -371,10 +404,19 @@ class AnalyzeResult:
     race_readiness: Path | None = None
     recovery: Path | None = None
     correlations: Path | None = None
+    nutrition: Path | None = None
 
     def paths(self) -> list[Path]:
         return [
-            p for p in (self.load_trend, self.race_readiness, self.recovery, self.correlations) if p
+            p
+            for p in (
+                self.load_trend,
+                self.race_readiness,
+                self.recovery,
+                self.correlations,
+                self.nutrition,
+            )
+            if p
         ]
 
 
@@ -386,14 +428,17 @@ def generate_all(
     heat_path: Path,
     strength_path: Path | None = None,
     weight_path: Path | None = None,
+    food_path: Path | None = None,
+    target_kcal: int | None = None,
     reports_dir: Path,
     generated_on: date,
 ) -> AnalyzeResult:
-    """Run the FULL analysis suite (load-trend, race-readiness, recovery, correlations).
+    """Run the FULL analysis suite (load-trend, race-readiness, recovery, correlations, nutrition).
 
-    This is what the bare ``tempo analyze`` and the daily scheduled run invoke. All
-    four reports are written to the gitignored reports dir, each with its own
-    per-source freshness header. No network.
+    This is what the bare ``tempo analyze`` and the daily scheduled run invoke. The
+    five reports are written to the gitignored reports dir, each with its own
+    per-source freshness header. No network. ``food_path`` is optional for
+    back-compat: callers that don't pass it skip the nutrition report entirely.
     """
     return AnalyzeResult(
         load_trend=generate_load_trend(
@@ -418,6 +463,18 @@ def generate_all(
         correlations=generate_correlations(
             conn, cfg=cfg, reports_dir=reports_dir, generated_on=generated_on
         ),
+        nutrition=(
+            generate_nutrition(
+                conn,
+                cfg=cfg,
+                reports_dir=reports_dir,
+                generated_on=generated_on,
+                food_path=food_path,
+                target_kcal=target_kcal,
+            )
+            if food_path is not None
+            else None
+        ),
     )
 
 
@@ -430,6 +487,7 @@ __all__ = [
     "generate_all",
     "generate_correlations",
     "generate_load_trend",
+    "generate_nutrition",
     "generate_race_readiness",
     "generate_recovery",
 ]

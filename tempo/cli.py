@@ -611,6 +611,8 @@ def analyze_main(ctx: typer.Context) -> None:
             heat_path=settings.heat_path,
             strength_path=settings.strength_path,
             weight_path=settings.weight_path,
+            food_path=settings.food_path,
+            target_kcal=settings.target_kcal_default,
             reports_dir=settings.reports_dir,
             generated_on=today,
         )
@@ -713,6 +715,34 @@ def analyze_correlations() -> None:
     finally:
         conn.close()
     typer.secho(f"Correlations report written: {path}", fg="green")
+
+
+@analyze_app.command("nutrition")
+def analyze_nutrition() -> None:
+    """Write the nutrition report (today + 7d/28d rollup + optional goal) (NUTR-05).
+
+    Reads ``food.md`` from the content dir and writes a dated nutrition
+    report to the reports dir. Pure-file analysis -- no DB reads, no network.
+    When ``TEMPO_TARGET_KCAL`` is set the report includes a signed
+    deficit/surplus delta against the 7-day average.
+    """
+    from datetime import UTC, datetime
+
+    from tempo.analysis import runner
+
+    settings, conn, cfg = _analyze_setup()
+    try:
+        path = runner.generate_nutrition(
+            conn,
+            cfg=cfg,
+            reports_dir=settings.reports_dir,
+            generated_on=datetime.now(UTC).date(),
+            food_path=settings.food_path,
+            target_kcal=settings.target_kcal_default,
+        )
+    finally:
+        conn.close()
+    typer.secho(f"Nutrition report written: {path}", fg="green")
 
 
 journal_app = typer.Typer(

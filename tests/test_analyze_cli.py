@@ -134,6 +134,13 @@ def test_analyze_on_empty_db_degrades_not_crash(tempo_data_dir: Path) -> None:
     result = cli.invoke(app, ["analyze"])
     assert result.exit_code == 0, result.output
     reports = list((tempo_data_dir / "reports").glob("*.md"))
-    assert len(reports) == 4  # full suite, all degrading to insufficient-data notes
+    # Full suite = load-trend + race-readiness + recovery + correlations + nutrition.
+    assert len(reports) == 5
+    # The first four share the ``## Data freshness`` block; nutrition uses an
+    # inline ``Data: food.md ...`` line instead (no SQL sources to age).
     for p in reports:
-        assert "## Data freshness" in p.read_text(encoding="utf-8")
+        text = p.read_text(encoding="utf-8")
+        if p.name.endswith("-nutrition.md"):
+            assert "Data: food.md" in text
+        else:
+            assert "## Data freshness" in text

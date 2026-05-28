@@ -81,14 +81,17 @@ def test_run_daily_writes_full_suite(conn: sqlite3.Connection, tmp_path, monkeyp
     gen_on = date.fromisoformat(days[-1])
     result = daily.run_daily(conn, settings, generated_on=gen_on)
 
-    # All four reports written.
+    # All five reports written (load-trend + race-readiness + recovery
+    # + correlations + nutrition; nutrition degrades to "food.md absent"
+    # when no food log exists in the temp content dir).
     paths = result.reports.paths()
-    assert len(paths) == 4
+    assert len(paths) == 5
     for p in paths:
         assert p.exists()
     names = {p.name for p in paths}
     assert any("recovery" in n for n in names)
     assert any("correlations" in n for n in names)
+    assert any("nutrition" in n for n in names)
 
     # Per-source sync status present (Strava ok, Garmin ok).
     by_src = {r.source: r for r in result.sync_results}
@@ -118,7 +121,7 @@ def test_run_daily_isolated_garmin_429(conn: sqlite3.Connection, tmp_path, monke
     assert by_src[GARMIN].ok is False
     assert "429" in by_src[GARMIN].detail
     # Reports were still written despite Garmin failing.
-    assert len(result.reports.paths()) == 4
+    assert len(result.reports.paths()) == 5
 
 
 # ---- Idempotency -----------------------------------------------------------
@@ -280,4 +283,4 @@ def test_no_marker_when_not_noteworthy(conn: sqlite3.Connection, tmp_path, monke
     # The stale marker was removed.
     assert not marker.exists()
     # Reports were still written.
-    assert len(result.reports.paths()) == 4
+    assert len(result.reports.paths()) == 5

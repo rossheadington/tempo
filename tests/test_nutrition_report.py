@@ -18,10 +18,8 @@ from pathlib import Path
 from tempo.analysis import runner
 from tempo.analysis.load import LoadConfig
 from tempo.analysis.nutrition import (
-    DailyNutrition,
     FoodContext,
     FoodEntry,
-    NutritionRollup,
     daily_nutrition,
     nutrition_rollup,
 )
