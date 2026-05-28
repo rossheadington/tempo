@@ -60,7 +60,7 @@ def garmin_token_dir(settings: Settings) -> Path:
     return settings.tokens_dir / "garmin"
 
 
-def _real_garmin_login_client(token_dir: str) -> Any:
+def _real_garmin_login_client() -> Any:
     """Build a *token-only* garminconnect client (no credentials).
 
     Used by the connector's no-fresh-login path: with no email/password the

@@ -72,7 +72,7 @@ def test_garmin_sync_reuses_tokens_no_login(tempo_data_dir: Path, monkeypatch) -
     monkeypatch.setattr(
         factory,
         "_real_garmin_login_client",
-        lambda token_dir: client,
+        lambda: client,
     )
 
     result = runner.invoke(app, ["garmin", "sync"])
@@ -98,7 +98,7 @@ def test_garmin_sync_429_reports_skip_not_crash(tempo_data_dir: Path, monkeypatc
     )
     import tempo.connectors.factory as factory
 
-    monkeypatch.setattr(factory, "_real_garmin_login_client", lambda token_dir: client)
+    monkeypatch.setattr(factory, "_real_garmin_login_client", lambda: client)
 
     result = runner.invoke(app, ["garmin", "sync"])
     assert result.exit_code == 0, result.output
@@ -139,7 +139,7 @@ def test_tempo_sync_reports_both_sources_garmin_isolated(tempo_data_dir: Path, m
     )
     import tempo.connectors.factory as factory
 
-    monkeypatch.setattr(factory, "_real_garmin_login_client", lambda token_dir: garmin_client)
+    monkeypatch.setattr(factory, "_real_garmin_login_client", lambda: garmin_client)
 
     result = runner.invoke(app, ["sync"])
     assert result.exit_code == 0, result.output

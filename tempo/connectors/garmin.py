@@ -175,7 +175,7 @@ class GarminConnector:
             )
         # Build a token-only client (no email/password). The factory is expected
         # to construct garminconnect.Garmin() with no credentials.
-        client = self._client_factory(token_dir=self._token_dir)
+        client = self._client_factory()
         try:
             client.login(self._token_dir)
         except FileNotFoundError as exc:
