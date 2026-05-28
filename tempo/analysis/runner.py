@@ -296,6 +296,7 @@ def generate_recovery(
     *,
     cfg: load.LoadConfig,
     heat_path: Path,
+    strength_path: Path | None = None,
     reports_dir: Path,
     generated_on: date,
 ) -> Path:
@@ -306,11 +307,19 @@ def generate_recovery(
     section rather than failing. When present, the parsed rollup is rendered
     into a ``## Heat adaptation`` section (per the A4 3-state degradation rule
     implemented in :func:`tempo.analysis.recovery._render_heat_section`).
+
+    If ``strength_path`` is provided, the parsed rollup is rendered into a
+    ``## Strength & conditioning`` section using the same 3-state degradation
+    rule as heat.
     """
     series = build_load_series(conn, cfg)
     guardrail = fitness.evaluate_guardrail(series.points)
     assessment = recovery_mod.assess_recovery_from_db(
-        conn, points=series.points, guardrail=guardrail, heat_path=heat_path
+        conn,
+        points=series.points,
+        guardrail=guardrail,
+        heat_path=heat_path,
+        strength_path=strength_path,
     )
     freshness = dataread.source_freshness(conn, as_of=generated_on)
     data_range = dataread.data_date_range(conn)
@@ -369,6 +378,7 @@ def generate_all(
     cfg: load.LoadConfig,
     races_path: Path,
     heat_path: Path,
+    strength_path: Path | None = None,
     reports_dir: Path,
     generated_on: date,
 ) -> AnalyzeResult:
@@ -393,6 +403,7 @@ def generate_all(
             conn,
             cfg=cfg,
             heat_path=heat_path,
+            strength_path=strength_path,
             reports_dir=reports_dir,
             generated_on=generated_on,
         ),

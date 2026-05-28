@@ -36,6 +36,9 @@ from tempo.analysis.fitness import FitnessPoint, Guardrail
 from tempo.analysis.heat import HeatRollup
 from tempo.analysis.heat import heat_rollup as _heat_rollup
 from tempo.analysis.heat import parse_heat as _parse_heat
+from tempo.analysis.strength import StrengthRollup
+from tempo.analysis.strength import parse_strength as _parse_strength
+from tempo.analysis.strength import strength_rollup as _strength_rollup
 
 # |z| beyond this is a notable deviation from personal baseline (~2 SD = the
 # unusual 5% tail). Configurable so the noteworthy thresholds can be tuned.
@@ -251,6 +254,8 @@ class RecoveryAssessment:
     messages: list[str] = field(default_factory=list)
     heat: HeatRollup | None = None
     heat_present: bool = False
+    strength: StrengthRollup | None = None
+    strength_present: bool = False
 
     @property
     def concern_signals(self) -> list[SignalAssessment]:
@@ -394,6 +399,7 @@ def assess_recovery_from_db(
     window: int = baselines.DEFAULT_WINDOW,
     min_points: int = baselines.MIN_POINTS,
     heat_path: Path | None = None,
+    strength_path: Path | None = None,
 ) -> RecoveryAssessment:
     """Read the latest wellness baselines from the DB and assess recovery.
 
@@ -406,6 +412,13 @@ def assess_recovery_from_db(
     (``heat`` + ``heat_present`` fields). When omitted, both fields default to the
     "no heat data" state and the renderer omits the section -- back-compat with
     callers from earlier phases.
+
+    If ``strength_path`` is provided, the strength-and-conditioning log at that
+    path is parsed and rolled into matching 7/14/28-day windows, then attached to
+    the assessment (``strength`` + ``strength_present`` fields). The same alignment
+    day used for heat is reused so both tracker windows match the recovery
+    report's "as of" day. Omitted ``strength_path`` preserves back-compat with
+    callers from earlier phases.
     """
     latest = baselines.latest_baselines(conn, window=window, min_points=min_points)
     day = points[-1].day if points else None
@@ -413,22 +426,34 @@ def assess_recovery_from_db(
         day=day, points=points, guardrail=guardrail, latest_baselines=latest
     )
 
-    if heat_path is None:
+    if heat_path is None and strength_path is None:
         return assessment
 
-    # Align the heat windows with the recovery report's "as of" day so the
+    # Align both tracker windows with the recovery report's "as of" day so the
     # rolling counts match the recovery verdict's day, not the wall clock.
     if points:
         try:
-            today_for_heat = date.fromisoformat(points[-1].day)
+            today_for_tracker = date.fromisoformat(points[-1].day)
         except ValueError:
-            today_for_heat = date.today()
+            today_for_tracker = date.today()
     else:
-        today_for_heat = date.today()
+        today_for_tracker = date.today()
 
-    heat_ctx = _parse_heat(heat_path)
-    rollup = _heat_rollup(heat_ctx.sessions, today_for_heat)
-    # Replace the (frozen) assessment with one that carries the heat fields.
+    heat_rollup_obj: HeatRollup | None = None
+    heat_present = False
+    if heat_path is not None:
+        heat_ctx = _parse_heat(heat_path)
+        heat_rollup_obj = _heat_rollup(heat_ctx.sessions, today_for_tracker)
+        heat_present = heat_ctx.present
+
+    strength_rollup_obj: StrengthRollup | None = None
+    strength_present = False
+    if strength_path is not None:
+        strength_ctx = _parse_strength(strength_path)
+        strength_rollup_obj = _strength_rollup(strength_ctx.sessions, today_for_tracker)
+        strength_present = strength_ctx.present
+
+    # Replace the (frozen) assessment with one that carries both tracker fields.
     return RecoveryAssessment(
         day=assessment.day,
         status=assessment.status,
@@ -436,8 +461,10 @@ def assess_recovery_from_db(
         load_reasons=assessment.load_reasons,
         signals=assessment.signals,
         messages=assessment.messages,
-        heat=rollup,
-        heat_present=heat_ctx.present,
+        heat=heat_rollup_obj,
+        heat_present=heat_present,
+        strength=strength_rollup_obj,
+        strength_present=strength_present,
     )
 
 
@@ -453,6 +480,18 @@ def _fmt_days_ago(n: int) -> str:
 def _fmt_minutes(value: float) -> str:
     """Render a minutes total without trailing '.0' when it's an integer count."""
     return f"{int(value)} min" if value == int(value) else f"{value:.1f} min"
+
+
+def _fmt_tonnage(kg: float) -> str:
+    """Render a strength tonnage total in kg for sub-10t loads and in tonnes
+    (1 decimal) for ≥ 10t loads.
+
+    Examples: ``0.0 -> "0 kg"``, ``9_835.0 -> "9,835 kg"``,
+    ``10_000.0 -> "10.0 t"``, ``12_400.0 -> "12.4 t"``.
+    """
+    if kg < 10_000.0:
+        return f"{int(round(kg)):,} kg"
+    return f"{kg / 1000.0:.1f} t"
 
 
 def _render_heat_section(out: list[str], heat: HeatRollup | None, heat_present: bool) -> None:
@@ -495,6 +534,59 @@ def _render_heat_section(out: list[str], heat: HeatRollup | None, heat_present: 
         days_ago = heat.last_session_days_ago or 0
         out.append(
             f"_Heat protocol lapsed -- last session {_fmt_days_ago(days_ago)}. "
+            "(No sessions in the last 28 days.)_"
+        )
+    out.append("")
+
+
+def _render_strength_section(
+    out: list[str], strength: StrengthRollup | None, strength_present: bool
+) -> None:
+    """Append the strength & conditioning section per the same 3-state degradation
+    rule the heat section uses.
+
+    The three states (mirroring :func:`_render_heat_section`):
+
+    * ``strength_present is False`` OR ``strength is None`` -- strength.md is
+      absent (or the caller did not thread it through). Section omitted entirely.
+    * strength.md is present but parsed zero sessions ever
+      (``last_session_date is None``) -- section omitted.
+    * strength.md is present, all 7/14/28-day window counts are zero, but a prior
+      session exists in history -- render the ``## Strength & conditioning``
+      header plus a single-line lapsed nudge.
+    * strength.md is present and ANY of the 7/14/28-day window counts is non-zero
+      -- render the full rollup line: counts, tonnage, last-session name + age.
+    """
+    if not strength_present or strength is None:
+        return
+    # Present-but-empty: parsed file but no sessions ever.
+    if strength.last_session_date is None:
+        return
+
+    any_recent = (
+        strength.last_7d_count > 0
+        or strength.last_14d_count > 0
+        or strength.last_28d_count > 0
+    )
+    out.append("## Strength & conditioning\n")
+    if any_recent:
+        days_ago = strength.last_session_days_ago or 0
+        name = strength.last_session_name or "unnamed"
+        out.append(
+            "- last 7 days: "
+            f"{strength.last_7d_count} sessions / "
+            f"{_fmt_tonnage(strength.last_7d_tonnage_kg)} tonnage · "
+            f"last 14 days: {strength.last_14d_count} sessions / "
+            f"{_fmt_tonnage(strength.last_14d_tonnage_kg)} tonnage · "
+            f"last 28 days: {strength.last_28d_count} sessions / "
+            f"{_fmt_tonnage(strength.last_28d_tonnage_kg)} tonnage · "
+            f"last session: {name} ({_fmt_days_ago(days_ago)})"
+        )
+    else:
+        # Lapsed nudge: no rollup numbers, one terse line.
+        days_ago = strength.last_session_days_ago or 0
+        out.append(
+            f"_S&C protocol lapsed -- last session {_fmt_days_ago(days_ago)}. "
             "(No sessions in the last 28 days.)_"
         )
     out.append("")
@@ -549,6 +641,7 @@ def render_recovery(
     out.append("")
 
     _render_heat_section(out, a.heat, a.heat_present)
+    _render_strength_section(out, a.strength, a.strength_present)
 
     if a.status == "insufficient":
         out.append(
