@@ -216,6 +216,11 @@ class Settings(BaseSettings):
         return self.content_root / "heat.md"
 
     @property
+    def strength_path(self) -> Path:
+        """Path to the user-maintained strength & conditioning log (read for recovery context)."""
+        return self.content_root / "strength.md"
+
+    @property
     def voice_cache_dir(self) -> Path:
         """Directory where downloaded Telegram voice memos are cached (gitignored).
 
