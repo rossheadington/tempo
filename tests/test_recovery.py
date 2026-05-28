@@ -287,9 +287,11 @@ def _ok_assessment(
     heat_present: bool = False,
     strength: object = None,
     strength_present: bool = False,
+    weight: object = None,
+    weight_present: bool = False,
 ) -> recovery.RecoveryAssessment:
     """Hand-built RecoveryAssessment with neutral signals so we exercise ONLY
-    the heat / strength path."""
+    the heat / strength / weight path."""
     signals = [
         recovery.SignalAssessment(
             metric="hrv",
@@ -333,6 +335,8 @@ def _ok_assessment(
         heat_present=heat_present,
         strength=strength,  # type: ignore[arg-type]
         strength_present=strength_present,
+        weight=weight,  # type: ignore[arg-type]
+        weight_present=weight_present,
     )
 
 
@@ -579,3 +583,140 @@ def test_fmt_tonnage_kg_vs_tonnes() -> None:
     assert recovery._fmt_tonnage(9999.0) == "9,999 kg"
     assert recovery._fmt_tonnage(10000.0) == "10.0 t"
     assert recovery._fmt_tonnage(12400.0) == "12.4 t"
+
+
+# ---- Weight section ----
+
+
+def _weight_rollup_current(*, unit_mixed: bool = False) -> object:
+    """Helper: build a 'current' WeightRollup (latest weigh-in yesterday)."""
+    from tempo.analysis.weight import WeightEntry, WeightRollup
+
+    entry = WeightEntry(
+        date=date(2026, 5, 27), weight=72.4, unit="kg", notes=None, source_line=1
+    )
+    return WeightRollup(
+        latest_entry=entry,
+        latest_kg=72.4,
+        days_since_last=1,
+        avg_7d=72.6,
+        avg_28d=72.9,
+        ewma_trend=72.8,
+        delta_vs_28d=-0.5,
+        unit_mixed=unit_mixed,
+    )
+
+
+def test_recovery_renderer_omits_weight_section_when_absent() -> None:
+    """weight.md missing -> the section is omitted entirely (no header)."""
+    a = _ok_assessment(weight=None, weight_present=False)
+    text = _render(a)
+    assert "## Weight" not in text
+
+
+def test_recovery_renderer_omits_weight_when_present_but_empty() -> None:
+    """weight.md present but no entries parsed -> section omitted (no header)."""
+    from tempo.analysis.weight import WeightRollup
+
+    empty = WeightRollup(
+        latest_entry=None,
+        latest_kg=None,
+        days_since_last=None,
+        avg_7d=None,
+        avg_28d=None,
+        ewma_trend=None,
+        delta_vs_28d=None,
+        unit_mixed=False,
+    )
+    a = _ok_assessment(weight=empty, weight_present=True)
+    text = _render(a)
+    assert "## Weight" not in text
+
+
+def test_recovery_renderer_emits_stale_nudge_when_last_weigh_in_over_14d() -> None:
+    """Latest entry >14d old -> one-line stale nudge (no rollup numbers)."""
+    from tempo.analysis.weight import WeightEntry, WeightRollup
+
+    entry = WeightEntry(
+        date=date(2026, 5, 7), weight=72.4, unit="kg", notes=None, source_line=1
+    )
+    stale = WeightRollup(
+        latest_entry=entry,
+        latest_kg=72.4,
+        days_since_last=21,
+        avg_7d=None,
+        avg_28d=72.9,
+        ewma_trend=72.8,
+        delta_vs_28d=-0.5,
+        unit_mixed=False,
+    )
+    a = _ok_assessment(weight=stale, weight_present=True)
+    text = _render(a)
+    assert "## Weight" in text
+    assert "Last weigh-in 21 days ago" in text
+    assert "log a current reading" in text
+    # The stale nudge is the ONLY weight line -- no active-rollup markers.
+    assert "7d avg" not in text
+    assert "trend" not in text
+    assert "vs 28d baseline" not in text
+
+
+def test_recovery_renderer_emits_full_rollup_when_current() -> None:
+    """Latest entry within 14d -> full rollup line with latest / 7d / 28d / trend / delta."""
+    a = _ok_assessment(weight=_weight_rollup_current(), weight_present=True)
+    text = _render(a)
+    assert "## Weight" in text
+    assert "72.4 kg today" in text
+    assert "7d avg 72.6 kg" in text
+    assert "28d avg 72.9 kg" in text
+    assert "trend 72.8 kg" in text
+    assert "−0.5 kg vs 28d baseline" in text  # Unicode minus
+    # Mixed-unit caveat NOT present when unit_mixed=False.
+    assert "mixed kg/lb" not in text
+
+
+def test_recovery_renderer_appends_mixed_unit_caveat() -> None:
+    """unit_mixed=True appends the normalised-to-kg caveat to the active rollup line."""
+    a = _ok_assessment(
+        weight=_weight_rollup_current(unit_mixed=True), weight_present=True
+    )
+    text = _render(a)
+    assert "## Weight" in text
+    assert "_(mixed kg/lb in log — normalised to kg)_" in text
+
+
+def test_recovery_renderer_weight_section_follows_strength() -> None:
+    """When both strength and weight are active, weight renders AFTER strength."""
+    from tempo.analysis.strength import StrengthRollup
+
+    strength_rollup = StrengthRollup(
+        today=date(2026, 5, 27),
+        last_7d_count=2,
+        last_7d_tonnage_kg=9835.0,
+        last_14d_count=2,
+        last_14d_tonnage_kg=9835.0,
+        last_28d_count=3,
+        last_28d_tonnage_kg=14200.0,
+        last_session_date=date(2026, 5, 26),
+        last_session_days_ago=1,
+        last_session_name="Lower body",
+    )
+    a = _ok_assessment(
+        strength=strength_rollup,
+        strength_present=True,
+        weight=_weight_rollup_current(),
+        weight_present=True,
+    )
+    text = _render(a)
+    assert "## Strength & conditioning" in text
+    assert "## Weight" in text
+    assert text.index("## Strength & conditioning") < text.index("## Weight")
+
+
+def test_fmt_weight_delta_signs() -> None:
+    """`_fmt_weight_delta` renders +X.X / −X.X / ±0.0 with Unicode glyphs + 1 decimal."""
+    assert recovery._fmt_weight_delta(0.3) == "+0.3 kg"
+    assert recovery._fmt_weight_delta(-0.5) == "−0.5 kg"  # Unicode minus U+2212
+    assert recovery._fmt_weight_delta(0.0) == "±0.0 kg"  # Unicode plus-minus U+00B1
+    # Python's banker's rounding: 1.25 -> "1.2" (round-half-to-even).
+    assert recovery._fmt_weight_delta(1.25) == "+1.2 kg"

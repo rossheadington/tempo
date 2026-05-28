@@ -297,6 +297,7 @@ def generate_recovery(
     cfg: load.LoadConfig,
     heat_path: Path,
     strength_path: Path | None = None,
+    weight_path: Path | None = None,
     reports_dir: Path,
     generated_on: date,
 ) -> Path:
@@ -311,6 +312,10 @@ def generate_recovery(
     If ``strength_path`` is provided, the parsed rollup is rendered into a
     ``## Strength & conditioning`` section using the same 3-state degradation
     rule as heat.
+
+    If ``weight_path`` is provided, the parsed rollup is rendered into a
+    ``## Weight`` section using the same 3-state degradation rule as heat and
+    strength.
     """
     series = build_load_series(conn, cfg)
     guardrail = fitness.evaluate_guardrail(series.points)
@@ -320,6 +325,7 @@ def generate_recovery(
         guardrail=guardrail,
         heat_path=heat_path,
         strength_path=strength_path,
+        weight_path=weight_path,
     )
     freshness = dataread.source_freshness(conn, as_of=generated_on)
     data_range = dataread.data_date_range(conn)
@@ -379,6 +385,7 @@ def generate_all(
     races_path: Path,
     heat_path: Path,
     strength_path: Path | None = None,
+    weight_path: Path | None = None,
     reports_dir: Path,
     generated_on: date,
 ) -> AnalyzeResult:
@@ -404,6 +411,7 @@ def generate_all(
             cfg=cfg,
             heat_path=heat_path,
             strength_path=strength_path,
+            weight_path=weight_path,
             reports_dir=reports_dir,
             generated_on=generated_on,
         ),

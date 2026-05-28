@@ -1,0 +1,71 @@
+# Weight log -- EXAMPLE / TEMPLATE
+
+Copy this file to your Tempo content dir as `weight.md` (default
+`<content_root>/weight.md`, redirect with `TEMPO_CONTENT_DIR`) and edit it.
+Tempo reads it for the recovery report's `## Weight` section (WEIGHT-04); it
+is never committed (the content dir lives outside the repo tree). The
+numbers below are synthetic.
+
+## Format
+
+One entry per ` - ` bullet line. Parsing is lenient: missing file degrades to
+`present=False`, malformed lines are skipped (their 1-indexed line numbers
+land in `WeightContext.malformed_lines`), and the parser never raises.
+
+Entry shape:
+
+    `- <YYYY-MM-DD>: <weight> [<unit>] [| notes: <free text>]`
+
+* `<YYYY-MM-DD>` is required (ISO date); `<weight>` is required (parseable float).
+* `<unit>` is optional, defaults to `kg`; `kg` / `lb` / `lbs` accepted (`lbs`
+  normalises to `lb` on the parsed entry).
+* `| notes: <text>` is optional; everything after the FIRST `| notes:` is
+  verbatim notes (subsequent `|` pipes stay in the notes).
+* Latest-wins on duplicate dates: append a new line with the same date to
+  correct an earlier entry -- the parser keeps the LAST occurrence.
+* Out-of-range guard: kg-equivalent must satisfy `20 < w < 500` (catches
+  typos like `7.24 kg` -- decimal slip -- or `724 kg` -- unit slip).
+
+## Entries
+
+- 2026-05-28: 72.4 kg | notes: post-run, pre-breakfast
+- 2026-05-27: 72.8 kg
+- 2026-05-26: 73.1 kg | notes: post-strength session
+- 2026-05-25: 72.9 kg
+- 2026-05-24: 73.3 kg
+- 2026-05-23: 72.7 kg
+- 2026-05-22: 73.0 kg | notes: hotel scale | feels close to home scale
+- 2026-05-21: 160.6 lb
+- 2026-05-20: 160.2 lbs
+- 2026-05-19: 72.5 kg
+- 2026-05-18: 72.6 kg
+- 2026-05-17: 73.0 kg
+- 2026-05-16: 72.8 kg
+- 2026-05-15: 73.2 kg | notes: rest day
+
+## What NOT to do
+
+Examples of malformed lines (shown inline with backticks so they are NOT
+parsed as entries). In the real file each of these would land in
+`WeightContext.malformed_lines` and be skipped:
+
+* `~ 2026-05-14: 7.24 kg` -- decimal slip; below the 20 kg sanity floor.
+* `~ 2026-05-13: 724 kg` -- unit slip; above the 500 kg ceiling.
+* `~ 2026-05-12: seventy kg` -- weight not parseable as float.
+* `~ 2026-05-11: 72.4 stone` -- unknown unit (only `kg` / `lb` / `lbs`).
+
+(The leading `~` above is just a visual placeholder for the real `-` bullet,
+to keep this section from being parsed as entries.)
+
+## Latest-wins demo
+
+If you mistyped a weigh-in, just append a corrected line with the same date
+to the bottom of the file. The parser keeps the LAST occurrence in source
+order, so the correction wins without you editing the earlier line. For
+example, appending `~ 2026-05-25: 72.4 kg` (with a real `-` instead of the
+visual `~`) would overwrite Monday's 72.9 above.
+
+_Tempo's parser is lenient: missing file degrades to `present=False`,
+malformed lines are skipped (their line numbers land in
+`WeightContext.malformed_lines`), and the parser NEVER raises. See
+`docs/WEIGHT.md` for the full contract._

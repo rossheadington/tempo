@@ -39,6 +39,9 @@ from tempo.analysis.heat import parse_heat as _parse_heat
 from tempo.analysis.strength import StrengthRollup
 from tempo.analysis.strength import parse_strength as _parse_strength
 from tempo.analysis.strength import strength_rollup as _strength_rollup
+from tempo.analysis.weight import WeightRollup
+from tempo.analysis.weight import parse_weight as _parse_weight
+from tempo.analysis.weight import weight_rollup as _weight_rollup
 
 # |z| beyond this is a notable deviation from personal baseline (~2 SD = the
 # unusual 5% tail). Configurable so the noteworthy thresholds can be tuned.
@@ -256,6 +259,8 @@ class RecoveryAssessment:
     heat_present: bool = False
     strength: StrengthRollup | None = None
     strength_present: bool = False
+    weight: WeightRollup | None = None
+    weight_present: bool = False
 
     @property
     def concern_signals(self) -> list[SignalAssessment]:
@@ -400,6 +405,7 @@ def assess_recovery_from_db(
     min_points: int = baselines.MIN_POINTS,
     heat_path: Path | None = None,
     strength_path: Path | None = None,
+    weight_path: Path | None = None,
 ) -> RecoveryAssessment:
     """Read the latest wellness baselines from the DB and assess recovery.
 
@@ -419,6 +425,12 @@ def assess_recovery_from_db(
     day used for heat is reused so both tracker windows match the recovery
     report's "as of" day. Omitted ``strength_path`` preserves back-compat with
     callers from earlier phases.
+
+    If ``weight_path`` is provided, the weight log at that path is parsed and
+    rolled into 7d/28d averages + an EWMA trend, then attached to the assessment
+    (``weight`` + ``weight_present`` fields). The same alignment day reused for
+    heat + strength applies here too. Omitted ``weight_path`` preserves
+    back-compat.
     """
     latest = baselines.latest_baselines(conn, window=window, min_points=min_points)
     day = points[-1].day if points else None
@@ -426,7 +438,7 @@ def assess_recovery_from_db(
         day=day, points=points, guardrail=guardrail, latest_baselines=latest
     )
 
-    if heat_path is None and strength_path is None:
+    if heat_path is None and strength_path is None and weight_path is None:
         return assessment
 
     # Align both tracker windows with the recovery report's "as of" day so the
@@ -453,7 +465,14 @@ def assess_recovery_from_db(
         strength_rollup_obj = _strength_rollup(strength_ctx.sessions, today_for_tracker)
         strength_present = strength_ctx.present
 
-    # Replace the (frozen) assessment with one that carries both tracker fields.
+    weight_rollup_obj: WeightRollup | None = None
+    weight_present = False
+    if weight_path is not None:
+        weight_ctx = _parse_weight(weight_path)
+        weight_rollup_obj = _weight_rollup(weight_ctx.entries, today_for_tracker)
+        weight_present = weight_ctx.present
+
+    # Replace the (frozen) assessment with one that carries all three tracker fields.
     return RecoveryAssessment(
         day=assessment.day,
         status=assessment.status,
@@ -465,6 +484,8 @@ def assess_recovery_from_db(
         heat_present=heat_present,
         strength=strength_rollup_obj,
         strength_present=strength_present,
+        weight=weight_rollup_obj,
+        weight_present=weight_present,
     )
 
 
@@ -492,6 +513,21 @@ def _fmt_tonnage(kg: float) -> str:
     if kg < 10_000.0:
         return f"{int(round(kg)):,} kg"
     return f"{kg / 1000.0:.1f} t"
+
+
+def _fmt_weight_delta(delta_kg: float) -> str:
+    """Render a kg delta with a sign glyph + one decimal place.
+
+    Examples: ``0.3 -> "+0.3 kg"``, ``-0.5 -> "−0.5 kg"`` (Unicode minus
+    U+2212), ``0.0 -> "±0.0 kg"`` (Unicode plus-minus U+00B1). A near-zero
+    value (``|delta| < 0.05``) rounds to ``±0.0 kg`` so a tiny positive
+    shift doesn't render as an ambiguous ``+0.0 kg``.
+    """
+    if abs(delta_kg) < 0.05:
+        return "±0.0 kg"
+    if delta_kg > 0:
+        return f"+{delta_kg:.1f} kg"
+    return f"−{abs(delta_kg):.1f} kg"
 
 
 def _render_heat_section(out: list[str], heat: HeatRollup | None, heat_present: bool) -> None:
@@ -592,6 +628,66 @@ def _render_strength_section(
     out.append("")
 
 
+def _render_weight_section(
+    out: list[str], weight: WeightRollup | None, weight_present: bool
+) -> None:
+    """Append the body-weight section per the same 3-state degradation rule
+    the heat + strength sections use.
+
+    The three states (mirroring :func:`_render_strength_section`):
+
+    * ``weight_present is False`` OR ``weight is None`` -- weight.md is absent
+      (or the caller did not thread it through). Section omitted entirely.
+    * weight.md is present but parsed zero entries ever
+      (``latest_entry is None``) -- section omitted.
+    * weight.md is present and the latest weigh-in is >14 days old
+      (``days_since_last > 14``) -- render the ``## Weight`` header plus a
+      one-line stale nudge.
+    * weight.md is present and the latest weigh-in is within 14 days -- render
+      the active rollup line: latest kg, 7d avg, 28d avg, EWMA trend, delta
+      vs 28d baseline. When ``unit_mixed=True`` a trailing caveat is appended.
+    """
+    if not weight_present or weight is None:
+        return
+    if weight.latest_entry is None:
+        return
+
+    days_since = weight.days_since_last or 0
+    out.append("## Weight\n")
+    if days_since > 14:
+        out.append(
+            f"_Last weigh-in {days_since} days ago — log a current reading "
+            "to keep the rollup live._"
+        )
+        out.append("")
+        return
+
+    # Current state: full rollup line. Be defensive about None-valued fields
+    # (shouldn't happen when days_since_last <= 14, but the rollup contract
+    # exposes Optionals so substitute "n/a" rather than crash).
+    def _fmt_kg(v: float | None) -> str:
+        return f"{v:.1f} kg" if v is not None else "n/a"
+
+    latest_kg = _fmt_kg(weight.latest_kg)
+    avg_7d = _fmt_kg(weight.avg_7d)
+    avg_28d = _fmt_kg(weight.avg_28d)
+    trend = _fmt_kg(weight.ewma_trend)
+    delta_fmt = (
+        _fmt_weight_delta(weight.delta_vs_28d)
+        if weight.delta_vs_28d is not None
+        else "n/a"
+    )
+
+    line = (
+        f"{latest_kg} today · 7d avg {avg_7d} · 28d avg {avg_28d} · "
+        f"trend {trend} · {delta_fmt} vs 28d baseline"
+    )
+    if weight.unit_mixed:
+        line += " _(mixed kg/lb in log — normalised to kg)_"
+    out.append(line)
+    out.append("")
+
+
 def render_recovery(
     *,
     generated_on: date,
@@ -642,6 +738,7 @@ def render_recovery(
 
     _render_heat_section(out, a.heat, a.heat_present)
     _render_strength_section(out, a.strength, a.strength_present)
+    _render_weight_section(out, a.weight, a.weight_present)
 
     if a.status == "insufficient":
         out.append(
