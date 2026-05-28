@@ -1,19 +1,21 @@
-"""The daily sync pipeline: Strava first, then Garmin as an ISOLATED failure domain.
+"""The daily sync pipeline: each source is an ISOLATED failure domain.
 
-This is where Garmin's fragility is contained (GRMN-01/03; ARCHITECTURE
+This is where source fragility is contained (GRMN-01/03; ARCHITECTURE
 Anti-Pattern 5). The rule:
 
-* Strava sync runs and its result is authoritative -- a Garmin problem must never
-  affect it.
-* Garmin sync is then *attempted inside a try/except*. Any failure (a 429
+* Each source's sync is *attempted inside a try/except*. Any failure (a 429
   account-throttle, a broken unofficial-library auth flow, a transform-shape
-  change, a missing-token "you never logged in") is **caught, logged, and
-  skipped** -- it returns a degraded result instead of raising. The daily run
-  therefore still succeeds for Strava, and ``tempo analyze`` runs afterwards on
-  whatever data already exists.
-* Critically there is **no retry / backoff on a Garmin 429** -- retries compound an
-  account-level lockout (PITFALLS 2). The connector raises immediately and this
-  layer simply records the skip.
+  change, a missing-token "you never logged in", a network blip) is **caught,
+  logged, and recorded** as a degraded :class:`SourceResult` instead of
+  raising. The daily run therefore still proceeds to subsequent sources and
+  to ``tempo analyze`` on whatever data already exists.
+* Garmin is the canonical fragile source; Strava is robust in practice but
+  symmetrically wrapped so a transient Strava failure (token glitch, 503)
+  doesn't prevent the Garmin attempt OR block the transform/analyze step in
+  ``run_daily``. The analysis layer can always re-derive from existing raw.
+* Critically there is **no retry / backoff on a Garmin 429** -- retries
+  compound an account-level lockout (PITFALLS 2). The connector raises
+  immediately and this layer records the skip.
 
 The result objects let the CLI report per-source status honestly ("Strava: ok,
 Garmin: skipped (429)") so a partial sync is never silently reported as complete
@@ -87,33 +89,60 @@ def _garmin_raw_rows(conn: sqlite3.Connection) -> int:
     )
 
 
-def run_full_sync(conn: sqlite3.Connection, settings: Settings) -> list[SourceResult]:
-    """Run Strava, then attempt Garmin in isolation. Returns per-source results.
+def run_strava_sync(conn: sqlite3.Connection, settings: Settings) -> SourceResult:
+    """Attempt a Strava sync, returning a :class:`SourceResult` rather than raising.
 
-    Strava runs first and unconditionally; its failure modes (missing credentials)
-    are handled by the CLI as before. Garmin is attempted only if its credentials
-    /tokens machinery can be built, and any Garmin failure is caught so Strava's
-    result stands and analysis can still run (GRMN-01/03). This is the function the
-    ``tempo sync`` command calls.
+    Strava is robust in practice but transient failures (network blip, 503,
+    token edge cases) shouldn't prevent the Garmin attempt or block the
+    transform/analyze step in :func:`tempo.sync.daily.run_daily`. Missing
+    credentials still surface as ``ValueError`` so the CLI's ``tempo sync``
+    can print a clear remediation rather than swallow it; that's the only
+    case re-raised.
     """
-    results: list[SourceResult] = []
+    try:
+        strava = build_strava_connector(settings)
+    except ValueError:
+        # Missing creds: surface to caller (CLI maps to red remediation).
+        raise
+    except Exception as exc:  # noqa: BLE001 - isolate any other connector-build failure
+        logger.warning("strava connector unavailable; skipping: %s", exc, exc_info=True)
+        return SourceResult(STRAVA_SOURCE, ok=False, detail=f"unavailable: {exc}")
 
-    # ---- Strava (authoritative; not isolated -- it is the robust source) ----
-    strava = build_strava_connector(settings)
     strava_raw = RawWriter(conn, STRAVA_SOURCE)
-    strava.sync(strava_raw, since=None)
+    try:
+        strava.sync(strava_raw, since=None)
+    except Exception as exc:  # noqa: BLE001 - isolate so Garmin still runs + analyses still rederive
+        logger.warning("strava sync skipped (unexpected error): %s", exc, exc_info=True)
+        return SourceResult(STRAVA_SOURCE, ok=False, detail=f"error: {exc}")
+
     strava_rows = int(
         conn.execute(
             "SELECT COUNT(*) FROM raw_response WHERE source=? AND endpoint='activity_summary'",
             (STRAVA_SOURCE,),
         ).fetchone()[0]
     )
-    results.append(SourceResult(STRAVA_SOURCE, ok=True, detail="ok", rows=strava_rows))
+    return SourceResult(STRAVA_SOURCE, ok=True, detail="ok", rows=strava_rows)
 
-    # ---- Garmin (isolated failure domain) ----
+
+def run_full_sync(conn: sqlite3.Connection, settings: Settings) -> list[SourceResult]:
+    """Run each source as an isolated attempt. Returns per-source results.
+
+    Both Strava and Garmin are wrapped: a transient failure in either source
+    produces a degraded :class:`SourceResult` and the other source still runs.
+    Missing credentials still surface as a ``ValueError`` from the Strava
+    branch so the CLI can report a clear remediation; Garmin's missing-creds
+    case is folded into the catch-all `unavailable:` result because Garmin
+    is optional. This is the function the ``tempo sync`` command calls.
+    """
+    results: list[SourceResult] = []
+
+    # ---- Strava ----
+    results.append(run_strava_sync(conn, settings))
+
+    # ---- Garmin ----
     try:
         garmin = build_garmin_connector(settings)
-    except Exception as exc:  # noqa: BLE001 - building the connector must not break Strava
+    except Exception as exc:  # noqa: BLE001 - building the connector must not break the run
         logger.warning("garmin connector unavailable; skipping: %s", exc)
         results.append(SourceResult(GARMIN_SOURCE, ok=False, detail=f"unavailable: {exc}"))
         return results
