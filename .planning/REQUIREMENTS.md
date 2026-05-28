@@ -240,11 +240,11 @@ Explicitly excluded. Documented to prevent scope creep.
 | VOICE-12 | Phase 12 | Complete |
 | VOICE-14 | Phase 12 | Complete |
 | VOICE-15 | Phase 12 | Complete |
-| SC-01 | Phase 13 | Pending |
-| SC-02 | Phase 13 | Pending |
-| SC-03 | Phase 13 | Pending |
-| SC-04 | Phase 13 | Pending |
-| SC-05 | Phase 13 | Pending |
+| SC-01 | Phase 13 | Complete |
+| SC-02 | Phase 13 | Complete |
+| SC-03 | Phase 13 | Complete |
+| SC-04 | Phase 13 | Complete |
+| SC-05 | Phase 13 | Complete |
 | SETUP-01 | Phase 14 | Pending |
 | SETUP-02 | Phase 14 | Pending |
 | SETUP-03 | Phase 14 | Pending |

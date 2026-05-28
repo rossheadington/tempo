@@ -26,7 +26,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 10: Voice Intake + Local Transcription (v1.1)** - Voice download into gitignored cache, 20 MB guard, faster-whisper singleton (small.en int8 default), transcript echoed to chat
 - [x] **Phase 11: Claude Code Agent Loop (v1.1)** - claude-agent-sdk wiring, per-chat session-id store with 4hr resume window, HTML reply formatting with 4096-char split, `/new` reset, per-turn token logging
 - [x] **Phase 12: Lifecycle, Hardening, Privacy (v1.1)** - launchd LaunchAgent with KeepAlive, top-level error handler, voice-file retention policy, project-scoped working dir
-- [ ] **Phase 13: Strength & Conditioning Tracker (v1.2)** - New `strength.md` markdown tracker with lenient parser (WxR / bodyweight reps / timed holds / supersets / equipment / metadata), surfaced in recovery report alongside heat (rolling-window count + last-session age + tonnage)
+- [x] **Phase 13: Strength & Conditioning Tracker (v1.2)** - New `strength.md` markdown tracker with lenient parser (WxR / bodyweight reps / timed holds / supersets / equipment / metadata), surfaced in recovery report alongside heat (rolling-window count + last-session age + tonnage)
 - [ ] **Phase 14: First-Run Setup Wizard (v1.3)** - `tempo setup` interactive command walks zero → working daily sync (DB init, content dir, Strava OAuth, optional Garmin / Telegram bot, optional launchd installs, smoke test); idempotent; stdlib-only; atomic `.env` writes with 0600 perms
 
 ## Phase Details
@@ -240,7 +240,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. Voice Intake + Local Transcription | 1/2 | In Progress|  |
 | 11. Claude Code Agent Loop | 1/3 | In Progress|  |
 | 12. Lifecycle, Hardening, Privacy | 0/2 | Not started | — |
-| 13. Strength & Conditioning Tracker | 0/0 | Not started | — |
+| 13. Strength & Conditioning Tracker | 3/3 | Complete | 2026-05-28 |
 | 14. First-Run Setup Wizard | 0/0 | Not started | — |
 
 **Milestone status:**

@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: telegram-voice-coach
+milestone: v1.2
+milestone_name: strength-conditioning-tracker
 status: shipped
-stopped_at: v1.1 complete; Pi port (v1.2) deferred.
-last_updated: "2026-05-28T00:00:00.000Z"
-last_activity: 2026-05-28 — Plan 12-02 complete: top-level Telegram error handler (VOICE-12); docs/PRIVACY.md privacy contract; TELEGRAM_BOT.md + README updated with launchd lifecycle, voice retention, error-handler behaviour. v1.1 feature-complete. 498 tests green (+5).
+stopped_at: v1.2 (Phase 13) complete; Phases 14/15/16 queued for execution.
+last_updated: "2026-05-28T03:00:00.000Z"
+last_activity: 2026-05-28 — Phase 13 (S&C tracker) shipped end-to-end. tempo/analysis/strength.py lenient parser (WxR + bare-reps + M:SS + supersets + equipment) + StrengthRollup + Settings.strength_path; recovery report gains 3-state ## Strength & conditioning section (absent / lapsed / active with tonnage); strength.md.example + docs/STRENGTH.md committed. 530 tests green (+32), ruff clean. Verifier PASS 5/5.
 progress:
-  total_phases: 4
-  completed_phases: 4
-  completed: [12]
-  total_plans: 7
-  completed_plans: 7
+  total_phases: 1
+  completed_phases: 1
+  completed: [13]
+  total_plans: 3
+  completed_plans: 3
   percent: 100
 ---
 
