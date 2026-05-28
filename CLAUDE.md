@@ -76,7 +76,7 @@ Two-layer raw → structured store. Connectors write **only** to `raw_response`.
             │   Claude Code session via claude-agent-sdk      │
             │     • uses user's Claude subscription auth      │
             │     • cwd = project root, all tools available   │
-            │     • --resume per chat (4hr rolling window)    │
+            │     • --resume per chat (persists until /clear) │
             │     • final assistant text → HTML reply         │
             │       (split at 4096 chars)                     │
             └─────────────────────────────────────────────────┘
@@ -95,7 +95,7 @@ Two-layer raw → structured store. Connectors write **only** to `raw_response`.
 | `transforms/` | pure raw→structured: `bucketing.py` (DATE_BUCKETING invariant), `strava.py`, `wellness.py`, `spine.py`, `runner.py` |
 | `analysis/` | pure stdlib metric math + report rendering: `load.py` (rTSS/hrTSS/sRPE), `fitness.py` (CTL/ATL/TSB/ACWR), `race.py` (Riegel/VDOT), `baselines.py` (z-score vs personal rolling), `recovery.py`, `correlation.py`, `races.py` (parser, canonical home post-Phase-8), `heat.py` (parser + rollup), `race_link.py` (race↔activity auto-link), `noteworthy.py`, `runner.py`, `report.py`, `data.py` (read-only DB), `context.py` ⚠ DELETED Phase 8 |
 | `journal/service.py` | validated boundary for subjective entries (`add_entry`, RPE 1-10, date+sport activity resolution, sRPE) |
-| `bot/` | Telegram bot: `app.py` (Application builder + handler registration + Whisper warmup + cwd log + voice sweep), `handlers.py` (start, voice, text, /new), `transcribe.py` (faster-whisper singleton), `sessions.py` (per-chat session-id store, 4hr window), `agent.py` (claude-agent-sdk wrapper + 4096-char HTML split), `error_handler.py` (top-level boundary) |
+| `bot/` | Telegram bot: `app.py` (Application builder + handler registration + Whisper warmup + cwd log + voice sweep + `setMyCommands` menu publish), `handlers.py` (start, voice (echoes transcript), text, `/clear`, `/sync`), `transcribe.py` (faster-whisper singleton), `sessions.py` (per-chat session-id store, persists until `/clear`), `agent.py` (claude-agent-sdk wrapper + 4096-char HTML split + Markdown-tables→`<pre>` rendering), `error_handler.py` (top-level boundary) |
 | `scheduler.py` | launchd plist render + install (`com.tempo.daily.plist` for sync, `com.tempo.telegram-bot.plist` for bot) |
 <!-- GSD:architecture-end -->
 
