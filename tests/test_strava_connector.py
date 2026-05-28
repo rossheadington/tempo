@@ -337,6 +337,44 @@ def test_stored_activity_ids_lists_backfilled_ids(tmp_path: Path, conn: sqlite3.
     assert connector.stored_activity_ids(conn) == [101, 102, 103, 104]
 
 
+def test_stored_activity_ids_prefer_with_hr_filters_to_hr_recorded_activities(
+    tmp_path: Path, conn: sqlite3.Connection
+) -> None:
+    """--prefer-with-hr restricts the queue to activities with avg_hr > 0.
+
+    Used by ``tempo strava streams --prefer-with-hr`` to target the
+    HR-stream backfill at activities recorded with a HR monitor paired
+    (and therefore with HR data available from Strava). Requires the
+    structured ``activity`` table to be populated; the join skips raw
+    rows that haven't been transformed yet.
+    """
+    client = FakeStravaClient(pages=_three_pages())
+    connector, store = _connector(tmp_path, client)
+    _seed_valid_tokens(store)
+    connector.backfill(RawWriter(conn, "strava"))
+
+    # Seed spine days then structured activity rows with mixed HR availability.
+    # `activity.day` references `date_spine(day)` so the spine entries must
+    # exist first.
+    conn.executescript(
+        """
+        INSERT INTO date_spine (day) VALUES
+            ('2026-05-28'), ('2026-05-26'), ('2026-05-20'), ('2026-05-15');
+        INSERT INTO activity (activity_id, source, day, avg_hr) VALUES
+            (101, 'strava', '2026-05-28', 152.3),
+            (102, 'strava', '2026-05-26', NULL),
+            (103, 'strava', '2026-05-20', 0),
+            (104, 'strava', '2026-05-15', 138.0);
+        """
+    )
+
+    ids = connector.stored_activity_ids(conn, prefer_with_hr=True)
+    # Only the two HR-recorded activities; ordered most-recent first.
+    assert ids == [101, 104]
+    # Without the flag, every raw row still comes through.
+    assert connector.stored_activity_ids(conn) == [101, 102, 103, 104]
+
+
 # ---- STRV-05: incremental watermark sync ----------------------------------
 
 

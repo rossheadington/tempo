@@ -402,8 +402,33 @@ class StravaConnector:
         logger.info("strava: stored detail for activity %s", activity_id)
         return True
 
-    def stored_activity_ids(self, conn: sqlite3.Connection) -> list[int]:
-        """Return activity ids known from stored summaries (for lazy stream loops)."""
+    def stored_activity_ids(
+        self, conn: sqlite3.Connection, *, prefer_with_hr: bool = False
+    ) -> list[int]:
+        """Return activity ids known from stored summaries (for lazy stream loops).
+
+        When ``prefer_with_hr`` is True, restrict to activities whose structured
+        ``activity`` row has ``avg_hr > 0`` (i.e. the activity was recorded
+        with a HR monitor paired and the HR stream is therefore available from
+        Strava). Ordered most-recent first so a capped backfill drains the
+        useful recent history rather than the 2015 archive. Requires the
+        structured layer to be populated (``tempo transform`` has been run).
+        When False (default), returns every stored activity id in ascending
+        order — the original behaviour.
+        """
+        if prefer_with_hr:
+            rows = conn.execute(
+                """
+                SELECT r.entity_key
+                FROM raw_response r
+                JOIN activity a ON CAST(r.entity_key AS INTEGER) = a.activity_id
+                WHERE r.source=? AND r.endpoint=?
+                  AND a.avg_hr IS NOT NULL AND a.avg_hr > 0
+                ORDER BY a.day DESC
+                """,
+                (SOURCE, EP_ACTIVITY_SUMMARY),
+            ).fetchall()
+            return [int(r[0]) for r in rows]
         rows = conn.execute(
             "SELECT entity_key FROM raw_response WHERE source=? AND endpoint=?",
             (SOURCE, EP_ACTIVITY_SUMMARY),

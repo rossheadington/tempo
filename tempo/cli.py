@@ -174,12 +174,21 @@ def strava_streams(
         None, "--limit", help="When fetching for all stored activities, cap how many this run."
     ),
     force: bool = typer.Option(False, "--force", help="Re-fetch even if already stored."),
+    prefer_with_hr: bool = typer.Option(
+        False,
+        "--prefer-with-hr",
+        help="Restrict the queue to activities recorded with a HR monitor (avg_hr > 0), "
+        "most-recent first. Requires `tempo transform` has been run.",
+    ),
 ) -> None:
     """Lazily fetch activity streams (HR, pace, GPS, power, cadence, elevation) (STRV-04).
 
     With ``--activity-id`` fetches one activity. Otherwise walks stored activity
     summaries that don't yet have streams, fetching up to ``--limit`` of them so
     the rate limit is respected. Already-stored streams are skipped.
+    ``--prefer-with-hr`` filters the queue to activities whose ``avg_hr`` is
+    set, ordered most-recent first -- the right knob when backfilling HR
+    streams for time-in-zone analysis.
     """
     settings, conn = _connected_db()
     try:
@@ -190,14 +199,15 @@ def strava_streams(
             msg = "fetched" if fetched else "already present (skipped)"
             typer.echo(f"Streams for activity {activity_id}: {msg}.")
             return
-        ids = connector.stored_activity_ids(conn)
+        ids = connector.stored_activity_ids(conn, prefer_with_hr=prefer_with_hr)
         done = 0
         for aid in ids:
             if limit is not None and done >= limit:
                 break
             if connector.fetch_streams(raw, aid, force=force):
                 done += 1
-        typer.secho(f"Fetched streams for {done} activities.", fg="green")
+        scope = "HR-recorded activities" if prefer_with_hr else "activities"
+        typer.secho(f"Fetched streams for {done} {scope}.", fg="green")
     except ValueError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
