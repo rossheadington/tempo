@@ -368,9 +368,18 @@ def test_nutrition_rollup_empty_returns_all_none_with_zero_days_logged() -> None
 def test_nutrition_rollup_7d_window_left_open() -> None:
     # (today-7, today] excludes TODAY-7 itself; TODAY-8 also out.
     entries = (
-        _entry(d=TODAY - timedelta(days=8), meal="b", label="x", p=10, c=10, f=10, cal=1000, line=1),
-        _entry(d=TODAY - timedelta(days=7), meal="b", label="y", p=10, c=10, f=10, cal=1500, line=2),
-        _entry(d=TODAY, meal="b", label="z", p=20, c=20, f=20, cal=2000, line=3),
+        _entry(
+            d=TODAY - timedelta(days=8), meal="b", label="x",
+            p=10, c=10, f=10, cal=1000, line=1,
+        ),
+        _entry(
+            d=TODAY - timedelta(days=7), meal="b", label="y",
+            p=10, c=10, f=10, cal=1500, line=2,
+        ),
+        _entry(
+            d=TODAY, meal="b", label="z",
+            p=20, c=20, f=20, cal=2000, line=3,
+        ),
     )
     rollup = nutrition_rollup(entries, TODAY)
     assert rollup.days_logged_7d == 1
@@ -380,9 +389,18 @@ def test_nutrition_rollup_7d_window_left_open() -> None:
 
 def test_nutrition_rollup_averages_across_days_with_entries_only() -> None:
     entries = (
-        _entry(d=TODAY - timedelta(days=5), meal="d", label="x", p=80, c=200, f=50, cal=1800, line=1),
-        _entry(d=TODAY - timedelta(days=2), meal="d", label="y", p=120, c=300, f=70, cal=2500, line=2),
-        _entry(d=TODAY, meal="d", label="z", p=100, c=250, f=60, cal=2000, line=3),
+        _entry(
+            d=TODAY - timedelta(days=5), meal="d", label="x",
+            p=80, c=200, f=50, cal=1800, line=1,
+        ),
+        _entry(
+            d=TODAY - timedelta(days=2), meal="d", label="y",
+            p=120, c=300, f=70, cal=2500, line=2,
+        ),
+        _entry(
+            d=TODAY, meal="d", label="z",
+            p=100, c=250, f=60, cal=2000, line=3,
+        ),
     )
     rollup = nutrition_rollup(entries, TODAY)
     assert rollup.days_logged_7d == 3
@@ -394,9 +412,18 @@ def test_nutrition_rollup_averages_across_days_with_entries_only() -> None:
 
 def test_nutrition_rollup_target_deficit_surplus_when_set() -> None:
     entries = (
-        _entry(d=TODAY - timedelta(days=5), meal="d", label="x", p=80, c=200, f=50, cal=1800, line=1),
-        _entry(d=TODAY - timedelta(days=2), meal="d", label="y", p=120, c=300, f=70, cal=2500, line=2),
-        _entry(d=TODAY, meal="d", label="z", p=100, c=250, f=60, cal=2000, line=3),
+        _entry(
+            d=TODAY - timedelta(days=5), meal="d", label="x",
+            p=80, c=200, f=50, cal=1800, line=1,
+        ),
+        _entry(
+            d=TODAY - timedelta(days=2), meal="d", label="y",
+            p=120, c=300, f=70, cal=2500, line=2,
+        ),
+        _entry(
+            d=TODAY, meal="d", label="z",
+            p=100, c=250, f=60, cal=2000, line=3,
+        ),
     )
     # Mean kcal = 2100. Target 2200 -> deficit -100.
     rollup_deficit = nutrition_rollup(entries, TODAY, target_kcal=2200)

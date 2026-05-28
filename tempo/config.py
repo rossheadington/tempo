@@ -128,6 +128,21 @@ class Settings(BaseSettings):
         ),
     )
 
+    # ---- Nutrition goal (Phase 16) ----
+    # Bare env-var name (NOT prefixed) to match the user-facing knobs
+    # convention. Optional: when unset, the nutrition rollup leaves
+    # ``target_kcal`` + ``deficit_surplus_7d`` as ``None`` and the report
+    # renderer omits the goal line silently.
+    target_kcal_default: int | None = Field(
+        default=None,
+        validation_alias="TEMPO_TARGET_KCAL",
+        description=(
+            "Optional daily kcal target for nutrition rollup goal tracking. "
+            "When set, the 7-day rollup surfaces deficit_surplus_7d = avg_7d.kcal "
+            "- target. When unset (the default), goal tracking is silently off."
+        ),
+    )
+
     # ---- Voice cache retention (Phase 12 / v1.1) ----
     # Bare env-var name (NOT prefixed) so the convention matches the other
     # bot-side knobs (TELEGRAM_*, WHISPER_*). Default 0 = delete every voice
@@ -224,6 +239,11 @@ class Settings(BaseSettings):
     def weight_path(self) -> Path:
         """Path to the user-maintained weight log (read for recovery context)."""
         return self.content_root / "weight.md"
+
+    @property
+    def food_path(self) -> Path:
+        """Path to the user-maintained food log (read for nutrition rollup + recovery context)."""
+        return self.content_root / "food.md"
 
     @property
     def voice_cache_dir(self) -> Path:
