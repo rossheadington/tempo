@@ -14,7 +14,7 @@ from pathlib import Path
 
 # The expected schema version after all bundled migrations have been applied.
 # Bump this (and add a migration file) whenever the schema changes.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Tables the foundation schema guarantees exist. Used by tests and `runos` for
 # a quick post-init sanity check.
@@ -36,6 +36,11 @@ WELLNESS_TABLES = ("wellness_day",)
 # written only via runos.bot.sessions (the validated boundary for VOICE-08); no
 # free-form SQL writes this table.
 BOT_TABLES = ("bot_session",)
+
+# Phase 18 (v1.7): Coros EvoLab proprietary metrics table added in migration
+# 0006. One row per local calendar day, re-derived purely from raw Coros
+# `evolab_dashboard` payloads.
+COROS_EVOLAB_TABLES = ("coros_evolab_day",)
 
 
 def connect(db_path: Path) -> sqlite3.Connection:

@@ -26,12 +26,13 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from runos.analysis import baselines
 from runos.analysis import data as dataread
 from runos.analysis.baselines import BaselinePoint
+from runos.analysis.coros_evolab import EvoLabContext, EvoLabDay
 from runos.analysis.fitness import FitnessPoint, Guardrail
 from runos.analysis.heat import HeatRollup
 from runos.analysis.heat import heat_rollup as _heat_rollup
@@ -39,12 +40,14 @@ from runos.analysis.heat import parse_heat as _parse_heat
 from runos.analysis.nutrition import NutritionRollup
 from runos.analysis.nutrition import nutrition_rollup as _nutrition_rollup
 from runos.analysis.nutrition import parse_food as _parse_food
+from runos.analysis.preferences import Units
 from runos.analysis.strength import StrengthRollup
 from runos.analysis.strength import parse_strength as _parse_strength
 from runos.analysis.strength import strength_rollup as _strength_rollup
 from runos.analysis.weight import WeightRollup
 from runos.analysis.weight import parse_weight as _parse_weight
 from runos.analysis.weight import weight_rollup as _weight_rollup
+from runos.units import format_pace
 
 # |z| beyond this is a notable deviation from personal baseline (~2 SD = the
 # unusual 5% tail). Configurable so the noteworthy thresholds can be tuned.
@@ -266,6 +269,9 @@ class RecoveryAssessment:
     weight_present: bool = False
     nutrition: NutritionRollup | None = None
     nutrition_present: bool = False
+    evolab: EvoLabDay | None = None
+    evolab_present: bool = False
+    evolab_stamina_7d_ago: int | None = None
 
     @property
     def concern_signals(self) -> list[SignalAssessment]:
@@ -413,6 +419,7 @@ def assess_recovery_from_db(
     weight_path: Path | None = None,
     food_path: Path | None = None,
     target_kcal: int | None = None,
+    evolab_ctx: EvoLabContext | None = None,
 ) -> RecoveryAssessment:
     """Read the latest wellness baselines from the DB and assess recovery.
 
@@ -446,6 +453,14 @@ def assess_recovery_from_db(
     signed deficit/surplus alongside the 7d average. The same alignment day
     used for heat + strength + weight applies here too. Omitted ``food_path``
     preserves back-compat.
+
+    If ``evolab_ctx`` is provided, the Coros EvoLab context (read via
+    :func:`runos.analysis.coros_evolab.read_evolab`) is attached to the
+    assessment as ``evolab`` (latest day with metrics) and ``evolab_present``.
+    The 7-day-prior stamina value is looked up from the context's full days
+    list and stored as ``evolab_stamina_7d_ago`` so the renderer can compute a
+    Δ without re-reading the DB. Omitted ``evolab_ctx`` preserves back-compat
+    (section omitted entirely).
     """
     latest = baselines.latest_baselines(conn, window=window, min_points=min_points)
     day = points[-1].day if points else None
@@ -458,6 +473,7 @@ def assess_recovery_from_db(
         and strength_path is None
         and weight_path is None
         and food_path is None
+        and evolab_ctx is None
     ):
         return assessment
 
@@ -501,6 +517,17 @@ def assess_recovery_from_db(
         )
         nutrition_present = food_ctx.present
 
+    evolab_latest: EvoLabDay | None = None
+    evolab_present = False
+    evolab_stamina_7d_ago: int | None = None
+    if evolab_ctx is not None:
+        evolab_latest = evolab_ctx.latest
+        evolab_present = evolab_ctx.present
+        if evolab_latest is not None:
+            evolab_stamina_7d_ago = _lookup_stamina_n_days_ago(
+                evolab_ctx, evolab_latest.day, 7
+            )
+
     # Replace the (frozen) assessment with one that carries all four tracker fields.
     return RecoveryAssessment(
         day=assessment.day,
@@ -517,7 +544,25 @@ def assess_recovery_from_db(
         weight_present=weight_present,
         nutrition=nutrition_rollup_obj,
         nutrition_present=nutrition_present,
+        evolab=evolab_latest,
+        evolab_present=evolab_present,
+        evolab_stamina_7d_ago=evolab_stamina_7d_ago,
     )
+
+
+def _lookup_stamina_n_days_ago(
+    ctx: EvoLabContext, anchor: date, n: int
+) -> int | None:
+    """Return the stamina value from the row ``n`` days before ``anchor``.
+
+    Returns ``None`` when no such row exists, or the matching row's
+    ``stamina_level`` is itself None (no delta to compute).
+    """
+    target = anchor - timedelta(days=n)
+    for row in ctx.days:
+        if row.day == target:
+            return row.stamina_level
+    return None
 
 
 def _fmt_days_ago(n: int) -> str:
@@ -797,12 +842,95 @@ def _render_nutrition_section(
     out.append("")
 
 
+def _render_evolab_section(
+    out: list[str],
+    evolab: EvoLabDay | None,
+    evolab_present: bool,
+    *,
+    units: Units,
+    today: date,
+    stamina_7d_ago: int | None,
+) -> None:
+    """Append the Coros (EvoLab) section per the same 3-state degradation rule.
+
+    The three states (mirroring :func:`_render_nutrition_section`):
+
+    * ``evolab_present is False`` OR ``evolab is None`` -- the Coros EvoLab
+      table is empty (or the caller did not thread the context through).
+      Section omitted entirely.
+    * ``evolab.day < today - 3 days`` -- the latest reading is stale (the user
+      hasn't worn the watch). Render the ``## Coros (EvoLab)`` header plus a
+      one-line nudge.
+    * Current (within 3 days) -- render the block with VO2max, Stamina (+ 7d
+      delta when computable), training load, threshold HR (lthr), and
+      threshold pace (ltsp). Each line is omitted independently when its
+      value is ``None``; if EVERY metric is None, the section falls through
+      to the absent state (no section).
+
+    Pace formatting uses :func:`runos.units.format_pace` so the user's
+    ``preferences.md`` unit choice is honoured.
+    """
+    if not evolab_present or evolab is None:
+        return
+
+    days_since = (today - evolab.day).days
+    if days_since > 3:
+        out.append("## Coros (EvoLab)\n")
+        out.append(
+            f"_Last EvoLab reading {days_since} days ago — wear the watch to "
+            "refresh the dashboard._"
+        )
+        out.append("")
+        return
+
+    # Current state: assemble per-metric lines, each independently omittable.
+    lines: list[str] = []
+    if evolab.vo2max is not None:
+        lines.append(f"- VO2max: {evolab.vo2max:.1f} ml/kg/min")
+    if evolab.stamina_level is not None:
+        delta_fragment = ""
+        if stamina_7d_ago is not None:
+            delta = evolab.stamina_level - stamina_7d_ago
+            if delta > 0:
+                delta_fragment = f" (7d Δ +{delta})"
+            elif delta < 0:
+                # ASCII minus is fine here -- this is a small integer delta on
+                # a count-style metric, distinct from the weight/kcal deltas
+                # that use Unicode glyphs for visual parity with their headers.
+                delta_fragment = f" (7d Δ -{abs(delta)})"
+            else:
+                delta_fragment = " (7d Δ 0)"
+        lines.append(f"- Stamina: {evolab.stamina_level}{delta_fragment}")
+    if evolab.training_load is not None:
+        lines.append(f"- Training load (today): {evolab.training_load}")
+    if evolab.lthr is not None:
+        lines.append(
+            f"- Threshold HR (Coros): {evolab.lthr} bpm — "
+            "_cross-check vs preferences.md `threshold_hr`_"
+        )
+    if evolab.ltsp_s_per_km is not None:
+        pace_str = format_pace(float(evolab.ltsp_s_per_km), units)
+        lines.append(
+            f"- Threshold pace (Coros): {pace_str} — "
+            "_cross-check vs preferences.md `threshold_pace`_"
+        )
+
+    if not lines:
+        # All metrics are None -- fall through to absent (per per-line rule).
+        return
+
+    out.append("## Coros (EvoLab)\n")
+    out.extend(lines)
+    out.append("")
+
+
 def render_recovery(
     *,
     generated_on: date,
     freshness: list[dataread.SourceFreshness],
     data_range: tuple[str, str] | None,
     assessment: RecoveryAssessment,
+    units: Units | None = None,
 ) -> str:
     """Render the dated recovery markdown report with the freshness header (ANL-03/05)."""
     # Imported lazily to avoid a circular import (report imports from analysis pkg).
@@ -849,6 +977,14 @@ def render_recovery(
     _render_strength_section(out, a.strength, a.strength_present)
     _render_weight_section(out, a.weight, a.weight_present)
     _render_nutrition_section(out, a.nutrition, a.nutrition_present)
+    _render_evolab_section(
+        out,
+        a.evolab,
+        a.evolab_present,
+        units=units if units is not None else Units(),
+        today=generated_on,
+        stamina_7d_ago=a.evolab_stamina_7d_ago,
+    )
 
     if a.status == "insufficient":
         out.append(

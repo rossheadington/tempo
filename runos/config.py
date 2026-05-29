@@ -75,6 +75,17 @@ class Settings(BaseSettings):
         default=None, description="Garmin Connect account password."
     )
 
+    # ---- Coros credentials (Phase 18) ----
+    # Standard ``RUNOS_`` env-prefix applies, so these come from
+    # RUNOS_COROS_EMAIL / RUNOS_COROS_PASSWORD in ``.env``. Password is
+    # wrapped in ``SecretStr`` so it never prints in tracebacks or logs;
+    # the connector unwraps it via ``.get_secret_value()`` only at the
+    # MD5-hash call site.
+    coros_email: str | None = Field(default=None, description="Coros account email.")
+    coros_password: SecretStr | None = Field(
+        default=None, description="Coros account password."
+    )
+
     # ---- Telegram bot (Phase 9 / v1.1) ----
     # NOTE: these two fields are intentionally read from BARE env-var names
     # (TELEGRAM_BOT_TOKEN / TELEGRAM_OWNER_CHAT_ID) rather than the global

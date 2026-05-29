@@ -291,6 +291,9 @@ def _ok_assessment(
     weight_present: bool = False,
     nutrition: object = None,
     nutrition_present: bool = False,
+    evolab: object = None,
+    evolab_present: bool = False,
+    evolab_stamina_7d_ago: int | None = None,
 ) -> recovery.RecoveryAssessment:
     """Hand-built RecoveryAssessment with neutral signals so we exercise ONLY
     the heat / strength / weight / nutrition path."""
@@ -341,15 +344,24 @@ def _ok_assessment(
         weight_present=weight_present,
         nutrition=nutrition,  # type: ignore[arg-type]
         nutrition_present=nutrition_present,
+        evolab=evolab,  # type: ignore[arg-type]
+        evolab_present=evolab_present,
+        evolab_stamina_7d_ago=evolab_stamina_7d_ago,
     )
 
 
-def _render(a: recovery.RecoveryAssessment) -> str:
+def _render(
+    a: recovery.RecoveryAssessment,
+    *,
+    generated_on: date = date(2026, 4, 1),
+    units: object = None,
+) -> str:
     return recovery.render_recovery(
-        generated_on=date(2026, 4, 1),
+        generated_on=generated_on,
         freshness=[],
         data_range=None,
         assessment=a,
+        units=units,  # type: ignore[arg-type]
     )
 
 
@@ -932,3 +944,171 @@ def test_fmt_kcal_delta_signs() -> None:
     assert recovery._fmt_kcal_delta(110) == "+110 kcal/day"
     assert recovery._fmt_kcal_delta(-85) == "−85 kcal/day"  # Unicode minus U+2212
     assert recovery._fmt_kcal_delta(0) == "±0 kcal/day"  # Unicode plus-minus U+00B1
+
+
+# ---- Coros (EvoLab) section --------------------------------------------------
+
+
+def _evolab_day(
+    *,
+    day: date | None = None,
+    vo2max: float | None = 56.4,
+    stamina_level: int | None = 62,
+    training_load: int | None = 412,
+    lthr: int | None = 172,
+    ltsp_s_per_km: int | None = 238,
+) -> object:
+    """Build an EvoLabDay row for the recovery-renderer fixtures."""
+    from datetime import datetime
+
+    from runos.analysis.coros_evolab import EvoLabDay
+
+    return EvoLabDay(
+        day=day if day is not None else date(2026, 4, 1),
+        vo2max=vo2max,
+        stamina_level=stamina_level,
+        training_load=training_load,
+        lthr=lthr,
+        ltsp_s_per_km=ltsp_s_per_km,
+        fetched_at=datetime(2026, 4, 1, 12, 0, 0),
+    )
+
+
+def test_recovery_omits_evolab_section_when_absent() -> None:
+    """No EvoLab data (evolab_present=False) -> section omitted entirely."""
+    a = _ok_assessment(evolab=None, evolab_present=False)
+    text = _render(a)
+    assert "## Coros (EvoLab)" not in text
+
+
+def test_recovery_emits_stale_evolab_nudge() -> None:
+    """Latest EvoLab day >3 days before `today` -> one-line stale nudge."""
+    stale = _evolab_day(day=date(2026, 3, 25))  # 7 days before today=2026-04-01
+    a = _ok_assessment(evolab=stale, evolab_present=True)
+    text = _render(a)
+    assert "## Coros (EvoLab)" in text
+    assert "Last EvoLab reading 7 days ago" in text
+    assert "wear the watch" in text
+    # Stale nudge is the ONLY EvoLab line — full-block markers absent.
+    assert "VO2max" not in text
+    assert "Stamina" not in text
+    assert "Training load" not in text
+    assert "Threshold HR" not in text
+    assert "Threshold pace" not in text
+
+
+def test_recovery_renders_evolab_block_with_vo2max_stamina_load_lthr_ltsp() -> None:
+    """Full current-state block renders all five lines + stamina 7d delta."""
+    latest = _evolab_day(
+        day=date(2026, 4, 1),
+        vo2max=56.4,
+        stamina_level=62,
+        training_load=412,
+        lthr=172,
+        ltsp_s_per_km=238,
+    )
+    a = _ok_assessment(
+        evolab=latest, evolab_present=True, evolab_stamina_7d_ago=59
+    )
+    text = _render(a)
+    assert "## Coros (EvoLab)" in text
+    assert "VO2max: 56.4 ml/kg/min" in text
+    # 62 - 59 = +3 delta (ASCII '+' inside the parens).
+    assert "Stamina: 62 (7d Δ +3)" in text
+    assert "Training load (today): 412" in text
+    assert "Threshold HR (Coros): 172 bpm" in text
+    assert "_cross-check vs preferences.md `threshold_hr`_" in text
+    # Default units = km -> M:SS /km rendering. ltsp 238 s/km -> 3:58 /km.
+    assert "Threshold pace (Coros): 3:58 /km" in text
+    assert "_cross-check vs preferences.md `threshold_pace`_" in text
+    # No stale nudge.
+    assert "wear the watch" not in text
+
+
+def test_recovery_evolab_renders_pace_in_user_units() -> None:
+    """`Units(distance='miles', pace='min_per_mile')` -> pace renders as `M:SS /mi`."""
+    from runos.analysis.preferences import Units
+
+    latest = _evolab_day(
+        day=date(2026, 4, 1),
+        vo2max=56.4,
+        stamina_level=62,
+        training_load=None,
+        lthr=None,
+        ltsp_s_per_km=238,  # 238 s/km == ~6:23 /mi (238 * 1.609344 = 383.0 s/mi)
+    )
+    a = _ok_assessment(evolab=latest, evolab_present=True)
+    text = _render(a, units=Units(distance="miles", pace="min_per_mile"))
+    assert "## Coros (EvoLab)" in text
+    assert "Threshold pace (Coros): 6:23 /mi" in text
+    assert "/km" not in text.split("Threshold pace")[1].split("\n")[0]
+
+
+def test_recovery_evolab_omits_missing_lines() -> None:
+    """Only vo2max set -> other metric lines omitted, but the section header stays."""
+    sparse = _evolab_day(
+        day=date(2026, 4, 1),
+        vo2max=58.1,
+        stamina_level=None,
+        training_load=None,
+        lthr=None,
+        ltsp_s_per_km=None,
+    )
+    a = _ok_assessment(evolab=sparse, evolab_present=True)
+    text = _render(a)
+    assert "## Coros (EvoLab)" in text
+    assert "VO2max: 58.1 ml/kg/min" in text
+    # Other lines absent.
+    assert "Stamina" not in text
+    assert "Training load" not in text
+    assert "Threshold HR" not in text
+    assert "Threshold pace" not in text
+
+
+def test_recovery_evolab_omits_stamina_delta_when_no_7d_ago_value() -> None:
+    """Stamina present but no 7d-ago value -> Stamina line renders WITHOUT a delta."""
+    latest = _evolab_day(
+        day=date(2026, 4, 1),
+        vo2max=None,
+        stamina_level=62,
+        training_load=None,
+        lthr=None,
+        ltsp_s_per_km=None,
+    )
+    a = _ok_assessment(
+        evolab=latest, evolab_present=True, evolab_stamina_7d_ago=None
+    )
+    text = _render(a)
+    assert "## Coros (EvoLab)" in text
+    assert "- Stamina: 62" in text
+    # No delta fragment when 7d-ago is missing.
+    assert "7d Δ" not in text
+
+
+def test_recovery_evolab_falls_through_to_absent_when_all_metrics_none() -> None:
+    """Row present but every metric None -> section falls through to absent."""
+    empty = _evolab_day(
+        day=date(2026, 4, 1),
+        vo2max=None,
+        stamina_level=None,
+        training_load=None,
+        lthr=None,
+        ltsp_s_per_km=None,
+    )
+    a = _ok_assessment(evolab=empty, evolab_present=True)
+    text = _render(a)
+    assert "## Coros (EvoLab)" not in text
+
+
+def test_recovery_evolab_section_follows_nutrition() -> None:
+    """When both nutrition and EvoLab render, EvoLab comes AFTER nutrition."""
+    a = _ok_assessment(
+        nutrition=_nutrition_current(),
+        nutrition_present=True,
+        evolab=_evolab_day(),
+        evolab_present=True,
+    )
+    text = _render(a)
+    assert "## Nutrition" in text
+    assert "## Coros (EvoLab)" in text
+    assert text.index("## Nutrition") < text.index("## Coros (EvoLab)")

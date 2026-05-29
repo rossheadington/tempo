@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from runos.journal.service import link_orphan_entries
+from runos.transforms import coros_wellness as coros_wellness_tf
 from runos.transforms import spine
 from runos.transforms import strava as strava_tf
 from runos.transforms import wellness as wellness_tf
@@ -52,6 +53,15 @@ def _rebuild(conn: sqlite3.Connection, *, fill_to: date | None) -> TransformResu
     ``day`` foreign keys resolve), ``rebuild_spine`` then zero-fills the continuous
     range to cover both activity-only and wellness-only days, and
     ``rebuild_streams`` references only already-inserted activities.
+
+    **Wellness ordering matters (Phase 18 priority resolver).** The Garmin
+    wellness transform runs FIRST so its values land in ``wellness_day``; the
+    Coros wellness transform runs SECOND and applies per-column ``COALESCE``
+    so a non-NULL Coros value overrides Garmin's while a NULL Coros value
+    preserves it. Swapping the order would invert the "Coros wins" contract.
+    The transform result reports the combined row count touched -- whichever
+    transform was last to write a given day is the row attributed to it for
+    counting purposes; the actual stored row reflects the resolver outcome.
     """
     activities = strava_tf.rebuild_activities(conn)
     wellness_days = _rebuild_wellness_if_present(conn)
@@ -69,14 +79,24 @@ def _rebuild_wellness_if_present(conn: sqlite3.Connection) -> int:
     """Rebuild wellness only if the table exists (Phase 6+ schema).
 
     Keeps transform/rederive working on a pre-Phase-6 DB (e.g. mid-migration in a
-    test) by returning 0 when ``wellness_day`` is absent.
+    test) by returning 0 when ``wellness_day`` is absent. Runs both wellness
+    transforms in order (Garmin FIRST, then Coros) so the COALESCE-based
+    priority resolver in :mod:`runos.transforms.coros_wellness` works
+    deterministically: Garmin's writes land first, Coros's second write
+    overrides where it has values and preserves Garmin's writes where it
+    doesn't. Returns the total wellness-row writes across both passes.
     """
     has_table = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='wellness_day'"
     ).fetchone()
     if has_table is None:
         return 0
-    return wellness_tf.rebuild_wellness(conn)
+    # Garmin first: it populates the row (or creates a fresh one). Coros
+    # second: it uses COALESCE-on-update so non-NULL values override Garmin's,
+    # NULL values preserve Garmin's writes. Order is the resolver.
+    garmin_written = wellness_tf.rebuild_wellness(conn)
+    coros_written = coros_wellness_tf.rebuild_coros_wellness(conn)
+    return garmin_written + coros_written
 
 
 def run_transform(conn: sqlite3.Connection, *, fill_to: date | None = None) -> TransformResult:

@@ -218,3 +218,51 @@ def test_analyze_load_trend_renders_miles_when_preferences_says_miles(
     # Column header reflects miles, not km.
     assert "Distance (mi)" in text
     assert "Distance (km)" not in text
+
+
+# ---------------------------------------------------------------------------
+# Phase 18: `runos coros sync` CLI smoke test
+# ---------------------------------------------------------------------------
+
+
+def test_runos_coros_sync_calls_connector_and_writes_raw(
+    runos_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`runos coros sync` builds a connector, runs its sync, and lands raw rows.
+
+    Mocks the connector factory so no network / no credentials are needed and
+    asserts (a) the connector's sync() was actually called, (b) raw_response
+    rows tagged ``source='coros'`` landed, (c) the success line is printed,
+    and (d) the CLI exits 0.
+    """
+    from runos.connectors.coros import SOURCE as COROS
+
+    class _FakeCoros:
+        source = COROS
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def sync(self, raw, since=None) -> None:
+            self.calls += 1
+            with raw.conn:
+                raw.put("evolab_dashboard", "2026-05-29", {"day": "2026-05-29"})
+                raw.put("hrv", "2026-05-29", {"day": "2026-05-29"})
+
+    fake = _FakeCoros()
+
+    import runos.connectors.factory as factory
+
+    monkeypatch.setattr(factory, "build_coros_connector", lambda *_a, **_kw: fake)
+
+    result = cli.invoke(app, ["coros", "sync"])
+    assert result.exit_code == 0, result.output
+    assert "Coros sync complete" in result.output
+    assert fake.calls == 1
+
+    conn = db.connect(runos_data_dir / "runos.db")
+    try:
+        n = conn.execute("SELECT COUNT(*) FROM raw_response WHERE source='coros'").fetchone()[0]
+    finally:
+        conn.close()
+    assert n == 2

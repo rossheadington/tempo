@@ -26,6 +26,7 @@ from runos.analysis import fitness, load, race
 from runos.analysis import races as ctx
 from runos.analysis import recovery as recovery_mod
 from runos.analysis import report as report_mod
+from runos.analysis.coros_evolab import read_evolab
 from runos.analysis.preferences import PreferencesContext, Units
 from runos.analysis.race_link import link_races_to_activities
 from runos.analysis.races import Race
@@ -316,6 +317,7 @@ def generate_recovery(
     target_kcal: int | None = None,
     reports_dir: Path,
     generated_on: date,
+    units: Units | None = None,
 ) -> Path:
     """Compute the multi-signal recovery findings and write the dated report (ANL-03).
 
@@ -337,9 +339,16 @@ def generate_recovery(
     a ``## Nutrition`` section using the same 3-state degradation rule as the
     other trackers (staleness threshold tightens to >3 days because food is
     logged daily). ``target_kcal`` enables the optional goal-delta line.
+
+    The Coros EvoLab context is always pulled from the DB; if the table is
+    empty (pre-Phase-18 install, or Coros not yet wired up) the section is
+    omitted per the same 3-state rule. ``units`` controls the threshold-pace
+    rendering in that section (mile-pace users see ``M:SS /mi``); defaults to
+    km when ``None``.
     """
     series = build_load_series(conn, cfg)
     guardrail = fitness.evaluate_guardrail(series.points)
+    evolab_ctx = read_evolab(conn)
     assessment = recovery_mod.assess_recovery_from_db(
         conn,
         points=series.points,
@@ -349,6 +358,7 @@ def generate_recovery(
         weight_path=weight_path,
         food_path=food_path,
         target_kcal=target_kcal,
+        evolab_ctx=evolab_ctx,
     )
     freshness = dataread.source_freshness(conn, as_of=generated_on)
     data_range = dataread.data_date_range(conn)
@@ -358,6 +368,7 @@ def generate_recovery(
         freshness=freshness,
         data_range=data_range,
         assessment=assessment,
+        units=units,
     )
     return _write_report(reports_dir, "recovery", generated_on, text)
 
@@ -491,6 +502,7 @@ def generate_all(
             target_kcal=target_kcal,
             reports_dir=reports_dir,
             generated_on=generated_on,
+            units=units,
         ),
         correlations=generate_correlations(
             conn, cfg=cfg, reports_dir=reports_dir, generated_on=generated_on

@@ -5,6 +5,7 @@ Subcommand groups:
 * ``runos setup``                       -- first-run setup wizard (Phase 14).
 * ``runos strava ...``                  -- OAuth + backfill + streams + sync.
 * ``runos garmin ...``                  -- login + backfill + sync (isolated).
+* ``runos coros ...``                   -- login + sync (isolated, Phase 18).
 * ``runos journal ...``                 -- validated subjective entries +
                                            orphan-link sweep.
 * ``runos bot ...``                     -- Telegram bot run + scheduler +
@@ -462,6 +463,86 @@ def garmin_sync_cmd() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Coros ingestion commands (isolated failure domain, Phase 18)
+# ---------------------------------------------------------------------------
+
+coros_app = typer.Typer(help="Coros wellness + EvoLab ingestion: one-time login, sync.")
+app.add_typer(coros_app, name="coros")
+
+
+@coros_app.command("login")
+def coros_login_cmd() -> None:
+    """ONE-TIME interactive Coros login; persists the bearer-token bundle for reuse.
+
+    This is the ONLY command that submits your Coros email/password. It logs in
+    once against the Coros Training Hub (email + MD5-hashed password) and
+    persists ``{access_token, user_id}`` atomically under the tokens dir, so
+    every later ``runos sync`` / ``runos coros sync`` reuses them. On a 401 the
+    connector silently re-logs once and retries; you should not need to run
+    this command again unless you change your Coros password.
+
+    Set RUNOS_COROS_EMAIL / RUNOS_COROS_PASSWORD in your .env first (the
+    password can alternatively be prompted for at the terminal).
+    """
+    from runos.connectors.factory import coros_login
+
+    settings = get_settings()
+    settings.ensure_dirs()
+
+    def _prompt_password() -> str:
+        return typer.prompt("Coros password", hide_input=True)
+
+    try:
+        token_dir = coros_login(settings, prompt_password=_prompt_password)
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:  # noqa: BLE001 - report any login failure cleanly
+        typer.secho(f"Coros login failed: {exc}", fg=typer.colors.RED, err=True)
+        typer.echo("If the failure persists, double-check RUNOS_COROS_EMAIL +")
+        typer.echo("RUNOS_COROS_PASSWORD in .env and try `runos coros login` again.")
+        raise typer.Exit(code=1) from exc
+
+    typer.secho("Coros authorised. Token bundle stored at:", fg=typer.colors.GREEN)
+    typer.echo(f"  {token_dir}")
+    typer.echo("Future syncs reuse this token -- you should not need to log in again.")
+
+
+@coros_app.command("sync")
+def coros_sync_cmd() -> None:
+    """Incremental Coros wellness + EvoLab sync (recent days), reusing the token.
+
+    Loads the persisted bearer token; on a 401 the connector silently re-logs
+    once using the credentials in .env then retries. On any other failure
+    (auth missing, transient API, library blow-up) it logs and skips without
+    retry; this command reports the skip rather than crashing.
+    """
+    from runos.connectors.coros import CorosAuthError, CorosSyncError
+    from runos.connectors.factory import build_coros_connector
+    from runos.sync import pipeline
+
+    settings, conn = _connected_db()
+    try:
+        try:
+            connector = build_coros_connector(settings)
+        except ValueError as exc:
+            typer.secho(f"Coros sync skipped -- {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
+        except (CorosAuthError, CorosSyncError) as exc:
+            typer.secho(f"Coros sync skipped -- {exc}", fg=typer.colors.YELLOW, err=True)
+            raise typer.Exit(code=1) from exc
+        result = pipeline.run_coros_sync(conn, connector)
+    finally:
+        conn.close()
+    if result.ok:
+        typer.secho(f"Coros sync complete. {result.rows} raw rows.", fg="green")
+    else:
+        typer.secho(f"Coros sync skipped -- {result.detail}", fg=typer.colors.YELLOW)
+        if "not authenticated" in result.detail.lower():
+            typer.echo("Run `runos coros login` to authorise.")
+
+
+# ---------------------------------------------------------------------------
 # Telegram bot (v1.1 voice-coach intake)
 # ---------------------------------------------------------------------------
 
@@ -805,6 +886,7 @@ def analyze_recovery() -> None:
             weight_path=settings.weight_path,
             food_path=settings.food_path,
             target_kcal=prefs.nutrition.target_kcal,
+            units=prefs.units,
             reports_dir=settings.reports_dir,
             generated_on=datetime.now(UTC).date(),
         )

@@ -31,7 +31,13 @@ from datetime import date, timedelta
 
 from runos.config import Settings
 from runos.connectors.base import RawWriter
-from runos.connectors.factory import build_garmin_connector, build_strava_connector
+from runos.connectors.coros import SOURCE as COROS_SOURCE
+from runos.connectors.coros import CorosAuthError, CorosConnector, CorosSyncError
+from runos.connectors.factory import (
+    build_coros_connector,
+    build_garmin_connector,
+    build_strava_connector,
+)
 from runos.connectors.garmin import SOURCE as GARMIN_SOURCE
 from runos.connectors.garmin import GarminAuthError, GarminConnector, GarminSyncError
 from runos.connectors.strava import SOURCE as STRAVA_SOURCE
@@ -86,6 +92,47 @@ def _garmin_raw_rows(conn: sqlite3.Connection) -> int:
         conn.execute(
             "SELECT COUNT(*) FROM raw_response WHERE source=?",
             (GARMIN_SOURCE,),
+        ).fetchone()[0]
+    )
+
+
+def run_coros_sync(
+    conn: sqlite3.Connection,
+    connector: CorosConnector,
+    *,
+    since=None,
+) -> SourceResult:
+    """Attempt a Coros sync, catching ALL failures so they never propagate (Phase 18).
+
+    Symmetric to :func:`run_garmin_sync` -- Coros is another unofficial API and
+    must be isolated as its own failure domain. Returns a :class:`SourceResult`
+    with ``ok=False`` on any failure (auth missing/expired, transient API
+    failure, library blow-up). Strava + Garmin + analysis are unaffected
+    because this function does not re-raise. Counts Coros raw rows present
+    after the attempt so the report can show what landed.
+    """
+    raw = RawWriter(conn, COROS_SOURCE)
+    try:
+        connector.sync(raw, since=since)
+    except CorosSyncError as exc:
+        logger.warning("coros sync skipped: %s", exc)
+        return SourceResult(COROS_SOURCE, ok=False, detail=f"skipped: {exc}")
+    except CorosAuthError as exc:
+        logger.warning("coros sync skipped (not authenticated): %s", exc)
+        return SourceResult(COROS_SOURCE, ok=False, detail=f"not authenticated: {exc}")
+    except Exception as exc:  # noqa: BLE001 - the WHOLE point: isolate fragile Coros
+        logger.warning("coros sync skipped (unexpected error): %s", exc, exc_info=True)
+        return SourceResult(COROS_SOURCE, ok=False, detail=f"error: {exc}")
+
+    rows = _coros_raw_rows(conn)
+    return SourceResult(COROS_SOURCE, ok=True, detail="ok", rows=rows)
+
+
+def _coros_raw_rows(conn: sqlite3.Connection) -> int:
+    return int(
+        conn.execute(
+            "SELECT COUNT(*) FROM raw_response WHERE source=?",
+            (COROS_SOURCE,),
         ).fetchone()[0]
     )
 
@@ -212,12 +259,17 @@ def fetch_recent_streams(
 def run_full_sync(conn: sqlite3.Connection, settings: Settings) -> list[SourceResult]:
     """Run each source as an isolated attempt. Returns per-source results.
 
-    Both Strava and Garmin are wrapped: a transient failure in either source
-    produces a degraded :class:`SourceResult` and the other source still runs.
+    Strava, Garmin, and Coros are all wrapped: a transient failure in any one
+    produces a degraded :class:`SourceResult` and the others still run.
     Missing credentials still surface as a ``ValueError`` from the Strava
-    branch so the CLI can report a clear remediation; Garmin's missing-creds
-    case is folded into the catch-all `unavailable:` result because Garmin
-    is optional. This is the function the ``runos sync`` command calls.
+    branch so the CLI can report a clear remediation; Garmin's and Coros's
+    missing-creds cases are folded into the catch-all `unavailable:` result
+    because both are optional. This is the function the ``runos sync``
+    command calls.
+
+    Order is Strava -> Garmin -> Coros. Coros lands LAST among connectors so
+    its raw rows are fresh by the time the wellness transform's per-metric
+    priority resolver runs (Garmin first, Coros overwrites with its values).
     """
     results: list[SourceResult] = []
 
@@ -230,7 +282,16 @@ def run_full_sync(conn: sqlite3.Connection, settings: Settings) -> list[SourceRe
     except Exception as exc:  # noqa: BLE001 - building the connector must not break the run
         logger.warning("garmin connector unavailable; skipping: %s", exc)
         results.append(SourceResult(GARMIN_SOURCE, ok=False, detail=f"unavailable: {exc}"))
+    else:
+        results.append(run_garmin_sync(conn, garmin))
+
+    # ---- Coros (Phase 18; isolated, last among connectors so its values win) ----
+    try:
+        coros = build_coros_connector(settings)
+    except Exception as exc:  # noqa: BLE001 - building the connector must not break the run
+        logger.warning("coros connector unavailable; skipping: %s", exc)
+        results.append(SourceResult(COROS_SOURCE, ok=False, detail=f"unavailable: {exc}"))
         return results
 
-    results.append(run_garmin_sync(conn, garmin))
+    results.append(run_coros_sync(conn, coros))
     return results

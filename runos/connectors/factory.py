@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from runos.config import Settings
+from runos.connectors.coros import CorosConnector, CorosTokenStore
 from runos.connectors.garmin import GarminConnector
 from runos.connectors.strava import StravaConnector
 from runos.connectors.tokens import TokenStore
@@ -139,3 +140,123 @@ def _real_garmin_credential_client(
     from garminconnect import Garmin
 
     return Garmin(email=email, password=password, prompt_mfa=prompt_mfa)
+
+
+# ---------------------------------------------------------------------------
+# Coros
+# ---------------------------------------------------------------------------
+
+
+def coros_token_dir(settings: Settings) -> Path:
+    """Return the directory the Coros bearer-token bundle is persisted in.
+
+    A dedicated subdirectory of the tokens dir, kept OUTSIDE the repo tree
+    (under ``~/.runos/tokens/coros`` by default) so no Coros session can be
+    committed. The connector writes ``token`` (mode 0600) here.
+    """
+    return settings.tokens_dir / "coros"
+
+
+def coros_token_store(settings: Settings) -> CorosTokenStore:
+    """Return the :class:`CorosTokenStore` for these settings."""
+    return CorosTokenStore(coros_token_dir(settings))
+
+
+def _coros_credentials(settings: Settings) -> tuple[str | None, str | None]:
+    """Pull the Coros email/password out of settings, tolerant of older configs.
+
+    Uses ``getattr`` with ``None`` defaults so this factory keeps importing
+    cleanly even before the Settings fields are wired up in wave 18-05. The
+    password field is a ``SecretStr`` once added; we unwrap it via
+    ``get_secret_value`` when present so the connector never sees a wrapped
+    object.
+    """
+    email = getattr(settings, "coros_email", None)
+    raw_password = getattr(settings, "coros_password", None)
+    if raw_password is None:
+        password = None
+    else:
+        # SecretStr exposes the raw via .get_secret_value(); plain strings stay
+        # as-is for forward compatibility.
+        getter = getattr(raw_password, "get_secret_value", None)
+        password = getter() if callable(getter) else str(raw_password)
+    return email, password
+
+
+def build_coros_connector(
+    settings: Settings,
+    *,
+    http_client_factory: Callable[[], Any] | None = None,
+    backfill_days: int | None = None,
+) -> CorosConnector:
+    """Construct a :class:`CorosConnector` from config.
+
+    Returns a connector wired with the persisted token directory and the
+    configured (email, password) so a scheduled sync can perform the one-shot
+    re-login on a 401 without prompting. Credentials are optional at
+    construction time -- if they're absent the connector still works for any
+    call covered by the persisted token, but a 401 will surface as
+    :class:`runos.connectors.coros.CorosAuthError` immediately.
+    """
+    token_dir = coros_token_dir(settings)
+    token_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    email, password = _coros_credentials(settings)
+    kwargs: dict[str, Any] = {
+        "email": email,
+        "password": password,
+    }
+    if http_client_factory is not None:
+        kwargs["http_client_factory"] = http_client_factory
+    if backfill_days is not None:
+        kwargs["backfill_days"] = backfill_days
+    return CorosConnector(token_dir, **kwargs)
+
+
+def coros_login(
+    settings: Settings,
+    *,
+    prompt_password: Callable[[], str] | None = None,
+    http_client_factory: Callable[[], Any] | None = None,
+) -> Path:
+    """Perform the ONE-TIME interactive Coros login and persist the token bundle.
+
+    Submits the configured email + MD5(password) (prompting via
+    ``prompt_password`` if no password is configured), then lets the connector
+    persist ``{access_token, user_id}`` atomically into the token directory.
+    This is the *only* function the CLI uses that touches the raw password
+    interactively. Returns the token directory path so the CLI can show the
+    user where the token lives.
+
+    Raises :class:`ValueError` if the email is missing entirely (the password
+    can be supplied via the prompt).
+    """
+    email, password = _coros_credentials(settings)
+    if not email:
+        raise ValueError(
+            "Coros email missing. Set RUNOS_COROS_EMAIL in your .env, then "
+            "run `runos coros login` (the password can come from the prompt)."
+        )
+    if not password:
+        if prompt_password is None:
+            raise ValueError(
+                "Coros password missing and no prompt provided. Set "
+                "RUNOS_COROS_PASSWORD in your .env or pass a prompt_password."
+            )
+        password = prompt_password()
+
+    token_dir = coros_token_dir(settings)
+    token_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+    # Build a connector seeded with the live credentials and let its _login
+    # path do the handshake + persistence. The connector's _login method
+    # already handles every failure mode + the redacted logging, so the CLI
+    # gets a single consistent error surface.
+    kwargs: dict[str, Any] = {
+        "email": email,
+        "password": password,
+    }
+    if http_client_factory is not None:
+        kwargs["http_client_factory"] = http_client_factory
+    connector = CorosConnector(token_dir, **kwargs)
+    connector._login()
+    return token_dir

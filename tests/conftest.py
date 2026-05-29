@@ -29,6 +29,8 @@ def runos_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[
         "RUNOS_STRAVA_REDIRECT_URI",
         "RUNOS_GARMIN_EMAIL",
         "RUNOS_GARMIN_PASSWORD",
+        "RUNOS_COROS_EMAIL",
+        "RUNOS_COROS_PASSWORD",
     ):
         monkeypatch.delenv(key, raising=False)
     # pydantic-settings also reads the `.env` FILE from the cwd, so a developer's

@@ -141,14 +141,64 @@ def test_daily_summary_exposes_wellness_columns(tmp_path: Path) -> None:
 
 
 def test_migrate_creates_bot_session_table(tmp_path: Path) -> None:
-    """Migration 0005 creates the bot_session table and bumps SCHEMA_VERSION to 5."""
+    """Migration 0005 creates the bot_session table; SCHEMA_VERSION is at least 5."""
     conn = db.init_db(tmp_path / "runos.db")
     try:
         assert "bot_session" in db.table_names(conn)
         version = conn.execute("PRAGMA user_version;").fetchone()[0]
-        assert version == 5
-        assert db.SCHEMA_VERSION == 5
+        # The bot_session table arrives at v5; later migrations may bump the
+        # version further (Phase 18 adds coros_evolab_day at v6).
+        assert version >= 5
+        assert db.SCHEMA_VERSION >= 5
         assert db.BOT_TABLES == ("bot_session",)
+    finally:
+        conn.close()
+
+
+def test_migrate_creates_coros_evolab_day_table(tmp_path: Path) -> None:
+    """Migration 0006 creates the coros_evolab_day table and bumps SCHEMA_VERSION to 6."""
+    conn = db.init_db(tmp_path / "runos.db")
+    try:
+        assert "coros_evolab_day" in db.table_names(conn)
+        version = conn.execute("PRAGMA user_version;").fetchone()[0]
+        assert version == 6
+        assert db.SCHEMA_VERSION == 6
+        assert db.COROS_EVOLAB_TABLES == ("coros_evolab_day",)
+    finally:
+        conn.close()
+
+
+def test_coros_evolab_day_table_has_expected_columns(tmp_path: Path) -> None:
+    """coros_evolab_day has the documented columns; `day` is PK with FK to date_spine."""
+    conn = db.init_db(tmp_path / "runos.db")
+    try:
+        info = list(conn.execute("PRAGMA table_info(coros_evolab_day);"))
+        cols = {r[1] for r in info}
+        assert cols == {
+            "day",
+            "vo2max",
+            "stamina_level",
+            "training_load",
+            "lthr",
+            "ltsp_s_per_km",
+            "fetched_at",
+        }
+        # PK is `day` only.
+        pk = [r[1] for r in info if r[5]]
+        assert pk == ["day"]
+        # fetched_at is the only NOT NULL metric/metadata column; metrics may be NULL.
+        not_null = {r[1] for r in info if r[3]}
+        assert "fetched_at" in not_null
+        for nullable_col in ("vo2max", "stamina_level", "training_load", "lthr", "ltsp_s_per_km"):
+            assert nullable_col not in not_null
+        # FK on day -> date_spine(day).
+        fks = list(conn.execute("PRAGMA foreign_key_list(coros_evolab_day);"))
+        assert any(fk[2] == "date_spine" and fk[3] == "day" and fk[4] == "day" for fk in fks)
+        # Index on fetched_at for the recovery-report staleness check.
+        idx = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='coros_evolab_day';"
+        )}
+        assert "ix_coros_evolab_day_fetched_at" in idx
     finally:
         conn.close()
 
@@ -176,14 +226,14 @@ def test_bot_session_table_has_expected_columns(tmp_path: Path) -> None:
         conn.close()
 
 
-def test_migrate_is_idempotent_at_v5(tmp_path: Path) -> None:
-    """Re-running migrate() on a current v5 DB is a no-op (no error, version stays 5)."""
+def test_migrate_is_idempotent_at_current_version(tmp_path: Path) -> None:
+    """Re-running migrate() on a current DB is a no-op (no error, version unchanged)."""
     db_path = tmp_path / "runos.db"
     conn = db.init_db(db_path)
     try:
         # Already migrated by init_db; calling migrate again must be a no-op.
         result = db.migrate(conn)
-        assert result == 5
+        assert result == db.SCHEMA_VERSION
         # Prior tables still present.
         names = db.table_names(conn)
         for expected in (
@@ -192,6 +242,7 @@ def test_migrate_is_idempotent_at_v5(tmp_path: Path) -> None:
             *db.JOURNAL_TABLES,
             *db.WELLNESS_TABLES,
             *db.BOT_TABLES,
+            *db.COROS_EVOLAB_TABLES,
         ):
             assert expected in names, f"missing table {expected}"
     finally:
